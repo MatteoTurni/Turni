@@ -131,10 +131,12 @@ export function makeCtx(
     // Garantiscono che NESSUNA fase — base, ultima chance o emergenza — possa
     // produrre un tabellone che viola i vincoli duri.
     if(!man){
-      // 1) Distanza associati: non creare un M+P reale troppo vicino a un altro associato.
+      // 1) Distanza associati: non creare una GIORNATA PIENA (mattina+pomeriggio,
+      //    inclusi i codici PS 1/2) troppo vicina a un'altra. Copre anche il caso
+      //    di una P automatica aggiunta a un "1" manuale (→ 1+P) e viceversa.
       const nc=[...c,{tipo}];
-      const assocPrima = c.some(s=>isMatt(s.tipo)&&s.tipo!=="1") && c.some(s=>isPom(s.tipo)&&s.tipo!=="2");
-      const assocDopo  = nc.some(s=>isMatt(s.tipo)&&s.tipo!=="1") && nc.some(s=>isPom(s.tipo)&&s.tipo!=="2");
+      const assocPrima = c.some(s=>isMatt(s.tipo)) && c.some(s=>isPom(s.tipo));
+      const assocDopo  = nc.some(s=>isMatt(s.tipo)) && nc.some(s=>isPom(s.tipo));
       if(assocDopo && !assocPrima && !canAssDist(id,g)) return;
       // 2) Riposo post-notte (Regola N): non aggiungere turni che rompono una notte adiacente.
       if(!SPEC.includes(tipo)){
@@ -189,7 +191,13 @@ export function makeCtx(
     return prev.T[id]?.[pg]?.t || [];
   };
   const haNB   = (id:number,g:number) => gtB(id,g).some(s=>isNot(s.tipo));
-  const haAssB = (id:number,g:number) => { const sh=gtB(id,g); return sh.some(s=>isMatt(s.tipo)&&s.tipo!=="1")&&sh.some(s=>isPom(s.tipo)&&s.tipo!=="2"); };
+  // GIORNATA PIENA ai fini della DISTANZA associati: mattina+pomeriggio INCLUSI
+  // i codici PS 1/2 (v0.3.2). 1+P, M+2 e 1+2 non coprono il reparto e non
+  // contano nel fabbisogno né nella quota maxAssSett, ma per il medico sono
+  // comunque una giornata intera di lavoro (in PS anziché in reparto): vanno
+  // quindi distanziati come un M+P reale. haAssB è usata SOLO da canAssDist e
+  // dal ramo distanza di checkRegolaN; l'associato "reale" resta haAss.
+  const haAssB = (id:number,g:number) => { const sh=gtB(id,g); return sh.some(s=>isMatt(s.tipo))&&sh.some(s=>isPom(s.tipo)); };
 
   // Fabbisogno giornaliero: si contano SOLO i turni M, P, N — comprese le loro
   // varianti sottolineate, che condividono lo stesso `tipo`. Sono ESCLUSI tutti
@@ -348,12 +356,14 @@ export function makeCtx(
   // resta piena: le guardie di add() non dovrebbero mai permetterlo, questo è
   // il controllo di sicurezza.
   const checkRegolaN = () => {
-    // L'associato in g è interamente manuale? (mese precedente: sempre sì)
+    // La giornata piena in g è interamente manuale? (mese precedente: sempre sì)
+    // Include i codici 1/2: essendo inseribili solo manualmente, contribuiscono
+    // sempre come `man` e non rendono mai "colpa del motore" un conflitto.
     const assManTot = (id:number,k:number) => {
       if(k<1) return true;
       const sh=gt(id,k);
-      return sh.filter(s=>isMatt(s.tipo)&&s.tipo!=="1").every(s=>s.man)
-          && sh.filter(s=>isPom(s.tipo) &&s.tipo!=="2").every(s=>s.man);
+      return sh.filter(s=>isMatt(s.tipo)).every(s=>s.man)
+          && sh.filter(s=>isPom(s.tipo)).every(s=>s.man);
     };
     for(const m of medici){
       if(m.stato==="MPS") continue;
@@ -385,7 +395,7 @@ export function makeCtx(
             if(pomP.length>1 && (!nMan || pomP.some(s=>!s.man))) return false;
           }
         }
-        if(haAss(m.id,g) && !canAssDist(m.id,g)){
+        if(haAssB(m.id,g) && !canAssDist(m.id,g)){
           let colpaMotore = !assManTot(m.id,g);
           if(!colpaMotore){
             for(let k=g-2;k<=Math.min(ndim,g+2);k++){
