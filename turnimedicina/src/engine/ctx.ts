@@ -305,8 +305,13 @@ export function makeCtx(
     }
     if(haN(m.id,g)) return false;
     if(f==="ASS"){ if(m.stato==="ML") return false; return canAss(m.id,g)&&canAssDist(m.id,g); }
-    if(f==="M"){ if(!canMatt(m.id,g)) return false; if(m.stato==="ML"&&isSp(g)) return false; return true; }
-    if(f==="P"){ if(m.stato==="ML") return false; return canPom(m.id,g); }
+    // DISTANZA GIORNATE PIENE (v0.3.2): se aggiungere questa fascia COMPLETA la
+    // giornata (l'altra metà è già presente, inclusi i codici PS 1/2 e la A),
+    // il medico è eleggibile solo se rispetta la distanza. Specchia la guardia
+    // di add(): senza questo filtro i pool sceglievano candidati che add()
+    // rifiutava in silenzio, lasciando buchi colmabili da altri medici.
+    if(f==="M"){ if(!canMatt(m.id,g)) return false; if(m.stato==="ML"&&isSp(g)) return false; if(haP(m.id,g)&&!haM(m.id,g)&&!canAssDist(m.id,g)) return false; return true; }
+    if(f==="P"){ if(m.stato==="ML") return false; if(haM(m.id,g)&&!haP(m.id,g)&&!canAssDist(m.id,g)) return false; return canPom(m.id,g); }
     return false;
   };
 
