@@ -1,95 +1,118 @@
-import XLSX from "xlsx-js-style";
+import ExcelJS from "exceljs";
 import type { Medico, TurniMese } from "../engine/types";
 import { MESI, dowOf, isFestivo } from "../engine/date";
+import { LOGO_PNG_BASE64 } from "./logo";
 
 // ─── EXPORT EXCEL ─────────────────────────────────────────────────────────────
-// xlsx-js-style (fork di SheetJS CON supporto agli stili) ora è una dipendenza
-// del progetto: niente più caricamento da CDN a runtime (funziona anche offline
-// e non dipende dalla disponibilità di jsdelivr). Layout identico al modello
-// dell'ospedale: intestazione, griglia bordata, colonne festivi in arancione.
+// Migrato da xlsx-js-style a ExcelJS (v0.3.2): xlsx-js-style non supporta
+// l'inserimento di immagini, quindi il logo dell'intestazione non era
+// riproducibile. ExcelJS inoltre scrive bordi affidabili su tutte le celle e
+// permette di impostare il layout di stampa (orizzontale, adatta a 1 pagina),
+// che prima mancava del tutto: era la causa della stampa spezzata/senza bordi.
+//
+// Layout identico al modello dell'ospedale: banner "Scuola Medica Salernitana"
+// sulla fascia alta, intestazione testuale, griglia completamente bordata,
+// colonne festivi/domeniche in arancione.
 
-export function esportaExcel(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese){
-  const NCOL = nd + 1;                       // colonna A (nomi) + un giorno per colonna
-  const enc  = (r:number,c:number) => XLSX.utils.encode_cell({ r, c });
-  const thin = { style:"thin", color:{ rgb:"FF000000" } };
-  const BORD = { top:thin, bottom:thin, left:thin, right:thin };
-  const ORANGE = "FFFFC000";                 // festivi/domeniche, come nel modello
-  const blank = (): (string|number|null)[] => new Array(NCOL).fill(null);
-  const dlIt  = ["L","M","M","G","V","S","D"];
+const ORANGE = "FFFFC000";
+const THIN: Partial<ExcelJS.Border> = { style: "thin", color: { argb: "FF000000" } };
+const BORD: Partial<ExcelJS.Borders> = { top: THIN, bottom: THIN, left: THIN, right: THIN };
+const DL_IT = ["L", "M", "M", "G", "V", "S", "D"];
 
-  // ---------- contenuti (AOA), stesso impianto del modello ----------
-  const wsData: (string|number|null)[][] = [];
-  wsData.push(blank());                                              // r0  (riga 1): fascia logo, alta e vuota
-  const h1=blank(); h1[16]="Azienda Ospedaliero-Universitaria  "; wsData.push(h1);                                   // r1
-  const h2=blank(); h2[16]="San Giovanni di Dio e Ruggi d\u2019Aragona  -  Salerno"; wsData.push(h2);                // r2
-  const h3=blank(); h3[16]="Presidio Ospedaliero \u201cSanta Maria Incoronata dell\u2019Olmo\u201d"; wsData.push(h3); // r3
-  wsData.push(blank());                                             // r4  (riga 5): spaziatore
-  const rMed=blank(); rMed[0]="MEDICINA"; wsData.push(rMed);        // r5  (riga 6)
+// Costruisce il workbook (separato dal download per poterlo testare in Node).
+export function costruisciWorkbook(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Foglio1", {
+    pageSetup: {
+      paperSize: 9,                 // A4
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1,
+      margins: { left: 0.2, right: 0.2, top: 0.4, bottom: 0.4, header: 0.3, footer: 0.3 },
+    },
+  });
 
-  const rNum=blank(); rNum[0]=anno;                                 // r6  (riga 7): anno + numeri giorno
-  for(let g=1;g<=nd;g++) rNum[g]=g;
-  wsData.push(rNum);
+  // ---------- righe (stesso impianto del modello, 1-based in ExcelJS) ----------
+  // r1: fascia logo · r2-r4: intestazione testuale · r5: spaziatore ·
+  // r6: MEDICINA · r7: anno + numeri giorno · r8: mese + lettere giorno · r9+: medici
+  const hdr = [
+    "Azienda Ospedaliero-Universitaria  ",
+    "San Giovanni di Dio e Ruggi d\u2019Aragona  -  Salerno",
+    "Presidio Ospedaliero \u201cSanta Maria Incoronata dell\u2019Olmo\u201d",
+  ];
+  hdr.forEach((t, i) => {
+    const cell = ws.getCell(2 + i, 17);           // colonna Q, come nel modello
+    cell.value = t;
+    cell.font = { name: "Arial", size: 12 };
+    cell.alignment = { horizontal: "left" };
+  });
+  const med = ws.getCell(6, 1);
+  med.value = "MEDICINA";
+  med.font = { name: "Arial", size: 12, bold: true };
 
-  const rDow=blank(); rDow[0]=MESI[mese].toLowerCase();             // r7  (riga 8): mese + lettere giorno
-  for(let g=1;g<=nd;g++) rDow[g]=dlIt[dowOf(anno,mese,g)];
-  wsData.push(rDow);
-
-  const firstMed = wsData.length;                                   // r8+ : una riga per medico
-  for(const med of medici){
-    const row = blank();
-    row[0] = med.nome + (med.codice ? "  " + med.codice : "");
-    for(let g=1;g<=nd;g++){
-      const ts = (turni[med.id]?.[g]?.t||[]).filter(s=>s.tipo!=="X");
-      if(ts.length>0) row[g] = ts.map(s=>s.tipo).join("+");
-    }
-    wsData.push(row);
+  const R_NUM = 7, R_DOW = 8, FIRST_MED = 9;
+  ws.getCell(R_NUM, 1).value = anno;
+  ws.getCell(R_DOW, 1).value = MESI[mese].toLowerCase();
+  for (let g = 1; g <= nd; g++) {
+    ws.getCell(R_NUM, 1 + g).value = g;
+    ws.getCell(R_DOW, 1 + g).value = DL_IT[dowOf(anno, mese, g)];
   }
-  const lastRow = wsData.length - 1;
+  medici.forEach((m, i) => {
+    const r = FIRST_MED + i;
+    ws.getCell(r, 1).value = m.nome + (m.codice ? "  " + m.codice : "");
+    for (let g = 1; g <= nd; g++) {
+      const ts = (turni[m.id]?.[g]?.t || []).filter(s => s.tipo !== "X");
+      if (ts.length > 0) ws.getCell(r, 1 + g).value = ts.map(s => s.tipo).join("+");
+    }
+  });
+  const lastRow = FIRST_MED + medici.length - 1;
 
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws["!ref"] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:lastRow,c:NCOL-1} });
-
-  // ---------- stili ----------
-  const setStyle = (r:number,c:number,st:object) => { const ref=enc(r,c); if(!ws[ref]) ws[ref]={t:"s",v:""}; ws[ref].s=st; };
-
-  // intestazione ospedale (righe 2-4, colonna Q)
-  for(let r=1;r<=3;r++) setStyle(r,16,{ font:{name:"Arial",sz:12}, alignment:{horizontal:"left"} });
-  // MEDICINA
-  setStyle(5,0,{ font:{name:"Arial",sz:12,bold:true} });
-
-  // griglia: numeri giorno (r6), lettere giorno (r7), righe medici → bordo, font, fondo festivi
-  const GRID_TOP = 6;
-  for(let r=GRID_TOP;r<=lastRow;r++){
-    const isNum = (r===6), isDow = (r===7), isMed = (r>=firstMed);
-    for(let c=0;c<=nd;c++){
-      const festivo = c>=1 && isFestivo(anno,mese,c);
-      let font;
-      if(c===0)            font={name:"Arial",  sz:12, bold:isDow};   // colonna A (mese / nomi)
-      else if(isNum||isDow)font={name:"Arial",  sz:12, bold:isDow};   // numeri / lettere giorno
-      else                 font={name:"Calibri",sz:12, bold:true};    // celle turno
-      const st: Record<string,unknown> = {
-        font,
-        border: BORD,
-        alignment: { horizontal:(c===0 && isMed)?"left":"center", vertical:"center" },
-      };
-      if(festivo) st.fill = { patternType:"solid", fgColor:{ rgb:ORANGE } };
-      setStyle(r,c,st);
+  // ---------- stili griglia: bordo su OGNI cella, font, fondo festivi ----------
+  for (let r = R_NUM; r <= lastRow; r++) {
+    const isDow = r === R_DOW, isMed = r >= FIRST_MED;
+    for (let c = 1; c <= nd + 1; c++) {
+      const cell = ws.getCell(r, c);
+      cell.border = BORD;
+      cell.font = (c === 1 || r === R_NUM || isDow)
+        ? { name: "Arial", size: 12, bold: isDow }
+        : { name: "Calibri", size: 12, bold: true };
+      cell.alignment = { horizontal: (c === 1 && isMed) ? "left" : "center", vertical: "middle" };
+      if (c >= 2 && isFestivo(anno, mese, c - 1))
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORANGE } };
     }
   }
 
   // ---------- dimensioni ----------
-  ws["!cols"] = [{ wch:26 }, ...Array.from({length:NCOL-1},()=>({ wch:6.3 }))];
-  const rows: {hpt:number}[] = [];
-  rows[0] = { hpt:42 };                       // fascia logo
-  rows[4] = { hpt:6 };                        // spaziatore
-  for(let r=GRID_TOP;r<=lastRow;r++) rows[r] = { hpt:23 };
-  ws["!rows"] = rows;
+  ws.getColumn(1).width = 26;
+  for (let c = 2; c <= nd + 1; c++) ws.getColumn(c).width = 6.3;
+  ws.getRow(1).height = 45;                      // fascia logo
+  ws.getRow(5).height = 6;                       // spaziatore
+  for (let r = R_NUM - 1; r <= lastRow; r++) ws.getRow(r).height = 23;
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Foglio1");
+  // ---------- logo (ancorato alla fascia alta, dimensioni del modello) ----------
+  // Nel template ufficiale l'immagine è mostrata a ~13.154.025 × 533.400 EMU
+  // (≈ 1381 × 56 px). tl usa coordinate frazionarie 0-based di ExcelJS.
+  const imgId = wb.addImage({ base64: LOGO_PNG_BASE64, extension: "png" });
+  ws.addImage(imgId, { tl: { col: 0.2, row: 0.05 }, ext: { width: 1381, height: 56 } });
 
-  const wbout = XLSX.write(wb, { bookType:"xlsx", type:"array", cellStyles:true });
-  const blob = new Blob([wbout], { type:"application/octet-stream" });
+  // ---------- area di stampa ----------
+  const lastColL = colLetter(nd + 1);
+  ws.pageSetup.printArea = `A1:${lastColL}${lastRow}`;
+
+  return wb;
+}
+
+function colLetter(n: number): string {
+  let s = "";
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+export async function esportaExcel(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese): Promise<void> {
+  const wb = costruisciWorkbook(anno, mese, nd, medici, turni);
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
