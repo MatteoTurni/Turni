@@ -1,0 +1,487 @@
+import { useEffect, useRef, useState } from "react";
+import type { Medico, Turno, TurniAll } from "./engine/types";
+import { MESI, DL, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
+import { vt, SPEC } from "./engine/turni";
+import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
+import { setPrevContext, setAmbRotStart } from "./engine/state";
+import { generaMigliorTentativo, completaObiettivi, calcAmbRotNext } from "./engine/genera";
+import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
+import { esportaExcel } from "./export/excel";
+import { SC } from "./components/costanti";
+import { Badge } from "./components/Badge";
+import { CellModal } from "./components/CellModal";
+import { DocModal, type DocDraft } from "./components/DocModal";
+import { CovDots } from "./components/CovDots";
+
+// ─── DATI INIZIALI ────────────────────────────────────────────────────────────
+const MEDICI_INIZIALI: Medico[] = [
+  { id:1,  nome:"D. BALDI",      codice:"8109",  stato:"MR",  obiettivo:25, ambulatorio:false },
+  { id:2,  nome:"M. RENIS",      codice:"8199",  stato:"MR",  obiettivo:25, ambulatorio:true  },
+  { id:3,  nome:"M. GENTILE",    codice:"8204",  stato:"MDC", obiettivo:21, ambulatorio:false },
+  { id:4,  nome:"A. DEL GATTO",  codice:"8205",  stato:"ML",  obiettivo:25, ambulatorio:false },
+  { id:5,  nome:"C. CIAMPA",     codice:"12086", stato:"MR",  obiettivo:25, ambulatorio:true  },
+  { id:6,  nome:"V. SPUGNARDI",  codice:"12088", stato:"MR",  obiettivo:25, ambulatorio:true  },
+  { id:7,  nome:"M. STEFANUCCI", codice:"12334", stato:"MR",  obiettivo:25, ambulatorio:false },
+  { id:8,  nome:"M. LEZZI",      codice:"61334", stato:"MR",  obiettivo:25, ambulatorio:true  },
+  { id:9,  nome:"V. GIORDANO",   codice:"",      stato:"MR",  obiettivo:25, ambulatorio:false },
+  { id:10, nome:"B. CASILLI",    codice:"8175",  stato:"MPS", obiettivo:0,  ambulatorio:false },
+  { id:11, nome:"P. SCUDERI",    codice:"60680", stato:"MPS", obiettivo:0,  ambulatorio:false },
+];
+
+// Le regole persistite entrano nel motore UNA volta al bootstrap; da qui in poi
+// il pannello Regole le aggiorna con updRegole (setRegole + saveRegole).
+setRegole(loadRegole());
+
+// ─── APP COMPONENT ────────────────────────────────────────────────────────────
+export default function App(){
+  const saved = loadS();
+  const [anno,   setAnno]   = useState(saved?.anno   ?? 2026);
+  const [mese,   setMese]   = useState(saved?.mese   ?? 5);
+  const [medici, setMedici] = useState<Medico[]>(saved?.medici ?? MEDICI_INIZIALI);
+  // I turni sono salvati PER MESE (chiave "AAAA-MM"): cambiando mese o anno si
+  // lavora su un insieme di turni diverso.
+  const [turniAll, setTurniAll] = useState<TurniAll>(saved?.turniAll ?? {});
+  const [tab,    setTab]    = useState<"cal"|"medici"|"regole">("cal");
+  const [cella,  setCella]  = useState<{id:number; g:number}|null>(null);
+  const [editDoc,setEditDoc]= useState<DocDraft|null>(null);
+  // Conferma eliminazione medico in-app: window.confirm() è bloccato negli
+  // iframe sandbox → conferma con un secondo click (si annulla dopo 3.5s).
+  const [delDoc, setDelDoc] = useState<number|null>(null);
+  // Pannello Regole: stato React specchio delle regole del motore per il re-render.
+  const [regole, setRegoleState] = useState(getRegole());
+  const updRegole = (next: typeof regole) => { setRegole(next); setRegoleState(next); saveRegole(next); };
+  const [toast,  setToast]  = useState<{txt:string; tp:string}|null>(null);
+  const [busy,   setBusy]   = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const calRef = useRef<HTMLDivElement>(null);
+
+  const nd     = dimOf(anno,mese);
+  const giorni = Array.from({length:nd},(_,i)=>i+1);
+
+  // ── Turni del mese/anno attualmente visualizzato ──────────────────────────
+  const curKey  = mkKey(anno, mese);
+  const turni   = turniAll[curKey] || {};
+  const setTurni = (updater: ((cur: TurniAll[string]) => TurniAll[string]) | TurniAll[string]) => {
+    setTurniAll(prev=>{
+      const cur  = prev[curKey] || {};
+      const next = typeof updater==="function" ? updater(cur) : updater;
+      return { ...prev, [curKey]: next };
+    });
+  };
+
+  useEffect(()=>{ saveS({anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
+
+  const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
+
+  // ── Generazione (pulsante ①) ───────────────────────────────────────────────
+  // La UI INIETTA nel motore tutto ciò che prima il motore leggeva da solo:
+  // coda del mese precedente e indice di rotazione ambulatorio. La rotazione
+  // viene poi ricalcolata dal SOLO tabellone accettato e persistita: i tentativi
+  // scartati dal multi-tentativo non la fanno più avanzare.
+  const generaCopertura = () => {
+    setBusy(true);
+    setTimeout(()=>{
+      try{
+        setPrevContext(turniAll,anno,mese);
+        const rotStart = loadAmbRot().nextIdx;
+        setAmbRotStart(rotStart);
+        const r = generaMigliorTentativo(anno,mese,nd,medici,turni);
+        saveAmbRot({ nextIdx: calcAmbRotNext(r.turni, medici, anno, mese, nd, rotStart) });
+        setTurni(r.turni);
+        if(r.ok) showMsg("✓ Copertura minima completata!");
+        else showMsg("⚠ Copertura parziale (mostrato il tabellone migliore): "+r.problemi.slice(0,4).join(" · "),"warn");
+      }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
+      setBusy(false);
+    },50);
+  };
+
+  // ── Obiettivi mensili (pulsante ②) ─────────────────────────────────────────
+  const generaObiettivi = () => {
+    setBusy(true);
+    setTimeout(()=>{
+      try{
+        setPrevContext(turniAll,anno,mese);
+        const r = completaObiettivi(anno,mese,nd,medici,turni);
+        setTurni(r.turni);
+        showMsg("✓ Obiettivi mensili completati!");
+      }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
+      setBusy(false);
+    },50);
+  };
+
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      esportaExcel(anno, mese, nd, medici, turni);
+      showMsg("✓ Excel scaricato!");
+    } catch(e) {
+      showMsg("Errore Excel: " + (e as Error).message, "err");
+    }
+    setPrinting(false);
+  };
+
+  const gT = (id:number,g:number): Turno[] => turni[id]?.[g]?.t||[];
+  const sT = (id:number,g:number,a:Turno[]) => setTurni(p=>({...p,[id]:{...(p[id]||{}),[g]:{t:a}}}));
+  const cntM = (id:number) => { let t=0; for(let g=1;g<=nd;g++) for(const s of gT(id,g)) t+=vt(s.tipo,s.sott); return t; };
+
+  // Conta weekend liberi del medico nel mese corrente
+  const cntWkLiberi = (id:number) => {
+    let lib=0;
+    for(let g=1;g<=nd;g++){
+      const dw=dowOf(anno,mese,g);
+      if(dw!==5) continue; // solo sabati
+      const dom=g+1;
+      if(dom>nd) continue;
+      const sabLib = gT(id,g).every(s=>SPEC.includes(s.tipo))||gT(id,g).length===0;
+      const domLib = gT(id,dom).every(s=>SPEC.includes(s.tipo))||gT(id,dom).length===0;
+      if(sabLib&&domLib) lib++;
+    }
+    return lib;
+  };
+
+  // Conta turni ambulatorio (A/AII/A2) del medico nel mese
+  const cntAmb = (id:number) => {
+    let n=0;
+    for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A","AII","A2"].includes(s.tipo)) n++;
+    return n;
+  };
+  const metaG = (g:number) => {
+    const d=dowOf(anno,mese,g), h=isFestivo(anno,mese,g);
+    return { d, h, sat:isSabN(d), dom:isDomN(d), sp:h||isDomN(d) };
+  };
+  const cfApp = (g:number,f:string) => {
+    let n=0;
+    for(const m of medici){
+      // Copertura minima giornaliera: SOLO i turni reali M/P/N (A/AII/A2 e
+      // 1/2/3 esclusi, altrimenti falsano la lettura di cosa manca davvero).
+      for(const s of gT(m.id,g)){
+        if(f==="M" && s.tipo==="M") n++;
+        if(f==="P" && s.tipo==="P") n++;
+        if(f==="N" && s.tipo==="N") n++;
+      }
+    }
+    return n;
+  };
+
+  // ── salvataggio dal DocModal (nuovo o modifica) ────────────────────────────
+  const salvaDoc = (f: DocDraft) => {
+    if(!f.id){ const mx=Math.max(...medici.map(m=>m.id),0); setMedici(p=>[...p,{...f,id:mx+1} as Medico]); }
+    else      setMedici(p=>p.map(m=>m.id===f.id?(f as Medico):m));
+  };
+
+  const eliminaDoc = (m: Medico) => {
+    if(delDoc!==m.id){
+      setDelDoc(m.id);
+      setTimeout(()=>setDelDoc(d=>d===m.id?null:d),3500);
+      return;
+    }
+    setDelDoc(null);
+    setMedici(p=>p.filter(x=>x.id!==m.id));
+    // Rimuove anche i turni del medico da TUTTI i mesi salvati, per evitare
+    // "fantasmi" ereditati da un nuovo medico che riceve lo stesso id (max+1).
+    setTurniAll(prev=>{
+      const n: TurniAll={};
+      for(const k in prev){ const { [m.id]:_scarta, ...resto } = prev[k]; n[k]=resto; }
+      return n;
+    });
+    showMsg(`Medico ${m.nome} eliminato.`);
+  };
+
+  // ── styles ──
+  const TH: React.CSSProperties = {background:"#060c18",border:"1px solid #0f2035",padding:"3px 3px",textAlign:"center",fontFamily:"monospace",fontSize:"9px",color:"#1e3a5f",whiteSpace:"nowrap"};
+
+  return (
+    <div style={{minHeight:"100vh",background:"#030810",color:"#e2f0ff",fontFamily:"monospace"}}>
+      <style>{`
+        *{box-sizing:border-box;margin:0;padding:0;}
+        ::-webkit-scrollbar{width:5px;height:5px;}
+        ::-webkit-scrollbar-track{background:#030810;}
+        ::-webkit-scrollbar-thumb{background:#0f2035;border-radius:3px;}
+        @media print{
+          .np{display:none!important;}
+          body{background:#fff!important;color:#000!important;}
+          table{font-size:6pt!important;border-collapse:collapse!important;}
+          td,th{border:.4pt solid #bbb!important;padding:1pt 2pt!important;}
+        }
+      `}</style>
+
+      {/* TOPBAR */}
+      <div className="np" style={{background:"#060c18",borderBottom:"1px solid #0f2035",padding:"10px 16px",display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:"200px"}}>
+          <div style={{fontSize:"8px",color:"#1e3a5f",letterSpacing:".15em",textTransform:"uppercase",marginBottom:"3px"}}>
+            AOU San Giovanni di Dio e Ruggi d'Aragona · P.O. Santa Maria Incoronata dell'Olmo
+          </div>
+          <div style={{fontSize:"15px",fontWeight:700,color:"#e2f0ff"}}>
+            U.O.C. Medicina Interna
+            <span style={{color:"#1e3a5f",fontSize:"11px",fontWeight:400,marginLeft:"8px"}}>— Pianificazione Turni</span>
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+          <select value={mese} onChange={e=>setMese(+e.target.value)}
+            style={{background:"#030810",border:"1px solid #1e3a5f",color:"#60a5fa",borderRadius:"6px",padding:"6px 9px",fontSize:"12px",fontFamily:"monospace",cursor:"pointer"}}>
+            {MESI.map((m,i)=><option key={i} value={i}>{m}</option>)}
+          </select>
+          <input type="number" value={anno} onChange={e=>setAnno(+e.target.value)}
+            style={{background:"#030810",border:"1px solid #1e3a5f",color:"#60a5fa",borderRadius:"6px",padding:"6px 8px",fontSize:"12px",fontFamily:"monospace",width:"78px"}}/>
+        </div>
+
+        <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+          {([
+            ["①","Copertura", busy?"#0f1a2a":"#1d4ed8", generaCopertura, busy],
+            ["②","Obiettivi", busy?"#0f1a2a":"#6d28d9", generaObiettivi, busy],
+            ["⊘","Rimuovi App","#4c1d95", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>s.man)}; } return n; }); showMsg("Turni app rimossi."); }, false],
+            ["x","Rimuovi Man","#7f1d1d", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>!s.man)}; } return n; }); showMsg("Turni manuali rimossi."); }, false],
+            ["⎙","Excel", printing?"#0f1a2a":"#064e3b", handlePrint, printing],
+          ] as [string,string,string,()=>void,boolean][]).map(([ic,lb,cl,fn,ds])=>(
+            <button key={lb} onClick={fn} disabled={!!ds} style={{background:ds?"#0f1a2a":cl,color:ds?"#1e3a5f":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
+              <span>{ic}</span><span>{lb}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{display:"flex",gap:"4px"}}>
+          {([["cal","Calendario"],["medici","Medici"],["regole","Regole"]] as ["cal"|"medici"|"regole",string][]).map(([t,l])=>(
+            <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#0f2035":"transparent",color:tab===t?"#60a5fa":"#1e3a5f",border:`1px solid ${tab===t?"#1e3a5f":"#0f2035"}`,borderRadius:"6px",padding:"6px 12px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* TOAST */}
+      {toast&&(
+        <div className="np" style={{position:"fixed",top:"66px",right:"16px",zIndex:900,
+          background:toast.tp==="err"?"#450a0a":toast.tp==="warn"?"#451a03":"#052e16",
+          border:`1px solid ${toast.tp==="err"?"#dc2626":toast.tp==="warn"?"#c2410c":"#16a34a"}`,
+          color:"#e2f0ff",borderRadius:"8px",padding:"10px 14px",fontSize:"12px",
+          fontFamily:"monospace",boxShadow:"0 8px 24px #000",maxWidth:"300px"}}>
+          {toast.txt}
+        </div>
+      )}
+
+      {/* CALENDARIO */}
+      {tab==="cal"&&(
+        <div ref={calRef} style={{overflowX:"auto"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:`${200+nd*35}px`,fontSize:"10px"}}>
+            <thead>
+              <tr>
+                <th colSpan={2} style={{...TH,textAlign:"left",padding:"6px 10px",color:"#60a5fa",fontSize:"11px",minWidth:"200px"}}>
+                  {MESI[mese].toLowerCase()} {anno}
+                </th>
+                {giorni.map(g=>{
+                  const mt=metaG(g);
+                  return <th key={g} style={{...TH,background:mt.h?"#140606":mt.sat||mt.dom?"#0c0c1e":"#060c18",color:mt.h?"#7f1d1d":mt.sat||mt.dom?"#4c1d95":"#1e3a5f",minWidth:"34px",fontSize:"10px",fontWeight:700}}>{g}</th>;
+                })}
+                <th style={{...TH,minWidth:"34px",fontSize:"9px"}}>Tot</th>
+                <th style={{...TH,minWidth:"34px",fontSize:"9px"}}>Ob.</th>
+                <th style={{...TH,minWidth:"28px",fontSize:"9px",color:"#7c3aed"}}>WkL</th>
+                <th style={{...TH,minWidth:"28px",fontSize:"9px",color:"#059669"}}>Amb</th>
+              </tr>
+              <tr>
+                <th colSpan={2} style={TH}/>
+                {giorni.map(g=>{
+                  const mt=metaG(g);
+                  return <th key={g} style={{...TH,background:mt.h?"#140606":mt.sat||mt.dom?"#0c0c1e":"#060c18",color:mt.h?"#ef4444":mt.sat||mt.dom?"#7c3aed":"#1e3a5f",fontSize:"8px"}}>{DL[mt.d]}</th>;
+                })}
+                <th colSpan={4} style={TH}/>
+              </tr>
+            </thead>
+            <tbody>
+              {medici.map(med=>{
+                const tot=cntM(med.id), sc=SC[med.stato]||{bg:"",t:"",b:""};
+                const ov=tot>med.obiettivo&&med.stato!=="MPS", un=tot<med.obiettivo&&med.stato!=="MPS";
+                const wkLib=cntWkLiberi(med.id), ambN=cntAmb(med.id);
+                return (
+                  <tr key={med.id}>
+                    <td style={{background:"#060c18",border:"1px solid #0f2035",padding:"3px 8px",whiteSpace:"nowrap",fontWeight:700,fontSize:"10px",color:"#c9dfff",fontFamily:"monospace"}}>{med.nome}</td>
+                    <td style={{background:sc.bg,border:"1px solid #0f2035",padding:"2px 4px",textAlign:"center",fontFamily:"monospace",fontSize:"8px"}}>
+                      {med.codice&&<div style={{color:sc.t,opacity:.6,fontSize:"7px"}}>{med.codice}</div>}
+                      <div style={{color:sc.t,fontWeight:700}}>{med.stato}</div>
+                    </td>
+                    {giorni.map(g=>{
+                      const mt=metaG(g);
+                      const ct=gT(med.id,g);
+                      const hX=ct.some(s=>s.tipo==="X"), vis=ct.filter(s=>s.tipo!=="X");
+                      const bg=hX?"#111":mt.h?"#0d0404":mt.sat||mt.dom?"#080812":"#030810";
+                      return (
+                        <td key={g} onClick={()=>setCella({id:med.id,g})}
+                          style={{background:bg,border:"1px solid #0f2035",padding:"1px 2px",textAlign:"center",cursor:"pointer",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
+                          onMouseEnter={e=>e.currentTarget.style.background="#0f2035"}
+                          onMouseLeave={e=>e.currentTarget.style.background=bg}>
+                          <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
+                            {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={s.man}/>)}
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td style={{background:ov?"#1a0606":un?"#061a06":"#060c18",border:"1px solid #0f2035",padding:"2px 5px",textAlign:"center",fontWeight:700,fontSize:"12px",color:ov?"#f87171":un?"#4ade80":"#e2f0ff",fontFamily:"monospace"}}>{tot}</td>
+                    <td style={{background:"#060c18",border:"1px solid #0f2035",padding:"2px 5px",textAlign:"center",color:"#1e3a5f",fontSize:"11px",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":med.obiettivo}</td>
+                    <td style={{background:"#0a0718",border:"1px solid #0f2035",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:wkLib>=2?"#a78bfa":wkLib===1?"#7c3aed":"#4b5563",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":wkLib}</td>
+                    <td style={{background:"#050e08",border:"1px solid #0f2035",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:med.ambulatorio?ambN>0?"#34d399":"#065f46":"#1f2937",fontFamily:"monospace"}}>{med.ambulatorio?ambN:"—"}</td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td colSpan={2} style={{...TH,textAlign:"left",padding:"4px 8px",fontSize:"8px",color:"#0f2035"}}>Copertura M·P·N</td>
+                {giorni.map(g=>{
+                  const mt=metaG(g);
+                  return (
+                    <td key={g} style={{background:"#030810",border:"1px solid #0f2035",padding:"2px 1px",textAlign:"center",verticalAlign:"middle"}}>
+                      <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}/>
+                    </td>
+                  );
+                })}
+                <td colSpan={4} style={{background:"#060c18",border:"1px solid #0f2035"}}/>
+              </tr>
+            </tbody>
+          </table>
+
+          <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #0f2035",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
+            <span style={{color:"#0f2035",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
+            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"]].map(([tipo,desc])=>(
+              <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
+                <Badge tipo={tipo} man/><span style={{color:"#1e3a5f",fontSize:"8px"}}>{desc}</span>
+              </div>
+            ))}
+            <span style={{color:"#0f2035",fontSize:"8px",marginLeft:"8px"}}>pieno=manuale · semitrasparente=auto</span>
+          </div>
+        </div>
+      )}
+
+      {/* MEDICI */}
+      {tab==="medici"&&(
+        <div className="np" style={{padding:"16px",maxWidth:"700px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
+            <span style={{fontSize:"13px",fontWeight:700,color:"#c9dfff"}}>Gestione Medici</span>
+            <button onClick={()=>setEditDoc({nome:"",codice:"",stato:"MR",obiettivo:25,ambulatorio:false})}
+              style={{background:"#052e16",color:"#4ade80",border:"1px solid #16a34a",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
+              ➕ Aggiungi
+            </button>
+          </div>
+          {/* Riepilogo contatori */}
+          <div style={{display:"flex",gap:"8px",marginBottom:"14px",flexWrap:"wrap"}}>
+            {medici.filter(m=>m.stato!=="MPS").map(m=>{
+              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id);
+              return (
+                <div key={m.id} style={{background:"#060c18",border:"1px solid #0f2035",borderRadius:"6px",padding:"5px 9px",fontSize:"10px",fontFamily:"monospace"}}>
+                  <div style={{color:"#c9dfff",fontWeight:700,marginBottom:"2px"}}>{m.nome.split(" ").pop()}</div>
+                  <div style={{color:"#a78bfa"}}>🗓 {wkLib} wk</div>
+                  {m.ambulatorio&&<div style={{color:"#34d399"}}>🏥 {ambN} amb</div>}
+                </div>
+              );
+            })}
+          </div>
+          {medici.map(m=>{
+            const sc=SC[m.stato]||{bg:"",t:"",b:""}, tot=cntM(m.id);
+            const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id);
+            return (
+              <div key={m.id} style={{background:"#060c18",border:"1px solid #0f2035",borderRadius:"8px",padding:"10px 14px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"10px"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,color:"#c9dfff",fontSize:"11px",display:"flex",alignItems:"center",gap:"6px"}}>
+                    {m.nome}
+                    {m.ambulatorio&&<span style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>AMB</span>}
+                  </div>
+                  <div style={{color:"#1e3a5f",fontSize:"10px",marginTop:"3px",display:"flex",gap:"10px",flexWrap:"wrap"}}>
+                    <span>{m.codice||"—"} · {tot}{m.stato!=="MPS"?` / ${m.obiettivo}`:""} turni</span>
+                    {m.stato!=="MPS"&&<span style={{color:"#4c1d95"}}>🗓 <span style={{color:"#a78bfa"}}>{wkLib}</span> wk liberi</span>}
+                    {m.ambulatorio&&<span style={{color:"#065f46"}}>🏥 <span style={{color:"#34d399"}}>{ambN}</span> ambul.</span>}
+                  </div>
+                </div>
+                <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"4px",padding:"2px 8px",fontSize:"10px",fontWeight:700}}>{m.stato}</span>
+                <button onClick={()=>setEditDoc(m)} style={{background:"#0f2035",color:"#60a5fa",border:"1px solid #1e3a5f",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px"}}>✏</button>
+                <button onClick={()=>eliminaDoc(m)}
+                  style={{background:delDoc===m.id?"#7f1d1d":"#1a0606",color:delDoc===m.id?"#fff":"#f87171",border:"1px solid #7f1d1d",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace"}}>
+                  {delDoc===m.id?"Conferma ✕":"✕"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* REGOLE */}
+      {tab==="regole"&&(()=>{
+        const numInp = (val:number,onCh:(v:number)=>void) => (
+          <input type="number" min={0} max={9} value={val}
+            onChange={e=>onCh(Math.max(0,Math.min(9,+e.target.value||0)))}
+            style={{width:"52px",background:"#030810",border:"1px solid #1e3a5f",color:"#60a5fa",borderRadius:"6px",padding:"5px 7px",fontSize:"12px",fontFamily:"monospace",textAlign:"center"}}/>
+        );
+        type Fascia = "fer"|"sab"|"fest";
+        type CampoFabb = "mMin"|"mMax"|"pMin"|"pMax";
+        const setFabb = (fascia:Fascia,campo:CampoFabb,v:number) => {
+          const f={...regole.fabb[fascia],[campo]:v};
+          // coerenza min ≤ max: alzando il min si trascina il max e viceversa
+          if(campo.endsWith("Min") && f[campo.replace("Min","Max") as CampoFabb]<v) f[campo.replace("Min","Max") as CampoFabb]=v;
+          if(campo.endsWith("Max") && f[campo.replace("Max","Min") as CampoFabb]>v) f[campo.replace("Max","Min") as CampoFabb]=v;
+          updRegole({...regole,fabb:{...regole.fabb,[fascia]:f}});
+        };
+        type CampoTop = "maxNotti"|"maxConsec"|"wkTarget"|"maxAssSett";
+        const setTop = (campo:CampoTop,v:number) => updRegole({...regole,[campo]:v});
+        const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
+        const BOX: React.CSSProperties = {background:"#060c18",border:"1px solid #0f2035",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
+        const righe: [Fascia,string][] = [["fer","Feriale"],["sab","Sabato"],["fest","Domenica / Festivo"]];
+        const limiti: [CampoTop,string,string][] = [
+          ["maxNotti","Max notti / mese","Tetto di notti (N) assegnabili in automatico a ciascun medico nel mese."],
+          ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
+          ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
+          ["maxAssSett","Max turni associati / settimana","Massimo di M+P nella stessa giornata per medico, per settimana."],
+        ];
+        return (
+          <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
+              <span style={{fontSize:"13px",fontWeight:700,color:"#c9dfff"}}>Regole del reparto</span>
+              <button onClick={()=>updRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)))}
+                style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
+                Ripristina default
+              </button>
+            </div>
+            <div style={{...LBL,marginBottom:"12px",lineHeight:1.6}}>
+              Le modifiche sono salvate subito e usate dalla PROSSIMA generazione (①/②).
+              La <b>Notte</b> resta fissa a 1/giorno: è un invariante dell'algoritmo, non un parametro.
+            </div>
+
+            <div style={BOX}>
+              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>FABBISOGNO GIORNALIERO (min–max)</div>
+              <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
+                <thead><tr>
+                  <th style={{...LBL,textAlign:"left",padding:"4px 14px 4px 0"}}></th>
+                  <th style={{...LBL,padding:"4px 8px"}}>Mattine min</th><th style={{...LBL,padding:"4px 8px"}}>max</th>
+                  <th style={{...LBL,padding:"4px 8px"}}>Pomeriggi min</th><th style={{...LBL,padding:"4px 8px"}}>max</th>
+                </tr></thead>
+                <tbody>
+                  {righe.map(([k,lbl])=>(
+                    <tr key={k}>
+                      <td style={{...LBL,color:"#c9dfff",padding:"4px 14px 4px 0"}}>{lbl}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMin,v=>setFabb(k,"mMin",v))}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMax,v=>setFabb(k,"mMax",v))}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMin,v=>setFabb(k,"pMin",v))}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMax,v=>setFabb(k,"pMax",v))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={BOX}>
+              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>LIMITI PER MEDICO</div>
+              {limiti.map(([k,lbl,hint])=>(
+                <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
+                  {numInp(regole[k],v=>setTop(k,v))}
+                  <div>
+                    <div style={{...LBL,color:"#c9dfff",fontWeight:700}}>{lbl}</div>
+                    <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {cella   && <CellModal medico={medici.find(x=>x.id===cella.id)} giorno={cella.g} anno={anno} mese={mese}
+                             esistenti={gT(cella.id,cella.g)}
+                             onSalva={(t)=>sT(cella.id,cella.g,t)}
+                             onClose={()=>setCella(null)}/>}
+      {editDoc && <DocModal doc={editDoc} onSalva={salvaDoc} onClose={()=>setEditDoc(null)}/>}
+    </div>
+  );
+}
