@@ -127,6 +127,88 @@ export function faseCritici(ctx: Ctx, seed: number){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RIPARAZIONE LOCALE (LNS) — per i mesi difficili
+// Un restart completo ricostruisce da zero anche il 95% del tabellone che era
+// già valido, sperando che il caso sistemi gli 1-2 giorni problematici. Qui
+// invece si RIPARA il miglior tentativo: attorno a ogni buco residuo si svuota
+// una finestra di ±2 giorni (l'orizzonte dei vincoli: Regola N e distanza
+// associati) e la si risolve da capo con risolviCluster a budget nodi alto.
+// Restano intatti: turni manuali, ambulatorio (A/AII/A2, congelato per la
+// rotazione) e tutto ciò che è fuori finestra. Ogni finestra è transazionale:
+// se il backtracking non trova una soluzione completa si fa rollback e quella
+// finestra resta com'era. I buchi possono quindi solo diminuire; l'eventuale
+// costo in weekend liberi (pesato 10 contro 1000 in misura) viene recuperato
+// dal riequilibrio finale a valle.
+// ═══════════════════════════════════════════════════════════════════════════
+export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NODES){
+  const { giorniArr, ndim, cf, needEff, gt, st, medici, mark, rollback, mdcOk } = ctx;
+  const FASCE = ["M","P","N"] as const;
+
+  // Giorni con almeno un buco COLMABILE (needEff: gli impossibili strutturali
+  // non aprono finestre — nessuna riparazione può coprirli).
+  const giorniBuco = giorniArr.filter(g=>FASCE.some(f=>cf(g,f)<needEff(g,f)));
+  if(giorniBuco.length===0) return false;
+
+  // Finestre ±2 attorno ai giorni bucati, fuse se sovrapposte/adiacenti.
+  // Tetto di 9 giorni per finestra: oltre, il cluster diventa troppo grande e
+  // conviene lavorare per finestre separate (in sequenza, ognuna transazionale).
+  const finestre: [number,number][] = [];
+  for(const g of giorniBuco){
+    const lo=Math.max(1,g-2), hi=Math.min(ndim,g+2);
+    const last=finestre[finestre.length-1];
+    if(last && lo<=last[1]+1 && Math.max(hi,last[1])-last[0]+1<=9) last[1]=Math.max(hi,last[1]);
+    else finestre.push([lo,hi]);
+  }
+
+  // Guardia MDC: svuotare la finestra può togliere il "compagno" a un turno
+  // MANUALE di un medico MDC, e mdcOk viene verificato solo all'inserimento.
+  // Una riparazione non deve introdurre NUOVE violazioni (quelle preesistenti,
+  // es. create dall'utente coi manuali, restano tollerate come prima).
+  const soliMdc = (lo:number,hi:number) => {
+    const out=new Set<string>();
+    for(let g=lo;g<=hi;g++) for(const m of medici){
+      if(m.stato!=="MDC") continue;
+      const sh=gt(m.id,g);
+      for(const f of FASCE){
+        const ha = f==="M" ? sh.some(s=>isMatt(s.tipo))
+                 : f==="P" ? sh.some(s=>isPom(s.tipo))
+                 :           sh.some(s=>isNot(s.tipo));
+        if(ha && !mdcOk(m,g,f)) out.add(`${m.id}:${g}:${f}`);
+      }
+    }
+    return out;
+  };
+
+  let riparato=false;
+  for(const [lo,hi] of finestre){
+    // Celle della finestra col fabbisogno EFFICACE (needEff è stabile rispetto
+    // allo svuotamento: capCell guarda solo manuali/immovibili).
+    const cells: {g:number;f:string;need:number}[]=[];
+    for(let g=lo;g<=hi;g++) for(const f of FASCE){ const need=needEff(g,f); if(need>0) cells.push({g,f,need}); }
+    if(cells.length===0) continue;
+    const soliPrima = soliMdc(lo,hi);
+    for(let att=0; att<3; att++){
+      const m0=mark();
+      // Svuota i turni AUTOMATICI M/P/N della finestra (manuali, ambulatorio e
+      // codici speciali intatti). Liberare i vicini del buco è ciò che dà al
+      // solver i gradi di libertà che i riempimenti greedy avevano consumato.
+      for(let g=lo;g<=hi;g++) for(const m of medici){
+        const c=gt(m.id,g);
+        const resto=c.filter(s=>s.man || !["M","P","N"].includes(s.tipo));
+        if(resto.length!==c.length) st(m.id,g,resto);
+      }
+      const rng=mkRng(seed + lo*2654435761 + att*7919);
+      if(risolviCluster(ctx,cells,rng,limiteNodi)){
+        const dopo=soliMdc(lo,hi);
+        if([...dopo].every(k=>soliPrima.has(k))){ riparato=true; break; }
+      }
+      rollback(m0);   // soluzione incompleta o nuova violazione MDC → finestra intatta
+    }
+  }
+  return riparato;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // FASE 2 — AMBULATORIO MARTEDÌ (poi CONGELATO)
 // Rotazione round-robin: l'indice di partenza è INIETTATO (ENG.AMB_ROT_START)
 // e avanzato solo LOCALMENTE. Niente più localStorage nel motore: la
@@ -186,11 +268,17 @@ export function faseAmbulatorio(ctx: Ctx){
 // ═══════════════════════════════════════════════════════════════════════════
 // FASE 3 — WEEKEND (liberi + copertura), poi CONGELATO
 // ═══════════════════════════════════════════════════════════════════════════
-export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number){
+// `evita` (FEEDBACK NOTTI→WEEKEND): per medico, l'insieme delle coppie sab-dom
+// da NON riservargli perché contengono una notte rimasta scoperta nei tentativi
+// precedenti e lui è tra i (pochi) eleggibili per coprirla. Evitamento SOFT:
+// le coppie evitate finiscono in fondo all'ordinamento, quindi vengono scelte
+// solo se altrimenti il medico non raggiungerebbe il proprio obiettivo.
+export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number, evita?: Record<number, Set<string>>){
   const { wkPairs, mrMdc, gt, SPEC, wkTargetMed } = ctx;
   const isManocc = (m:Medico,[s,d]:[number,number]) =>
     gt(m.id,s).some(x=>x.man&&!SPEC.includes(x.tipo)) ||
     gt(m.id,d).some(x=>x.man&&!SPEC.includes(x.tipo));
+  const daEvitare = (m:Medico,[s,d]:[number,number]) => evita?.[m.id]?.has(`${s}-${d}`) ?? false;
   const blocco: Record<number,Set<number>>={}; for(const m of mrMdc) blocco[m.id]=new Set();
   const candCount = (m:Medico) => wkPairs.filter(p=>!isManocc(m,p)).length;
   // chi ha meno candidati va servito prima (meno flessibilità); shuffle per varietà
@@ -200,7 +288,8 @@ export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number){
   for(const m of ordine){
     const tgt = wkTargetMed(m.id);   // obiettivo per-medico (ridotto dai manuali)
     const cand = shuf(wkPairs.filter(p=>!isManocc(m,p)),rng)
-                  .sort((a,b)=>carico[`${a[0]}-${a[1]}`]-carico[`${b[0]}-${b[1]}`]);
+                  .sort((a,b)=>((daEvitare(m,a)?1:0)-(daEvitare(m,b)?1:0))
+                            || (carico[`${a[0]}-${a[1]}`]-carico[`${b[0]}-${b[1]}`]));
     let n=0;
     for(const [s,d] of cand){
       if(n>=tgt) break;
@@ -371,8 +460,28 @@ export function riequilibraWeekendLiberi(ctx: Ctx){
 // garantisce i weekend liberi a TUTTI, la fase conserva e applica il miglior
 // tentativo a copertura valida (quello che soddisfa l'obiettivo di weekend
 // liberi al maggior numero di medici).
-export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false): { ok:boolean; blocco:Blocco; parziale?:boolean } {
-  const { mark, rollback, snapshot, restore, mrMdc, cntWkLiberi, wkTargetMed } = ctx;
+// `nottiCritiche` (FEEDBACK NOTTI→WEEKEND): giorni la cui notte è rimasta
+// scoperta in un tentativo precedente. Per ogni coppia sab-dom che contiene uno
+// di quei giorni, i medici oggi eleggibili per quella notte NON dovrebbero
+// avere quel weekend riservato: la prenotazione stessa era la causa (probabile)
+// del fallimento. L'eleggibilità è calcolata QUI (post Critici+Ambulatorio):
+// è un'approssimazione di quella che faseNotti vedrà dopo, sufficiente come
+// euristica perché l'evitamento resta soft.
+export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false, nottiCritiche?: Set<number>): { ok:boolean; blocco:Blocco; parziale?:boolean } {
+  const { mark, rollback, snapshot, restore, mrMdc, cntWkLiberi, wkTargetMed, wkPairs, eleggibili } = ctx;
+  let evita: Record<number, Set<string>> | undefined;
+  if(nottiCritiche && nottiCritiche.size){
+    evita = {};
+    for(const [s,d] of wkPairs){
+      for(const g of [s,d]){
+        if(!nottiCritiche.has(g)) continue;
+        for(const m of eleggibili(g,"N",mrMdc)){
+          if(!evita[m.id]) evita[m.id] = new Set();
+          evita[m.id].add(`${s}-${d}`);
+        }
+      }
+    }
+  }
   const m0 = mark();
   const scoreWkLiberi = () =>
     mrMdc.reduce((acc,m)=>acc+(cntWkLiberi(m.id)>=wkTargetMed(m.id)?1:0),0);
@@ -380,7 +489,7 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false): { ok
   for(let att=0; att<ENG.TRIES; att++){
     rollback(m0);
     const rng = mkRng(seed + att*7919);
-    const { blocco, tuttiOk } = assegnaWkLiberi(ctx, rng);
+    const { blocco, tuttiOk } = assegnaWkLiberi(ctx, rng, evita);
     if(!tuttiOk && !accettaMigliore) continue;
     coperturaWeekend(ctx, blocco);
     if(validaWeekend(ctx)){
@@ -403,7 +512,11 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false): { ok
 // ═══════════════════════════════════════════════════════════════════════════
 // FASE 4 — NOTTI (+ controllo finale dei weekend liberi)
 // ═══════════════════════════════════════════════════════════════════════════
-export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco){
+// Oltre a ok/ko la fase dichiara `nottiScoperte`: i giorni con notte ancora
+// scoperta (ma colmabile: needEff≥1) nel miglior parziale. L'orchestratore li
+// accumula e li passa alla fase Weekend al retry (feedback mirato, invece del
+// rimescolamento cieco che sperava di risolvere il conflitto per fortuna).
+export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean; nottiScoperte:number[] } {
   const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has?.(g) ?? false;
   const m0 = mark();
@@ -434,11 +547,14 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco){
     if(!ok) continue;                       // notti non coperte → nuovo tentativo
     // ── CONTROLLO WEEKEND LIBERI (dopo le notti) ────────────────────────────
     if(mrMdc.some(m=>cntWkLiberi(m.id)<wkTargetMed(m.id))) riequilibraWeekendLiberi(ctx);
-    if(mrMdc.every(m=>cntWkLiberi(m.id)>=wkTargetMed(m.id))) return true;
+    if(mrMdc.every(m=>cntWkLiberi(m.id)>=wkTargetMed(m.id))) return { ok:true, nottiScoperte:[] };
   }
   rollback(m0);                       // best-effort: lascia il maggior numero di notti coperte
   if(bestSnap) restore(bestSnap);
-  return false;
+  // Fallimento per equità weekend (notti tutte coperte) → lista vuota: in quel
+  // caso il feedback non deve restringere nulla.
+  const nottiScoperte = giorniArr.filter(g=>cf(g,"N")<1 && needEff(g,"N")>=1);
+  return { ok:false, nottiScoperte };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

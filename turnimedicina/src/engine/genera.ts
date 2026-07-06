@@ -1,10 +1,10 @@
 import type { Medico, Risultato, TurniMese } from "./types";
 import { dowOf, isHol } from "./date";
-import { cloneT, pulisciT } from "./turni";
+import { cloneT, pulisciT, SPEC } from "./turni";
 import { ENG } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
-         riequilibraWeekendLiberi, validazioneGlobale, type Blocco } from "./fasi";
+         riequilibraWeekendLiberi, riparaBuchi, validazioneGlobale, type Blocco } from "./fasi";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PULSANTE 1 — GENERA COPERTURA MINIMA
@@ -14,7 +14,7 @@ import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
 // ═══════════════════════════════════════════════════════════════════════════
 export function generaCoperturaMinima(
   anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
-  wkTargetOverride?:number|null, relaxN?:boolean,
+  wkTargetOverride?:number|Record<number,number>|null, relaxN?:boolean,
 ): Risultato {
   const T = cloneT(ex);
   const ctx = makeCtx(anno, mese, ndim, medici, T, wkTargetOverride, relaxN);
@@ -26,17 +26,28 @@ export function generaCoperturaMinima(
   const MAX_FALLIMENTI_WK = 4;
   let fallimentiWk = 0;
 
+  // FEEDBACK NOTTI→WEEKEND: unione dei giorni con notte rimasta scoperta nei
+  // tentativi precedenti. Al retry la fase Weekend evita (soft) di riservare
+  // quei weekend proprio ai medici eleggibili per quelle notti: la causa
+  // tipica del fallimento delle Notti è che i pochi candidati alla notte del
+  // sabato/domenica hanno tutti quel weekend prenotato come libero.
+  const nottiCritiche = new Set<number>();
+
   const fasi = [
     { nome:"Critici",     run:(seed:number)=>faseCritici(ctx,seed) },
     { nome:"Ambulatorio", run:(_seed:number)=>faseAmbulatorio(ctx) },
     { nome:"Weekend",     run:(seed:number)=>{
         const accettaMigliore = fallimentiWk>=MAX_FALLIMENTI_WK;
-        const r=faseWeekend(ctx,seed,accettaMigliore);
+        const r=faseWeekend(ctx,seed,accettaMigliore,nottiCritiche);
         blocco=r.blocco;
         if(!r.ok) fallimentiWk++;   // conta i fallimenti della sola fase Weekend
         return r.ok;
       } },
-    { nome:"Notti",       run:(seed:number)=>faseNotti(ctx,seed,blocco) },
+    { nome:"Notti",       run:(seed:number)=>{
+        const r=faseNotti(ctx,seed,blocco);
+        for(const g of r.nottiScoperte) nottiCritiche.add(g);
+        return r.ok;
+      } },
     { nome:"Diurni",      run:(seed:number)=>faseDiurni(ctx,seed) },
   ];
 
@@ -77,9 +88,16 @@ export function generaCoperturaMinima(
     // Annulla la fase e torna DUE fasi indietro (non una sola): un fallimento può
     // derivare da scelte fatte due fasi prima (es. Notti che fallisce per colpa
     // dell'Ambulatorio). I rollback vanno sempre ALL'INDIETRO nel log → validi.
+    const iFail = i;
     i = Math.max(0, i - 2);
     ctx.rollback(snaps[i]);
-    seeds[i]+=backtracks*97;
+    // Nuovo seme a TUTTE le fasi da rieseguire, non solo a quella di
+    // ripartenza. Prima, un fallimento delle Notti riportava all'Ambulatorio
+    // (che il seme lo IGNORA) e rieseguiva Weekend e Notti con gli stessi semi
+    // di prima: un loop identico che bruciava i backtrack senza esplorare
+    // nulla. Ora ogni retry esplora davvero (e il feedback nottiCritiche
+    // cambia comunque l'esito della fase Weekend anche a parità di seme).
+    for(let k=i;k<=iFail;k++) seeds[k]+=backtracks*97;
   }
 
   const completato = i>=fasi.length;
@@ -195,7 +213,8 @@ export function buchiCopertura(problemi: string[]){
   return problemi.filter(p=>p.includes("mattine")||p.includes("pomeriggi")||p.includes("notte")).length;
 }
 
-export function generaConUltimaChance(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese): Risultato {
+export function generaConUltimaChance(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, maxMs=2000): Risultato {
+  const tFine = Date.now() + maxMs;
   // Dopo l'emergenza (che spende weekend liberi di proposito) si tenta di
   // RECUPERARE l'equità: riequilibrio dei weekend con obiettivo ADATTIVO.
   // NB: qui relaxN resta quello della generazione — su un tabellone generato
@@ -208,23 +227,66 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
       if(c.mrMdc.some(m=>c.cntWkLiberi(m.id)<c.wkTargetMed(m.id))) riequilibraWeekendLiberi(c);
     }catch(_){}
   };
+  // Buchi rimasti dopo il riempimento greedy → tentativo col backtracking
+  // (riparaBuchi): il greedy giorno-per-giorno può fallire dove una
+  // riorganizzazione della finestra riesce.
+  const riparaResidui = (turni:TurniMese, relaxN:boolean, seed:number) => {
+    try{ riparaBuchi(makeCtx(anno, mese, ndim, medici, turni, null, relaxN), seed, ENG.REBAL_NODES); }catch(_){}
+  };
 
   // 1) Generazione normale: tutto immutato (obiettivo adattivo ≈2, regola N STRETTA).
   const rNorm = generaCoperturaMinima(anno, mese, ndim, medici, ex);
   if(rNorm.ok) return rNorm;                                     // mesi facili: finisce qui
 
-  // 2) ULTIMA CHANCE — passo A: obiettivo weekend liberi = 1, regola N ANCORA STRETTA.
-  const rUlt = generaCoperturaMinima(anno, mese, ndim, medici, ex, 1, false);
-  riempimentoEmergenza(anno, mese, ndim, medici, rUlt.turni, false);
-  recuperaWeekend(rUlt.turni, false);
-  let problemi = problemiResidui(anno, mese, ndim, medici, rUlt.turni, false);
+  // TARGET GRADUATO: prima il passo A abbassava l'obiettivo weekend a 1 PER
+  // TUTTI — drastico, e pagato anche da medici estranei al problema. Qui si
+  // identifica il collo di bottiglia dai buchi WEEKEND del run normale: il
+  // target scende a 1 solo per i medici disponibili (non assenti con manuali)
+  // in quei giorni, cioè quelli tra cui la copertura e i weekend liberi sono
+  // davvero in conflitto. Se il collo non è sui weekend (mappa vuota) si
+  // ricade sul vecchio comportamento globale.
+  const targetGraduato = (() => {
+    try{
+      const c = makeCtx(anno, mese, ndim, medici, rNorm.turni);
+      const map: Record<number,number> = {};
+      for(const g of c.giorniArr){
+        if(!c.isWk(g)) continue;
+        if(!(["M","P","N"] as const).some(f=>c.cf(g,f)<c.needEff(g,f))) continue;
+        for(const m of c.mrMdc)
+          if(!c.gt(m.id,g).some(s=>s.man && SPEC.includes(s.tipo))) map[m.id]=1;
+      }
+      return Object.keys(map).length ? map : null;
+    }catch(_){ return null; }
+  })();
+
+  // 2) ULTIMA CHANCE — passo A: obiettivo ridotto (graduato o globale=1),
+  //    regola N ANCORA STRETTA. MULTI-SEME: il primo giro con SALT=0 replica
+  //    il vecchio comportamento deterministico (mai peggio di prima), i
+  //    successivi esplorano finché resta budget; si tiene il migliore.
+  const saltPrec = ENG.SALT;
+  let rUlt!: Risultato;
+  try{
+    for(let k=0; k<8; k++){
+      ENG.SALT = k===0 ? 0 : (Math.imul(0x9E3779B9, k)>>>0);
+      const rA = generaCoperturaMinima(anno, mese, ndim, medici, ex, targetGraduato ?? 1, false);
+      riempimentoEmergenza(anno, mese, ndim, medici, rA.turni, false);
+      riparaResidui(rA.turni, false, 5741+k);
+      recuperaWeekend(rA.turni, false);
+      rA.problemi = problemiResidui(anno, mese, ndim, medici, rA.turni, false);
+      rA.ok = rA.problemi.length===0; rA.parziale = !rA.ok;
+      rUlt = (k===0) ? rA : scegliMigliore(anno, mese, ndim, medici, rUlt, rA);
+      if(rUlt.ok || buchiCopertura(rUlt.problemi)===0 || Date.now()>=tFine) break;
+    }
+  }finally{ ENG.SALT = saltPrec; }
+  let problemi = rUlt.problemi;
 
   // 3) Passo B (SOLO SE resta un buco di copertura reale): si rilassa la Regola N
   //    — a g+2 dopo una notte è ammessa anche una Notte — e si riprova da capo.
   //    Si tiene la versione rilassata solo se copre DAVVERO di più.
   if(buchiCopertura(problemi) > 0){
-    const rRel = generaCoperturaMinima(anno, mese, ndim, medici, ex, 1, true);
+    const rRel = generaCoperturaMinima(anno, mese, ndim, medici, ex, targetGraduato ?? 1, true);
     riempimentoEmergenza(anno, mese, ndim, medici, rRel.turni, true);
+    riparaResidui(rRel.turni, true, 7451);
     recuperaWeekend(rRel.turni, true);
     // FIX SEMANTICA "ok" (v0.3.0): i problemi residui del ramo rilassato vengono
     // valutati con la validazione STRETTA (relaxN=false), come il ramo A e come
@@ -330,15 +392,35 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
     else if(perfetto){ stallo = (best.m!.soft < softPrima) ? 0 : stallo+1; }
   }
 
+  ENG.BT=BT; ENG.TRIES=TR; ENG.CLUSTER_NODES=CN; ENG.REBAL_NODES=RN; ENG.SALT=0;
+
+  // ── RIPARAZIONE LOCALE (LNS) ────────────────────────────────────────────
+  // Prima dell'ultima chance: si prova a RIPARARE il miglior tentativo invece
+  // di rigenerare da capo. Svuota una finestra di ±2 giorni attorno a ogni
+  // buco colmabile e la risolve con risolviCluster a budget pieno, lasciando
+  // intatto tutto il resto del tabellone. Lavora su una copia: si adotta solo
+  // se registra() la giudica migliore (i buchi possono solo diminuire, il
+  // costo massimo è qualche weekend libero — che il recupero finale sotto e
+  // il peso 1000-contro-10 di misura rendono comunque un buon affare). Se la
+  // riparazione chiude tutti i buchi, l'ultima chance non scatta nemmeno.
+  if(!perfetto && best.m && best.m.buchi>0){
+    try{
+      const copia = cloneT(best.turni!);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(riparaBuchi(c, 424243, ENG.REBAL_NODES)) registra(copia);
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
+
   // ── ULTIMA CHANCE, FUORI DAL LOOP — una sola esecuzione, deterministica, e
   // solo se il miglior tentativo ha buchi COLMABILI (misura conta già i buchi
   // sul fabbisogno efficace: le celle strutturalmente impossibili non
   // scatenano più l'ultima chance, che spende weekend liberi di proposito e
   // sui mesi difficili peggiorava solo l'equità senza poter coprire nulla).
-  ENG.BT=BT; ENG.TRIES=TR; ENG.CLUSTER_NODES=CN; ENG.REBAL_NODES=RN; ENG.SALT=0;
   if(!perfetto && best.m && best.m.buchi>0){
     try{
-      const r = generaConUltimaChance(anno, mese, ndim, medici, ex);
+      // budget residuo del multi-tentativo, con un pavimento minimo per non
+      // strozzare l'ultima chance quando il loop ha consumato tutto
+      const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, t0 + maxMs - Date.now()));
       registra(r.turni);
     }catch(_){ /* si tiene il best già trovato */ }
   }
