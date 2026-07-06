@@ -128,11 +128,27 @@ export function scoreCopertura(anno:number, mese:number, ndim:number, medici:Med
        + Math.min(c.cf(g,"N"),1);
   return s;
 }
+// Deficit complessivo di weekend liberi (Σ max(0, target − effettivi)).
+// Usato come spareggio: a parità di copertura, il tabellone che ha "pagato"
+// meno weekend è preferibile a prescindere dal conteggio grezzo dei problemi.
+export function deficitWeekend(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
+  const c = makeCtx(anno, mese, ndim, medici, turni);
+  let d=0;
+  for(const m of c.mrMdc) d += Math.max(0, c.wkTargetMed(m.id)-c.cntWkLiberi(m.id));
+  return d;
+}
 export function scegliMigliore(anno:number, mese:number, ndim:number, medici:Medico[], a:Risultato, b:Risultato){
   if(a.ok !== b.ok) return a.ok ? a : b;                         // un "ok" batte un parziale
   const sa=scoreCopertura(anno,mese,ndim,medici,a.turni);
   const sb=scoreCopertura(anno,mese,ndim,medici,b.turni);
   if(sa !== sb) return sa>sb ? a : b;                            // più copertura
+  // A PARITÀ DI COPERTURA: prima il deficit weekend, POI i problemi residui.
+  // Prima decideva subito problemi.length: un tabellone aggressivo con un
+  // avviso in meno batteva quello normale anche avendo speso più weekend
+  // senza coprire nulla in più — proprio il confronto che P1 vuole evitare.
+  const wa=deficitWeekend(anno,mese,ndim,medici,a.turni);
+  const wb=deficitWeekend(anno,mese,ndim,medici,b.turni);
+  if(wa !== wb) return wa<wb ? a : b;                            // meno weekend pagati
   return (a.problemi.length<=b.problemi.length) ? a : b;         // meno problemi residui
 }
 
@@ -353,10 +369,26 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
   // e il control-flow di TS non le vedrebbe, stringendo i tipi a `null`.
   const best: { turni: TurniMese|null; m: ReturnType<typeof misura>|null } = { turni:null, m:null };
-  const registra = (turni:TurniMese) => {
+  // ── ADOZIONE ASIMMETRICA (P1) ──────────────────────────────────────────
+  // I tabelloni AGGRESSIVI (ultima chance: spende weekend liberi di proposito)
+  // non competono col punteggio pieno: vengono adottati SOLO se riducono
+  // strettamente i buchi colmabili — la ragione per cui esistono. Prima
+  // entravano in gara alla pari: a parità di buchi potevano vincere per un
+  // wkDef o un soft marginalmente migliori, e nei mesi con celle impossibili
+  // NON provate da capCell (impossibilità cumulative/combinatorie → needEff
+  // pieno → buchi>0 → l'ultima chance scatta comunque) il tabellone rilasciato
+  // era quasi sempre quello aggressivo, senza alcun guadagno di copertura.
+  // A parità di buchi l'adozione resta possibile solo se il punteggio duro
+  // migliora (es. sana una violazione di Regola N) SENZA pagare in weekend.
+  const registra = (turni:TurniMese, soloSeCopreDiPiu=false) => {
     const m = misura(turni);
-    if(best.m===null || m.s < best.m.s || (m.s===best.m.s && m.soft < best.m.soft)){ best.m=m; best.turni=turni; }
-    return best.m.s===0;
+    const adotta = best.m===null
+      || (soloSeCopreDiPiu
+            ? (m.buchi < best.m.buchi ||
+               (m.buchi === best.m.buchi && m.s < best.m.s && m.wkDef <= best.m.wkDef))
+            : (m.s < best.m.s || (m.s === best.m.s && m.soft < best.m.soft)));
+    if(adotta){ best.m=m; best.turni=turni; }
+    return best.m!.s===0;
   };
 
   // ── RICERCA A DUE STADI ─────────────────────────────────────────────────
@@ -421,7 +453,9 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
       // budget residuo del multi-tentativo, con un pavimento minimo per non
       // strozzare l'ultima chance quando il loop ha consumato tutto
       const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, t0 + maxMs - Date.now()));
-      registra(r.turni);
+      // soloSeCopreDiPiu: se i buchi erano in realtà impossibili l'ultima
+      // chance non li chiude → non vince, e si rilascia il best "normale".
+      registra(r.turni, true);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
