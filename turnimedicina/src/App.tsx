@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Medico, Turno, TurniAll } from "./engine/types";
+import type { Medico, Turno, TurniAll, AlternativaUC } from "./engine/types";
 import { MESI, DL, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
 import { vt, SPEC } from "./engine/turni";
 import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
@@ -51,6 +51,11 @@ export default function App(){
   const [regole, setRegoleState] = useState(getRegole());
   const updRegole = (next: typeof regole) => { setRegole(next); setRegoleState(next); saveRegole(next); };
   const [toast,  setToast]  = useState<{txt:string; tp:string}|null>(null);
+  // Variante di ultima chance proposta ma NON ancora applicata (proposta 1 non
+  // bloccante): si conserva anche l'indice di rotazione ambulatorio usato alla
+  // generazione, per poterlo ricalcolare sul tabellone effettivamente adottato
+  // se l'utente applica la variante.
+  const [altUC,  setAltUC]  = useState<{alt:AlternativaUC; rotStart:number}|null>(null);
   const [busy,   setBusy]   = useState(false);
   const [printing, setPrinting] = useState(false);
   const calRef = useRef<HTMLDivElement>(null);
@@ -80,6 +85,7 @@ export default function App(){
   // scartati dal multi-tentativo non la fanno più avanzare.
   const generaCopertura = () => {
     setBusy(true);
+    setAltUC(null);
     setTimeout(()=>{
       try{
         setPrevContext(turniAll,anno,mese);
@@ -90,9 +96,23 @@ export default function App(){
         setTurni(r.turni);
         if(r.ok) showMsg("✓ Copertura minima completata!");
         else showMsg("⚠ Copertura parziale (mostrato il tabellone migliore): "+r.problemi.slice(0,4).join(" · "),"warn");
+        // Variante di ultima chance disponibile → si propone senza applicarla.
+        if(r.alternativaUC) setAltUC({ alt:r.alternativaUC, rotStart });
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
+  };
+
+  // Applica la variante di ultima chance proposta: la adotta come tabellone
+  // corrente e RICALCOLA la rotazione ambulatorio sul tabellone effettivamente
+  // pubblicato (partendo dallo stesso rotStart della generazione).
+  const applicaAltUC = () => {
+    if(!altUC) return;
+    setTurni(altUC.alt.turni);
+    saveAmbRot({ nextIdx: calcAmbRotNext(altUC.alt.turni, medici, anno, mese, nd, altUC.rotStart) });
+    const nc = altUC.alt.celleCoperte.length;
+    setAltUC(null);
+    showMsg(`✓ Variante applicata: +${nc} ${nc===1?"cella coperta":"celle coperte"}.`);
   };
 
   // ── Obiettivi mensili (pulsante ②) ─────────────────────────────────────────
@@ -257,6 +277,46 @@ export default function App(){
           {toast.txt}
         </div>
       )}
+
+      {/* VARIANTE ULTIMA CHANCE — proposta non bloccante */}
+      {altUC&&(()=>{
+        const FL: Record<string,string> = { M:"mattina", P:"pomeriggio", N:"notte" };
+        const celle = altUC.alt.celleCoperte;
+        const nc = celle.length;
+        const cLbl = celle.slice(0,4).map(c=>`G${c.g} ${FL[c.f]}`).join(", ") + (nc>4?` +${nc-4}`:"");
+        const wp = altUC.alt.weekendPersi;
+        const wLbl = wp.slice(0,4).map(w=>`${w.nome.split(" ").pop()} ${w.da}→${w.a}${w.a===0?" ⚠":""}`).join(", ") + (wp.length>4?` +${wp.length-4}`:"");
+        const azzera = wp.some(w=>w.a===0);
+        return (
+          <div className="np" style={{position:"fixed",top:"66px",left:"50%",transform:"translateX(-50%)",zIndex:901,
+            background:"#0b1220",border:"1px solid #c2410c",color:"#e2f0ff",borderRadius:"10px",
+            padding:"12px 14px",fontSize:"12px",fontFamily:"monospace",boxShadow:"0 10px 30px #000",
+            maxWidth:"440px",width:"calc(100% - 32px)"}}>
+            <div style={{fontWeight:700,color:"#fb923c",marginBottom:"6px"}}>
+              Variante disponibile (ultima chance)
+            </div>
+            <div style={{marginBottom:"4px"}}>
+              <span style={{color:"#4ade80"}}>+{nc} {nc===1?"cella coperta":"celle coperte"}</span>: {cLbl}
+            </div>
+            {wp.length>0 && (
+              <div style={{marginBottom:"8px",color:azzera?"#fca5a5":"#fbbf24"}}>
+                Costo weekend liberi: {wLbl}
+              </div>
+            )}
+            <div style={{fontSize:"10px",color:"#64748b",marginBottom:"9px"}}>
+              Il tabellone mostrato è quello sicuro. Applicando la variante copri più celle spendendo i weekend indicati.
+            </div>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={applicaAltUC}
+                style={{background:"#c2410c",color:"#fff",border:"none",borderRadius:"6px",padding:"7px 14px",
+                  cursor:"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace"}}>Applica variante</button>
+              <button onClick={()=>setAltUC(null)}
+                style={{background:"#0f2035",color:"#94a3b8",border:"1px solid #1e3a5f",borderRadius:"6px",padding:"7px 14px",
+                  cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>Mantieni sicuro</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CALENDARIO */}
       {tab==="cal"&&(
