@@ -1,4 +1,4 @@
-import type { Medico, Risultato, TurniMese } from "./types";
+import type { Medico, Risultato, TurniMese, AlternativaUC, CellaScoperta, WeekendPerso } from "./types";
 import { dowOf, isHol } from "./date";
 import { cloneT, pulisciT, SPEC } from "./turni";
 import { ENG } from "./state";
@@ -159,12 +159,39 @@ export function scegliMigliore(anno:number, mese:number, ndim:number, medici:Med
 export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese, relaxN?:boolean){
   const c = makeCtx(anno, mese, ndim, medici, turni, null, relaxN);
   const { giorniArr, isWk, cf, nmn, npn, canR, mdcOk, add, haQ, haM, haP,
-          cntWkLiberi, mrMdc, isMar, isH, gt, cnt, canAssDist } = c;
+          cntWkLiberi, mrMdc, isMar, isH, gt, cnt, canAssDist, wkPairs, isLibWk } = c;
   const cand = (g:number,f:string) => mrMdc.filter(m=>!haQ(m.id,g)&&canR(m,g,f)&&mdcOk(m,g,f));
-  // weekend: prima chi ha PIÙ weekend liberi (li può spendere); feriali: prima i meno carichi
+
+  // ── COSTO IN WEEKEND LIBERI DI UN'ASSEGNAZIONE (Fix 1+2) ────────────────────
+  // L'altro giorno della coppia sabato/domenica cui appartiene g (null se g è un
+  // festivo isolato, che non entra nel conteggio dei weekend liberi).
+  const partnerWk = (g:number): number|null => {
+    for(const [s,d] of wkPairs){ if(s===g) return d; if(d===g) return s; }
+    return null;
+  };
+  // Costo marginale: 1 se assegnare il medico su g "brucia" per la prima volta
+  // la sua coppia (entrambi i giorni ancora liberi), 0 se la coppia è già spesa
+  // (lavora già g o il partner) oppure g è un festivo isolato.
+  const costoWk = (id:number,g:number): number => {
+    const p = partnerWk(g);
+    if(p===null) return 0;
+    return (isLibWk(id,g) && isLibWk(id,p)) ? 1 : 0;
+  };
+  // Azzererebbe l'economia del medico: paga un weekend ED è il suo ULTIMO libero.
+  const azzeraWk = (id:number,g:number): boolean => costoWk(id,g)===1 && cntWkLiberi(id)===1;
+
+  // Ordinamento candidati:
+  //  • WEEKEND: prima chi NON paga weekend (coppia già spesa) [Fix 1]; poi, tra
+  //    chi paga, prima chi NON si azzera [Fix 2, soft — nessun blocco duro]; poi
+  //    chi ha più weekend liberi da spendere; infine il meno carico.
+  //  • FERIALI: prima i meno carichi (invariato).
   const ordina = (arr:Medico[],g:number) => arr.slice().sort((a,b)=>
-    isWk(g) ? ((cntWkLiberi(b.id)-cntWkLiberi(a.id)) || (cnt(a.id)-cnt(b.id)))
-            : (cnt(a.id)-cnt(b.id)));
+    isWk(g)
+      ? ( (costoWk(a.id,g)-costoWk(b.id,g))
+          || ((azzeraWk(a.id,g)?1:0)-(azzeraWk(b.id,g)?1:0))
+          || (cntWkLiberi(b.id)-cntWkLiberi(a.id))
+          || (cnt(a.id)-cnt(b.id)) )
+      : (cnt(a.id)-cnt(b.id)));
   for(const g of giorniArr){
     let guard: number;
     // AMBULATORIO (martedì feriale) scoperto: assegna un medico d'ambulatorio libero.
@@ -285,8 +312,10 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
     for(let k=0; k<8; k++){
       ENG.SALT = k===0 ? 0 : (Math.imul(0x9E3779B9, k)>>>0);
       const rA = generaCoperturaMinima(anno, mese, ndim, medici, ex, targetGraduato ?? 1, false);
-      riempimentoEmergenza(anno, mese, ndim, medici, rA.turni, false);
+      // Fix 3: PRIMA il solver con backtracking (rispetta i blocchi e non spende
+      // weekend a casaccio), POI il greedy come scopa sui buchi che restano.
       riparaResidui(rA.turni, false, 5741+k);
+      riempimentoEmergenza(anno, mese, ndim, medici, rA.turni, false);
       recuperaWeekend(rA.turni, false);
       rA.problemi = problemiResidui(anno, mese, ndim, medici, rA.turni, false);
       rA.ok = rA.problemi.length===0; rA.parziale = !rA.ok;
@@ -301,8 +330,9 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
   //    Si tiene la versione rilassata solo se copre DAVVERO di più.
   if(buchiCopertura(problemi) > 0){
     const rRel = generaCoperturaMinima(anno, mese, ndim, medici, ex, targetGraduato ?? 1, true);
-    riempimentoEmergenza(anno, mese, ndim, medici, rRel.turni, true);
+    // Fix 3: solver prima, greedy come scopa (come nel ramo A).
     riparaResidui(rRel.turni, true, 7451);
+    riempimentoEmergenza(anno, mese, ndim, medici, rRel.turni, true);
     recuperaWeekend(rRel.turni, true);
     // FIX SEMANTICA "ok" (v0.3.0): i problemi residui del ramo rilassato vengono
     // valutati con la validazione STRETTA (relaxN=false), come il ramo A e come
@@ -364,6 +394,26 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
   };
   const wrap = (turni:TurniMese, m:{probs:string[]}): Risultato =>
     ({ turni:pulisciT(turni), ok:m.probs.length===0, parziale:m.probs.length>0, problemi:m.probs });
+
+  // Delta tra il tabellone PRIMARIO (base) e la variante di ultima chance (alt):
+  // quali buchi COLMABILI del primario vengono chiusi e quali medici perdono
+  // weekend liberi. needEff dipende solo da manuali/immovibili → identico tra i
+  // due tabelloni, quindi si può usare quello di base per entrambi.
+  const costruisciAlternativa = (base:TurniMese, alt:TurniMese, problemi:string[]): AlternativaUC => {
+    const cB = makeCtx(anno, mese, ndim, medici, base);
+    const cA = makeCtx(anno, mese, ndim, medici, alt);
+    const celleCoperte: CellaScoperta[] = [];
+    for(let g=1; g<=ndim; g++) for(const f of ["M","P","N"] as const){
+      const need = cB.needEff(g,f);
+      if(cB.cf(g,f) < need && cA.cf(g,f) >= need) celleCoperte.push({ g, f });
+    }
+    const weekendPersi: WeekendPerso[] = [];
+    for(const m of cB.mrMdc){
+      const da = cB.cntWkLiberi(m.id), a = cA.cntWkLiberi(m.id);
+      if(a < da) weekendPersi.push({ id:m.id, nome:m.nome, da, a });
+    }
+    return { turni: pulisciT(alt), problemi, celleCoperte, weekendPersi };
+  };
 
   const BT=ENG.BT, TR=ENG.TRIES, CN=ENG.CLUSTER_NODES, RN=ENG.REBAL_NODES;   // budget originali
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
@@ -443,28 +493,12 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
-  // ── ULTIMA CHANCE, FUORI DAL LOOP — una sola esecuzione, deterministica, e
-  // solo se il miglior tentativo ha buchi COLMABILI (misura conta già i buchi
-  // sul fabbisogno efficace: le celle strutturalmente impossibili non
-  // scatenano più l'ultima chance, che spende weekend liberi di proposito e
-  // sui mesi difficili peggiorava solo l'equità senza poter coprire nulla).
-  if(!perfetto && best.m && best.m.buchi>0){
-    try{
-      // budget residuo del multi-tentativo, con un pavimento minimo per non
-      // strozzare l'ultima chance quando il loop ha consumato tutto
-      const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, t0 + maxMs - Date.now()));
-      // soloSeCopreDiPiu: se i buchi erano in realtà impossibili l'ultima
-      // chance non li chiude → non vince, e si rilascia il best "normale".
-      registra(r.turni, true);
-    }catch(_){ /* si tiene il best già trovato */ }
-  }
-
-  // ── RECUPERO WEEKEND FINALE ─────────────────────────────────────────────
+  // ── RECUPERO WEEKEND FINALE (sul PRIMARIO) ──────────────────────────────
   // Weekend liberi mancanti → ultimo riequilibrio col BUDGET NODI PIENO.
-  // Gira anche in presenza di buchi (che ora possono essere solo strutturali
-  // o realmente incolmabili): prima la condizione buchi===0 lo saltava
-  // proprio nei mesi difficili, dove serviva di più. Lavora su una copia:
-  // si adotta solo se registra() la giudica migliore.
+  // Anticipato PRIMA dell'ultima chance: così il primario è già il migliore
+  // possibile quando lo si confronta con la variante, e il "costo weekend"
+  // mostrato all'utente è calcolato in modo equo. Lavora su una copia: si
+  // adotta solo se registra() la giudica migliore.
   if(!perfetto && best.m && best.m.wkDef>0){
     try{
       const copia = cloneT(best.turni!);
@@ -473,7 +507,27 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
-  return wrap(best.turni!, best.m!);
+  // ── ULTIMA CHANCE COME ALTERNATIVA (non adottata d'ufficio) ─────────────
+  // La generazione rilascia SEMPRE il primario "sicuro". L'ultima chance —
+  // che per coprire di più spende weekend liberi — viene calcolata a parte e,
+  // solo se copre STRETTAMENTE più celle del primario, esposta come variante
+  // con il suo delta (celle guadagnate, weekend persi per medico). Decide
+  // l'utente in UI. Sui mesi in cui i buchi sono in realtà impossibili,
+  // l'ultima chance non copre di più → nessuna variante, nessuna domanda.
+  let alternativaUC: AlternativaUC | undefined;
+  if(!perfetto && best.m && best.m.buchi>0){
+    try{
+      const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, t0 + maxMs - Date.now()));
+      const mUC = misura(r.turni);
+      if(mUC.buchi < best.m.buchi){                 // copre STRETTAMENTE di più
+        alternativaUC = costruisciAlternativa(best.turni!, r.turni, r.problemi);
+      }
+    }catch(_){ /* nessuna alternativa: si rilascia solo il primario */ }
+  }
+
+  const res = wrap(best.turni!, best.m!);
+  if(alternativaUC) res.alternativaUC = alternativaUC;
+  return res;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

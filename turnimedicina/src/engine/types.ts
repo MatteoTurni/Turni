@@ -34,9 +34,28 @@ export interface Regole {
   fabb: { fer: FasciaFabb; sab: FasciaFabb; fest: FasciaFabb };
 }
 
+/** Una cella di copertura scoperta (giorno + fascia). */
+export interface CellaScoperta { g: number; f: "M" | "P" | "N"; }
+
+/** Un medico che, nella variante di ultima chance, perde weekend liberi. */
+export interface WeekendPerso { id: number; nome: string; da: number; a: number; }
+
+/** Variante prodotta dall'ultima chance, offerta come alternativa NON adottata
+ *  d'ufficio: copre strettamente più celle del tabellone primario, ma può
+ *  costare weekend liberi. La UI la propone; l'utente decide se applicarla. */
+export interface AlternativaUC {
+  turni: TurniMese;
+  problemi: string[];
+  celleCoperte: CellaScoperta[];   // buchi COLMABILI del primario chiusi qui
+  weekendPersi: WeekendPerso[];    // medici che perdono weekend liberi vs primario
+}
+
 export interface Risultato {
   turni: TurniMese;
   ok: boolean;
   parziale: boolean;
   problemi: string[];
+  /** Presente solo quando esiste una variante di ultima chance che copre di più
+   *  del primario. Opzionale: i consumatori esistenti la ignorano. */
+  alternativaUC?: AlternativaUC;
 }
