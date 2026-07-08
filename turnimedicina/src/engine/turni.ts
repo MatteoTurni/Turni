@@ -4,13 +4,13 @@ import type { Turno, TurniMese } from "./types";
 // I turni associati (M+P oppure A+P) NON sono un tipo a sé: sono sempre
 // due turni distinti nella stessa giornata. Le utility considerano quindi
 // solo i singoli codici di mattina, pomeriggio e notte.
-export function isMatt(t:string){ return ["M","A","AII","A2","1"].includes(t); }
+export function isMatt(t:string){ return ["M","A","1"].includes(t); }
 export function isPom(t:string) { return ["P","2"].includes(t); }
 export function isNot(t:string) { return ["N","3"].includes(t); }
 export function vt(t:string,u?:boolean): number {
   if(u)return 0;
   if(["N","3"].includes(t))return 2;
-  if(["M","P","A","AII","A2","L","ANA","104","per11","1","2"].includes(t))return 1;
+  if(["M","P","A","L","ANA","104","per11","1","2"].includes(t))return 1;
   return 0;
 }
 
