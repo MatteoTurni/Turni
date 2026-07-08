@@ -14,7 +14,6 @@ export const KC: Record<string, { bg: string; t: string; b: string }> = {
   P:    { bg:"#1e1044", t:"#a78bfa", b:"#6d28d9" },
   N:    { bg:"#051a12", t:"#4ade80", b:"#16a34a" },
   A:    { bg:"#062010", t:"#6ee7b7", b:"#10b981" },
-  A2:   { bg:"#042010", t:"#86efac", b:"#22c55e" },
   L:    { bg:"#261a02", t:"#fde68a", b:"#d97706" },
   "1":  { bg:"#0f2744", t:"#93c5fd", b:"#2563eb" },
   "2":  { bg:"#1e1044", t:"#a78bfa", b:"#6d28d9" },
@@ -26,5 +25,5 @@ export const KC: Record<string, { bg: string; t: string; b: string }> = {
 };
 
 // Tipi selezionabili nel CellModal e tipi che ammettono la variante sottolineata.
-export const TM = ["M","P","N","L","A","AII","A2","1","2","3","104","ANA","per11","X"];
+export const TM = ["M","P","N","L","A","1","2","3","104","ANA","per11","X"];
 export const TS = ["M","P","1","2","3"];
