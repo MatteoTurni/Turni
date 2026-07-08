@@ -65,7 +65,7 @@ export function generaCoperturaMinima(
       let m=0,p=0,n=0;
       for(const med of medici){
         for(const sh of ctx.gt(med.id,g)){
-          if(["M","A","AII","A2","1"].includes(sh.tipo)) m++;
+          if(["M","A","1"].includes(sh.tipo)) m++;
           else if(["P","2"].includes(sh.tipo)) p++;
           else if(["N","3"].includes(sh.tipo)) n++;
         }
@@ -195,7 +195,7 @@ export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medi
   for(const g of giorniArr){
     let guard: number;
     // AMBULATORIO (martedì feriale) scoperto: assegna un medico d'ambulatorio libero.
-    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A","AII","A2"].includes(s.tipo)))){
+    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))){
       const ambPool = mrMdc.filter(m=>m.ambulatorio && !haQ(m.id,g) && canR(m,g,"M"))
                             .sort((a,b)=>cnt(a.id)-cnt(b.id));
       if(ambPool.length) add(ambPool[0].id,g,"A");
@@ -232,14 +232,14 @@ export function problemiResidui(anno:number, mese:number, ndim:number, medici:Me
     if(c.cf(g,"M")<c.nmn(g).mn) P.push(`G${g}: mattine ${c.cf(g,"M")}/${c.nmn(g).mn} (IMPOSSIBILE)`);
     if(c.cf(g,"P")<c.npn(g).mn) P.push(`G${g}: pomeriggi ${c.cf(g,"P")}/${c.npn(g).mn} (IMPOSSIBILE)`);
     if(c.cf(g,"N")<1)           P.push(`G${g}: notte mancante (IMPOSSIBILE)`);
-    if(c.isMar(g)&&!c.isH(g)&&!medici.some(m=>c.gt(m.id,g).some(s=>["A","AII","A2"].includes(s.tipo))))
+    if(c.isMar(g)&&!c.isH(g)&&!medici.some(m=>c.gt(m.id,g).some(s=>["A"].includes(s.tipo))))
       P.push(`G${g}: ambulatorio mancante`);
   }
   // Stessa rete di sicurezza della validazione globale.
   for(const m of medici){
     if(m.ambulatorio) continue;
     for(let g=1; g<=ndim; g++)
-      if(c.gt(m.id,g).some(s=>!s.man&&["A","AII","A2"].includes(s.tipo)))
+      if(c.gt(m.id,g).some(s=>!s.man&&["A"].includes(s.tipo)))
         P.push(`${m.nome.split(" ").pop()}: ambulatorio G${g} a medico non abilitato`);
   }
   // Anche l'ultima chance deve dichiarare i weekend liberi mancanti (con
