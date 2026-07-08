@@ -28,6 +28,7 @@ export interface FasciaFabb { mMin: number; mMax: number; pMin: number; pMax: nu
 
 export interface Regole {
   maxNotti: number;
+  maxNottiConsec: number;   // max notti "di fila" (a passo 2: N-libero-N-libero-N…)
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;

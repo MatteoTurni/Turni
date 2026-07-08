@@ -145,6 +145,7 @@ export function makeCtx(
       if(!SPEC.includes(tipo)){
         if(postN1(id,g)) return;                                 // g+1 di una notte: deve restare libero
         if(postN2(id,g) && (isMatt(tipo)||(!relaxN&&isNot(tipo)))) return;  // g+2 di una notte: solo P (o anche N se relaxN, coerente con canN/checkRegolaN)
+        if(isNot(tipo) && !canNConsec(id,g)) return;             // max notti di fila (catena a passo 2): mai oltre il tetto in automatico
         // 3) MAX GIORNI CONSECUTIVI DI LAVORO: se questo turno rende "lavorato" un
         //    giorno finora libero e la sequenza risultante di giorni lavorati
         //    supererebbe MAX_CONSEC, non lo si aggiunge.
@@ -225,7 +226,31 @@ export function makeCtx(
   const canMatt= (id:number,g:number) => canLav(id,g) && !postN2(id,g);          // M vietata a g+1 e g+2 di una notte
   const canPom = (id:number,g:number) => !postN1(id,g);                          // P vietata solo a g+1
   const canAss = (id:number,g:number) => canMatt(id,g) && canPom(id,g);          // associato: vietato g+1 e g+2
+
+  // ── MAX NOTTI "DI FILA" (a passo 2) ─────────────────────────────────────────
+  // Una CATENA di notti = notti distanziate di 2 giorni, cioè con un solo giorno
+  // libero in mezzo (N, libero, N, libero, N…). È la spaziatura più fitta
+  // possibile: la Regola N tiene sempre libero il giorno DOPO la notte, e solo il
+  // relaxN dell'ultima chance ammette la N successiva già a g+2 (in modalità
+  // normale le notti stanno ad almeno 3 giorni). Due notti a 3+ giorni (≥2 liberi
+  // in mezzo) NON fanno catena: è una pausa vera. Tetto configurabile dal pannello
+  // Regole; 0 non ha senso (vieterebbe ogni notte) → minimo effettivo 1.
+  const MAX_NOTTI_CONSEC = Math.max(1, REG.maxNottiConsec);
+  // Lunghezza della catena a passo 2 che passerebbe per g SE g fosse una notte.
+  // Guarda a ritroso (g-2,g-4,…, anche nella coda del mese precedente via haNB) e
+  // in avanti (g+2,g+4,…): il motore non mette sempre le notti in ordine.
+  const catenaNotti = (id:number,g:number) => {
+    let n = 1;
+    for(let k=g-2; k>=1-TAIL && haNB(id,k); k-=2) n++;
+    for(let k=g+2; k<=ndim   && haN(id,k);  k+=2) n++;
+    return n;
+  };
+  const canNConsec = (id:number,g:number) => catenaNotti(id,g) <= MAX_NOTTI_CONSEC;
+
   const canN   = (id:number,g:number) => {
+    // Tetto notti di fila: non superare MAX_NOTTI_CONSEC notti nella stessa catena
+    // a passo 2 (vale sia in normale sia in relaxN, dove le catene fitte nascono).
+    if(!canNConsec(id,g)) return false;
     // relaxN (attivo SOLO nell'ultima chance): g+2 dopo una notte può essere anche
     // una Notte, non solo un Pomeriggio. Resta fermo il vincolo g+1 libero e M vietata a g+2.
     if(postN1(id,g)||(!relaxN&&postN2(id,g))) return false;

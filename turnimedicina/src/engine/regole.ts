@@ -10,6 +10,7 @@ import type { Regole } from "./types";
 // notte per giorno), non un parametro.
 export const REGOLE_DEFAULT: Regole = {
   maxNotti: 5,      // max notti/mese per medico
+  maxNottiConsec: 2,// max notti "di fila" a passo 2 (N-libero-N-libero-N = 3 → vietato)
   maxConsec: 7,     // max giorni consecutivi di lavoro
   wkTarget: 2,      // obiettivo weekend liberi (resta ADATTIVO: è il tetto)
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
