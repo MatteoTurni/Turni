@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Medico, TurniMese } from "../engine/types";
 import { MESI, dowOf, isFestivo } from "../engine/date";
+import { isMatt, isPom, isNot } from "../engine/turni";
 import { LOGO_PNG_BASE64 } from "./logo";
 
 // ─── EXPORT EXCEL ─────────────────────────────────────────────────────────────
@@ -62,8 +63,13 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
     const r = FIRST_MED + i;
     ws.getCell(r, 1).value = m.nome + (m.codice ? "  " + m.codice : "");
     for (let g = 1; g <= nd; g++) {
-      const ts = (turni[m.id]?.[g]?.t || []).filter(s => s.tipo !== "X");
-      if (ts.length > 0) ws.getCell(r, 1 + g).value = ts.map(s => s.tipo).join("+");
+      // Turni associati (es. mattina + pomeriggio): vanno scritti in ordine
+      // temporale — prima il turno del mattino, poi quello del pomeriggio, poi
+      // la notte — e concatenati senza "+" (es. "MP", non "M+P" né "PM").
+      const ts = (turni[m.id]?.[g]?.t || [])
+        .filter(s => s.tipo !== "X")
+        .sort((a, b) => rankTurno(a.tipo) - rankTurno(b.tipo));
+      if (ts.length > 0) ws.getCell(r, 1 + g).value = ts.map(s => s.tipo).join("");
     }
   });
   const lastRow = FIRST_MED + medici.length - 1;
@@ -101,6 +107,15 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   ws.pageSetup.printArea = `A1:${lastColL}${lastRow}`;
 
   return wb;
+}
+
+// Rango temporale di un turno per l'ordinamento nelle celle: mattina (0),
+// pomeriggio (1), notte (2), altri codici (3, ordine stabile in coda).
+function rankTurno(t: string): number {
+  if (isMatt(t)) return 0;
+  if (isPom(t))  return 1;
+  if (isNot(t))  return 2;
+  return 3;
 }
 
 function colLetter(n: number): string {
