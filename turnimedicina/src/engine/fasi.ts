@@ -133,7 +133,7 @@ export function faseCritici(ctx: Ctx, seed: number){
 // invece si RIPARA il miglior tentativo: attorno a ogni buco residuo si svuota
 // una finestra di ±2 giorni (l'orizzonte dei vincoli: Regola N e distanza
 // associati) e la si risolve da capo con risolviCluster a budget nodi alto.
-// Restano intatti: turni manuali, ambulatorio (A/AII/A2, congelato per la
+// Restano intatti: turni manuali, ambulatorio (A, congelato per la
 // rotazione) e tutto ciò che è fuori finestra. Ogni finestra è transazionale:
 // se il backtracking non trova una soluzione completa si fa rollback e quella
 // finestra resta com'era. I buchi possono quindi solo diminuire; l'eventuale
@@ -223,7 +223,7 @@ export function faseAmbulatorio(ctx: Ctx){
   let ok=true;
   for(const g of giorniArr){
     if(!isMar(g)||isH(g)) continue;
-    if(medici.some(m=>gt(m.id,g).some(s=>s.man&&["A","AII","A2"].includes(s.tipo)))) continue;
+    if(medici.some(m=>gt(m.id,g).some(s=>s.man&&["A"].includes(s.tipo)))) continue;
     if(medici.some(m=>gt(m.id,g).some(s=>!s.man&&s.tipo==="A"))) continue;
 
     const canAmb = (m: Medico, ignoraObiettivo=false) => {
@@ -369,7 +369,7 @@ export function validaWeekend(ctx: Ctx){
     if(cf(g,"P")<needEff(g,"P")) return false;
   }
   for(const g of giorniArr){
-    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A","AII","A2"].includes(s.tipo)))) return false;
+    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))) return false;
   }
   if(!checkRegolaN()) return false;
   return true;
@@ -642,14 +642,14 @@ export function validazioneGlobale(ctx: Ctx){
     if(cf(g,"N")<1)          probs.push(`G${g}: notte mancante${imp(g,"N",1)}`);
   }
   for(const g of giorniArr){
-    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A","AII","A2"].includes(s.tipo))))
+    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo))))
       probs.push(`Martedì ${g}: ambulatorio mancante`);
   }
   // RETE DI SICUREZZA: una A AUTOMATICA su un medico non abilitato non è mai valida.
   for(const m of medici){
     if(m.ambulatorio) continue;
     for(const g of giorniArr)
-      if(gt(m.id,g).some(s=>!s.man&&["A","AII","A2"].includes(s.tipo)))
+      if(gt(m.id,g).some(s=>!s.man&&["A"].includes(s.tipo)))
         probs.push(`${m.nome.split(" ").pop()}: ambulatorio G${g} a medico non abilitato`);
   }
   // Controllo finale dei weekend liberi (dopo le notti), con obiettivo per-medico.
