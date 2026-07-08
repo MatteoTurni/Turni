@@ -489,13 +489,14 @@ export default function App(){
           if(campo.endsWith("Max") && f[campo.replace("Max","Min") as CampoFabb]>v) f[campo.replace("Max","Min") as CampoFabb]=v;
           updRegole({...regole,fabb:{...regole.fabb,[fascia]:f}});
         };
-        type CampoTop = "maxNotti"|"maxConsec"|"wkTarget"|"maxAssSett";
+        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett";
         const setTop = (campo:CampoTop,v:number) => updRegole({...regole,[campo]:v});
         const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
         const BOX: React.CSSProperties = {background:"#060c18",border:"1px solid #0f2035",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
         const righe: [Fascia,string][] = [["fer","Feriale"],["sab","Sabato"],["fest","Domenica / Festivo"]];
         const limiti: [CampoTop,string,string][] = [
           ["maxNotti","Max notti / mese","Tetto di notti (N) assegnabili in automatico a ciascun medico nel mese."],
+          ["maxNottiConsec","Max notti di fila","Notti ravvicinate (una sola notte libera in mezzo: N-libero-N-libero-N) oltre le quali la successiva è vietata. 2 = ammesse due notti così, la terza no."],
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
           ["maxAssSett","Max turni associati / settimana","Massimo di M+P nella stessa giornata per medico, per settimana."],
