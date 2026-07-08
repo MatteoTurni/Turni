@@ -47,7 +47,7 @@ describe("Fix 1+2: l'emergenza minimizza i weekend bruciati", () => {
 
     // weekend NUOVI bruciati la domenica = medici prima liberi ora attivi
     const attivoSun = (id:number) =>
-      (T[id]?.[sun]?.t||[]).some(s=>["M","P","N","A","AII","A2","1","2","3"].includes(s.tipo));
+      (T[id]?.[sun]?.t||[]).some(s=>["M","P","N","A","1","2","3"].includes(s.tipo));
     const nuovi = med.filter(m => attivoSun(m.id) && liberoPrima[m.id]).length;
 
     // RENIS assorbe un turno domenicale a costo zero → al più UN weekend nuovo.
