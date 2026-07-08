@@ -204,7 +204,7 @@ export function makeCtx(
 
   // Fabbisogno giornaliero: si contano SOLO i turni M, P, N — comprese le loro
   // varianti sottolineate, che condividono lo stesso `tipo`. Sono ESCLUSI tutti
-  // gli altri codici (1, 2, 3, A, AII, A2, ANA, per11, 104, L, X, ...).
+  // gli altri codici (1, 2, 3, A, ANA, per11, 104, L, X, ...).
   // I turni M/P/N dei medici MPS CONTANO nel fabbisogno: un turno reale copre
   // il reparto indipendentemente dallo stato di chi lo fa.
   // O(1): letto dai contatori per-giorno aggiornati in st/rollback (prima era
@@ -321,7 +321,7 @@ export function makeCtx(
   // Un medico MDC (Decreto Calabria) non può restare SOLO in turno.
   const mdcOk = (m:Medico,g:number,f:string) => {
     if(m.stato!=="MDC") return true;
-    const COMP = f==="M" ? ["M","A","AII","A2","1"]
+    const COMP = f==="M" ? ["M","A","1"]
                : f==="P" ? ["P","2"]
                : f==="N" ? ["N","3"] : [];
     for(const a of medici){
