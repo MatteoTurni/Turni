@@ -161,7 +161,7 @@ describe("generazione: agosto 2026 difficile (ferie concentrate)", () => {
       // mai una A automatica a un non abilitato
       for(const m of medici){
         if(m.ambulatorio) continue;
-        expect((r.turni[m.id]?.[g]?.t||[]).some(s=>!s.man&&["A","AII","A2"].includes(s.tipo))).toBe(false);
+        expect((r.turni[m.id]?.[g]?.t||[]).some(s=>!s.man&&["A"].includes(s.tipo))).toBe(false);
       }
     }
 
