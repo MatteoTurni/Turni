@@ -47,6 +47,10 @@ export default function App(){
   // Conferma eliminazione medico in-app: window.confirm() è bloccato negli
   // iframe sandbox → conferma con un secondo click (si annulla dopo 3.5s).
   const [delDoc, setDelDoc] = useState<number|null>(null);
+  // Stessa logica di conferma a due click per "Rimuovi Man" (rimozione di TUTTI
+  // i turni manuali del mese): il primo click chiede conferma, il secondo esegue
+  // (la richiesta si annulla da sola dopo 3.5s).
+  const [confMan, setConfMan] = useState(false);
   // Pannello Regole: stato React specchio delle regole del motore per il re-render.
   const [regole, setRegoleState] = useState(getRegole());
   const updRegole = (next: typeof regole) => { setRegole(next); setRegoleState(next); saveRegole(next); };
@@ -159,10 +163,10 @@ export default function App(){
     return lib;
   };
 
-  // Conta turni ambulatorio (A/AII/A2) del medico nel mese
+  // Conta turni ambulatorio (A) del medico nel mese
   const cntAmb = (id:number) => {
     let n=0;
-    for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A","AII","A2"].includes(s.tipo)) n++;
+    for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A"].includes(s.tipo)) n++;
     return n;
   };
   const metaG = (g:number) => {
@@ -172,7 +176,7 @@ export default function App(){
   const cfApp = (g:number,f:string) => {
     let n=0;
     for(const m of medici){
-      // Copertura minima giornaliera: SOLO i turni reali M/P/N (A/AII/A2 e
+      // Copertura minima giornaliera: SOLO i turni reali M/P/N (A e
       // 1/2/3 esclusi, altrimenti falsano la lettura di cosa manca davvero).
       for(const s of gT(m.id,g)){
         if(f==="M" && s.tipo==="M") n++;
@@ -187,6 +191,17 @@ export default function App(){
   const salvaDoc = (f: DocDraft) => {
     if(!f.id){ const mx=Math.max(...medici.map(m=>m.id),0); setMedici(p=>[...p,{...f,id:mx+1} as Medico]); }
     else      setMedici(p=>p.map(m=>m.id===f.id?(f as Medico):m));
+  };
+
+  const rimuoviManuali = () => {
+    if(!confMan){
+      setConfMan(true);
+      setTimeout(()=>setConfMan(false),3500);
+      return;
+    }
+    setConfMan(false);
+    setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>!s.man)}; } return n; });
+    showMsg("Turni manuali rimossi.");
   };
 
   const eliminaDoc = (m: Medico) => {
@@ -251,7 +266,7 @@ export default function App(){
             ["①","Copertura", busy?"#0f1a2a":"#1d4ed8", generaCopertura, busy],
             ["②","Obiettivi", busy?"#0f1a2a":"#6d28d9", generaObiettivi, busy],
             ["⊘","Rimuovi App","#4c1d95", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>s.man)}; } return n; }); showMsg("Turni app rimossi."); }, false],
-            ["x","Rimuovi Man","#7f1d1d", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>!s.man)}; } return n; }); showMsg("Turni manuali rimossi."); }, false],
+            ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#7f1d1d", rimuoviManuali, false],
             ["⎙","Excel", printing?"#0f1a2a":"#064e3b", handlePrint, printing],
           ] as [string,string,string,()=>void,boolean][]).map(([ic,lb,cl,fn,ds])=>(
             <button key={lb} onClick={fn} disabled={!!ds} style={{background:ds?"#0f1a2a":cl,color:ds?"#1e3a5f":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
