@@ -59,12 +59,6 @@ export function generaCoperturaMinima(
   // ── BEST-EFFORT ────────────────────────────────────────────────────────────
   // Conserviamo sempre la configurazione col punteggio più alto incontrata
   // (copia PIENA: deve sopravvivere ai rollback dell'undo-log).
-  // PUNTEGGIO GERARCHICO: la copertura resta DOMINANTE (100 per cella), ma a
-  // parità di copertura si preferisce il tabellone con meno weekend liberi
-  // persi. Prima scoreOf contava SOLO la copertura: nei mesi che finiscono in
-  // best-effort (una qualunque cella weekend irraggiungibile) l'equità era
-  // completamente invisibile, e il motore sceglieva volentieri un tabellone che
-  // bruciava weekend o spartiva la domenica fra due medici.
   const scoreOf = () => {
     let s=0;
     for(let g=1;g<=ndim;g++){
@@ -78,9 +72,7 @@ export function generaCoperturaMinima(
       }
       s += Math.min(m,ctx.nmn(g).mn)+Math.min(p,ctx.npn(g).mn)+Math.min(n,1);
     }
-    let wkDef=0;
-    for(const m of ctx.mrMdc) wkDef += Math.max(0, ctx.wkTargetMed(m.id)-ctx.cntWkLiberi(m.id));
-    return s*100 - wkDef;
+    return s;
   };
   let bestSnap = ctx.snapshot(), bestScore = scoreOf();
   const considera = () => { const sc=scoreOf(); if(sc>bestScore){ bestScore=sc; bestSnap=ctx.snapshot(); } };

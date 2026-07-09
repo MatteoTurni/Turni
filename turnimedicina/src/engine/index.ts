@@ -8,7 +8,7 @@ export { isMatt, isPom, isNot, vt, SPEC, cloneT, cloneTDeep, pulisciT } from "./
 export { REGOLE_DEFAULT, mergeRegole, setRegole, getRegole } from "./regole";
 export { ENG, setPrevContext, setAmbRotStart, setSalt, mkRng, shuf } from "./state";
 export { makeCtx, type Ctx } from "./ctx";
-export { validazioneGlobale, riequilibraWeekendLiberi, riparaBuchi, validaWeekend, validaWeekendRegole, copWeekend, copWeekendMax } from "./fasi";
+export { validazioneGlobale, riequilibraWeekendLiberi, riparaBuchi } from "./fasi";
 export {
   generaCoperturaMinima, generaConUltimaChance, generaMigliorTentativo,
   completaObiettivi, riempimentoEmergenza, problemiResidui, buchiCopertura,
