@@ -355,6 +355,44 @@ export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
   }
 }
 
+// ── SEPARAZIONE REGOLE / COPERTURA (fix ripiego weekend) ────────────────────
+// Prima validaWeekend fondeva due cose diverse: le REGOLE (Regola N, ambulatorio),
+// che sono vincoli rigidi e sempre rispettabili, e la COPERTURA piena dei weekend,
+// che su certi mesi NON è raggiungibile da nessun tentativo (es. una domenica in
+// cui gli unici medici liberi sono bloccati dalle notti dei giorni prima).
+// Poiché faseWeekend registrava il "miglior tentativo" solo dentro
+// if(validaWeekend(...)), una sola cella weekend irraggiungibile rendeva il
+// ripiego CODICE MORTO: la fase falliva sempre, l'orchestratore bruciava tutti i
+// backtrack e l'intero mese cadeva in best-effort. Stesso problema in
+// riequilibraWeekendLiberi, il cui backtracking terminava con validaWeekend.
+// Ora: le regole restano un gate; la copertura diventa un PUNTEGGIO da massimizzare.
+
+/** Vincoli RIGIDI dei weekend: ambulatorio del martedì + Regola N/associati. */
+export function validaWeekendRegole(ctx: Ctx){
+  const { giorniArr, isMar, isH, medici, gt, checkRegolaN } = ctx;
+  for(const g of giorniArr){
+    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))) return false;
+  }
+  return checkRegolaN();
+}
+/** Copertura weekend raggiunta (saturata a needEff): più alta è, meglio è. */
+export function copWeekend(ctx: Ctx){
+  const { giorniArr, isWk, cf, needEff } = ctx;
+  let s=0;
+  for(const g of giorniArr){
+    if(!isWk(g)) continue;
+    s += Math.min(cf(g,"M"), needEff(g,"M")) + Math.min(cf(g,"P"), needEff(g,"P"));
+  }
+  return s;
+}
+/** Copertura weekend MASSIMA teorica (somma dei needEff). Costante nel mese. */
+export function copWeekendMax(ctx: Ctx){
+  const { giorniArr, isWk, needEff } = ctx;
+  let s=0;
+  for(const g of giorniArr){ if(!isWk(g)) continue; s += needEff(g,"M") + needEff(g,"P"); }
+  return s;
+}
+
 export function validaWeekend(ctx: Ctx){
   // NB: il controllo dei weekend liberi NON è qui: è nella validazione globale
   // finale (dopo le notti), perché le notti possono occupare weekend liberi.
@@ -415,6 +453,11 @@ export function riequilibraWeekendLiberi(ctx: Ctx){
   cells.sort((a,b)=>a.g-b.g || rankF(a.f)-rankF(b.f));
 
   const m0 = mark();
+  // Copertura weekend PRIMA dello svuotamento: la ridistribuzione non deve
+  // peggiorarla. Prima il backtracking terminava con validaWeekend(), che
+  // pretende la copertura PIENA: su un mese con una cella weekend irraggiungibile
+  // il riequilibrio non poteva MAI riuscire e l'equità restava com'era.
+  const copPrima = copWeekend(ctx);
 
   // 4) Svuota i turni weekend ridistribuibili dei coinvolti (mantiene manuali/SPEC).
   for(const g of giorniArr){
@@ -435,7 +478,7 @@ export function riequilibraWeekendLiberi(ctx: Ctx){
   const LIMITE = ENG.REBAL_NODES;
   const solve = (i:number): boolean => {
     if(++nodi > LIMITE) return false;
-    if(i>=cells.length) return obiettivoOk() && validaWeekend(ctx);
+    if(i>=cells.length) return obiettivoOk() && validaWeekendRegole(ctx) && copWeekend(ctx)>=copPrima;
     const { g, f, tipo } = cells[i];
     const compl = f==="M" ? "P" : f==="P" ? "M" : null;
     const wouldAss = (m:Medico) => compl!==null && haFascia(m.id,g,compl);
@@ -485,19 +528,24 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false, notti
   const m0 = mark();
   const scoreWkLiberi = () =>
     mrMdc.reduce((acc,m)=>acc+(cntWkLiberi(m.id)>=wkTargetMed(m.id)?1:0),0);
-  let migliore: { snap: TurniMese; blocco: Blocco; score: number } | null = null;
+  const copMax = copWeekendMax(ctx);
+  // `migliore` ora è ordinato per (copertura weekend, wk liberi soddisfatti):
+  // così un mese con una cella weekend irraggiungibile produce comunque il
+  // MIGLIOR tabellone possibile invece di far fallire la fase all'infinito.
+  let migliore: { snap: TurniMese; blocco: Blocco; cop: number; score: number } | null = null;
   for(let att=0; att<ENG.TRIES; att++){
     rollback(m0);
     const rng = mkRng(seed + att*7919);
     const { blocco, tuttiOk } = assegnaWkLiberi(ctx, rng, evita);
     if(!tuttiOk && !accettaMigliore) continue;
     coperturaWeekend(ctx, blocco);
-    if(validaWeekend(ctx)){
-      if(tuttiOk) return { ok:true, blocco };       // soluzione completa → subito
-      if(accettaMigliore){                          // copertura ok, ma wk liberi parziali
-        const sc = scoreWkLiberi();
-        if(!migliore || sc>migliore.score) migliore = { snap:snapshot(), blocco, score:sc };
-      }
+    if(!validaWeekendRegole(ctx)) continue;          // le REGOLE restano un gate rigido
+    const cop = copWeekend(ctx);
+    if(cop>=copMax && tuttiOk) return { ok:true, blocco };   // soluzione completa → subito
+    if(accettaMigliore){                              // copertura e/o wk liberi parziali
+      const sc = scoreWkLiberi();
+      if(!migliore || cop>migliore.cop || (cop===migliore.cop && sc>migliore.score))
+        migliore = { snap:snapshot(), blocco, cop, score:sc };
     }
   }
   if(accettaMigliore && migliore){
