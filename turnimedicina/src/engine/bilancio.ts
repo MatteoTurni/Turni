@@ -57,19 +57,28 @@ function sommaVt(T: TurniMese, id: number, nd: number, tipi: string[], soloMan =
   return n;
 }
 
-/** Fabbisogno LORDO: per ogni giorno le mattine e i pomeriggi minimi più la
- *  notte (1 turno, valore 2); più un ambulatorio per ogni martedì non festivo.
+/** Quanti turni servono nel mese, spezzati per tipo. m/p/n/a sono CONTEGGI di
+ *  turni; `vt` è il totale nell'unità della colonna "Ob." (la notte pesa 2).
  *  L'ambulatorio non conta come mattina: la copertura M guarda solo i turni "M". */
-export function fabbisognoLordo(anno: number, mese: number, nd: number, r: Regole): number {
-  let f = 0;
+export interface DettaglioFabb { m: number; p: number; n: number; a: number; vt: number; }
+
+export function dettaglioFabbisogno(anno: number, mese: number, nd: number, r: Regole): DettaglioFabb {
+  let m = 0, p = 0, a = 0;
   for (let g = 1; g <= nd; g++) {
     const dw = dowOf(anno, mese, g), h = isFestivo(anno, mese, g);
     const sp = h || isDomN(dw);
     const fs = sp ? r.fabb.fest : isSabN(dw) ? r.fabb.sab : r.fabb.fer;
-    f += fs.mMin + fs.pMin + 2;
-    if (dw === 1 && !h) f += 1;   // martedì → ambulatorio
+    m += fs.mMin;
+    p += fs.pMin;
+    if (dw === 1 && !h) a += 1;   // martedì → ambulatorio
   }
-  return f;
+  const n = nd;                    // una notte per ogni giorno del mese
+  return { m, p, n, a, vt: m + p + 2 * n + a };
+}
+
+/** Fabbisogno LORDO, nell'unità di vt(). */
+export function fabbisognoLordo(anno: number, mese: number, nd: number, r: Regole): number {
+  return dettaglioFabbisogno(anno, mese, nd, r).vt;
 }
 
 export function calcolaBilancio(
