@@ -12,6 +12,7 @@ import { Badge } from "./components/Badge";
 import { CellModal } from "./components/CellModal";
 import { DocModal, type DocDraft } from "./components/DocModal";
 import { CovDots } from "./components/CovDots";
+import { calcolaBilancio, psMedico } from "./engine/bilancio";
 
 // ─── DATI INIZIALI ────────────────────────────────────────────────────────────
 const MEDICI_INIZIALI: Medico[] = [
@@ -169,6 +170,9 @@ export default function App(){
     for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A"].includes(s.tipo)) n++;
     return n;
   };
+  // Turni di pronto soccorso (1/2/3) del medico nel mese: CONTEGGIO di turni
+  // (non vt). Il bilancio li scala da D usando vt, qui serve il numero grezzo.
+  const cntPS = (id:number) => psMedico(turni, id, nd);
   const metaG = (g:number) => {
     const d=dowOf(anno,mese,g), h=isFestivo(anno,mese,g);
     return { d, h, sat:isSabN(d), dom:isDomN(d), sp:h||isDomN(d) };
@@ -223,15 +227,15 @@ export default function App(){
   };
 
   // ── styles ──
-  const TH: React.CSSProperties = {background:"#060c18",border:"1px solid #0f2035",padding:"3px 3px",textAlign:"center",fontFamily:"monospace",fontSize:"9px",color:"#1e3a5f",whiteSpace:"nowrap"};
+  const TH: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",padding:"3px 3px",textAlign:"center",fontFamily:"monospace",fontSize:"9px",color:"#4b7aad",whiteSpace:"nowrap"};
 
   return (
-    <div style={{minHeight:"100vh",background:"#030810",color:"#e2f0ff",fontFamily:"monospace"}}>
+    <div style={{minHeight:"100vh",background:"#0b1626",color:"#e2f0ff",fontFamily:"monospace"}}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
         ::-webkit-scrollbar{width:5px;height:5px;}
-        ::-webkit-scrollbar-track{background:#030810;}
-        ::-webkit-scrollbar-thumb{background:#0f2035;border-radius:3px;}
+        ::-webkit-scrollbar-track{background:#0b1626;}
+        ::-webkit-scrollbar-thumb{background:#24405f;border-radius:3px;}
         @media print{
           .np{display:none!important;}
           body{background:#fff!important;color:#000!important;}
@@ -241,24 +245,24 @@ export default function App(){
       `}</style>
 
       {/* TOPBAR */}
-      <div className="np" style={{background:"#060c18",borderBottom:"1px solid #0f2035",padding:"10px 16px",display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
+      <div className="np" style={{background:"#122036",borderBottom:"1px solid #1e3a5f",padding:"10px 16px",display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:"200px"}}>
-          <div style={{fontSize:"8px",color:"#1e3a5f",letterSpacing:".15em",textTransform:"uppercase",marginBottom:"3px"}}>
+          <div style={{fontSize:"8px",color:"#4b7aad",letterSpacing:".15em",textTransform:"uppercase",marginBottom:"3px"}}>
             AOU San Giovanni di Dio e Ruggi d'Aragona · P.O. Santa Maria Incoronata dell'Olmo
           </div>
           <div style={{fontSize:"15px",fontWeight:700,color:"#e2f0ff"}}>
             U.O.C. Medicina Interna
-            <span style={{color:"#1e3a5f",fontSize:"11px",fontWeight:400,marginLeft:"8px"}}>— Pianificazione Turni</span>
+            <span style={{color:"#4b7aad",fontSize:"11px",fontWeight:400,marginLeft:"8px"}}>— Pianificazione Turni</span>
           </div>
         </div>
 
         <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
           <select value={mese} onChange={e=>setMese(+e.target.value)}
-            style={{background:"#030810",border:"1px solid #1e3a5f",color:"#60a5fa",borderRadius:"6px",padding:"6px 9px",fontSize:"12px",fontFamily:"monospace",cursor:"pointer"}}>
+            style={{background:"#081120",border:"1px solid #2f5a8a",color:"#60a5fa",borderRadius:"6px",padding:"6px 9px",fontSize:"12px",fontFamily:"monospace",cursor:"pointer"}}>
             {MESI.map((m,i)=><option key={i} value={i}>{m}</option>)}
           </select>
           <input type="number" value={anno} onChange={e=>setAnno(+e.target.value)}
-            style={{background:"#030810",border:"1px solid #1e3a5f",color:"#60a5fa",borderRadius:"6px",padding:"6px 8px",fontSize:"12px",fontFamily:"monospace",width:"78px"}}/>
+            style={{background:"#081120",border:"1px solid #2f5a8a",color:"#60a5fa",borderRadius:"6px",padding:"6px 8px",fontSize:"12px",fontFamily:"monospace",width:"78px"}}/>
         </div>
 
         <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
@@ -269,15 +273,21 @@ export default function App(){
             ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#7f1d1d", rimuoviManuali, false],
             ["⎙","Excel", printing?"#0f1a2a":"#064e3b", handlePrint, printing],
           ] as [string,string,string,()=>void,boolean][]).map(([ic,lb,cl,fn,ds])=>(
-            <button key={lb} onClick={fn} disabled={!!ds} style={{background:ds?"#0f1a2a":cl,color:ds?"#1e3a5f":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
+            <button key={lb} onClick={fn} disabled={!!ds} style={{background:ds?"#0f1a2a":cl,color:ds?"#3d5878":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
               <span>{ic}</span><span>{lb}</span>
             </button>
           ))}
         </div>
 
-        <div style={{display:"flex",gap:"4px"}}>
+        {/* Segmented control: un solo contenitore, la pillola dice DOVE sei. */}
+        <div style={{display:"flex",gap:0,background:"#0a1524",border:"1px solid #24405f",borderRadius:"9px",padding:"3px"}}>
           {([["cal","Calendario"],["medici","Medici"],["regole","Regole"]] as ["cal"|"medici"|"regole",string][]).map(([t,l])=>(
-            <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#0f2035":"transparent",color:tab===t?"#60a5fa":"#1e3a5f",border:`1px solid ${tab===t?"#1e3a5f":"#0f2035"}`,borderRadius:"6px",padding:"6px 12px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>{l}</button>
+            <button key={t} onClick={()=>setTab(t)} aria-selected={tab===t} style={{
+              background:tab===t?"#1e3a5f":"transparent", color:tab===t?"#bfdbfe":"#5b7ea8",
+              border:"none", borderRadius:"7px", padding:"8px 16px", cursor:"pointer",
+              fontSize:"12px", fontWeight:700, fontFamily:"monospace", letterSpacing:".02em",
+              boxShadow:tab===t?"inset 0 0 0 1px #3b82f6, 0 2px 8px #00000088":"none",
+              transition:"background .12s, color .12s"}}>{l}</button>
           ))}
         </div>
       </div>
@@ -326,7 +336,7 @@ export default function App(){
                 style={{background:"#c2410c",color:"#fff",border:"none",borderRadius:"6px",padding:"7px 14px",
                   cursor:"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace"}}>Applica variante</button>
               <button onClick={()=>setAltUC(null)}
-                style={{background:"#0f2035",color:"#94a3b8",border:"1px solid #1e3a5f",borderRadius:"6px",padding:"7px 14px",
+                style={{background:"#1e3a5f",color:"#94a3b8",border:"1px solid #2f5a8a",borderRadius:"6px",padding:"7px 14px",
                   cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>Mantieni sicuro</button>
             </div>
           </div>
@@ -344,7 +354,7 @@ export default function App(){
                 </th>
                 {giorni.map(g=>{
                   const mt=metaG(g);
-                  return <th key={g} style={{...TH,background:mt.h?"#140606":mt.sat||mt.dom?"#0c0c1e":"#060c18",color:mt.h?"#7f1d1d":mt.sat||mt.dom?"#4c1d95":"#1e3a5f",minWidth:"34px",fontSize:"10px",fontWeight:700}}>{g}</th>;
+                  return <th key={g} style={{...TH,background:mt.h?"#261414":mt.sat||mt.dom?"#191940":"#122036",color:mt.h?"#7f1d1d":mt.sat||mt.dom?"#4c1d95":"#1e3a5f",minWidth:"34px",fontSize:"10px",fontWeight:700}}>{g}</th>;
                 })}
                 <th style={{...TH,minWidth:"34px",fontSize:"9px"}}>Tot</th>
                 <th style={{...TH,minWidth:"34px",fontSize:"9px"}}>Ob.</th>
@@ -355,7 +365,7 @@ export default function App(){
                 <th colSpan={2} style={TH}/>
                 {giorni.map(g=>{
                   const mt=metaG(g);
-                  return <th key={g} style={{...TH,background:mt.h?"#140606":mt.sat||mt.dom?"#0c0c1e":"#060c18",color:mt.h?"#ef4444":mt.sat||mt.dom?"#7c3aed":"#1e3a5f",fontSize:"8px"}}>{DL[mt.d]}</th>;
+                  return <th key={g} style={{...TH,background:mt.h?"#261414":mt.sat||mt.dom?"#191940":"#122036",color:mt.h?"#ef4444":mt.sat||mt.dom?"#7c3aed":"#1e3a5f",fontSize:"8px"}}>{DL[mt.d]}</th>;
                 })}
                 <th colSpan={4} style={TH}/>
               </tr>
@@ -367,8 +377,8 @@ export default function App(){
                 const wkLib=cntWkLiberi(med.id), ambN=cntAmb(med.id);
                 return (
                   <tr key={med.id}>
-                    <td style={{background:"#060c18",border:"1px solid #0f2035",padding:"3px 8px",whiteSpace:"nowrap",fontWeight:700,fontSize:"10px",color:"#c9dfff",fontFamily:"monospace"}}>{med.nome}</td>
-                    <td style={{background:sc.bg,border:"1px solid #0f2035",padding:"2px 4px",textAlign:"center",fontFamily:"monospace",fontSize:"8px"}}>
+                    <td style={{background:"#122036",border:"1px solid #1e3a5f",padding:"3px 8px",whiteSpace:"nowrap",fontWeight:700,fontSize:"10px",color:"#e2eeff",fontFamily:"monospace"}}>{med.nome}</td>
+                    <td style={{background:sc.bg,border:"1px solid #1e3a5f",padding:"2px 4px",textAlign:"center",fontFamily:"monospace",fontSize:"8px"}}>
                       {med.codice&&<div style={{color:sc.t,opacity:.6,fontSize:"7px"}}>{med.codice}</div>}
                       <div style={{color:sc.t,fontWeight:700}}>{med.stato}</div>
                     </td>
@@ -376,11 +386,11 @@ export default function App(){
                       const mt=metaG(g);
                       const ct=gT(med.id,g);
                       const hX=ct.some(s=>s.tipo==="X"), vis=ct.filter(s=>s.tipo!=="X");
-                      const bg=hX?"#111":mt.h?"#0d0404":mt.sat||mt.dom?"#080812":"#030810";
+                      const bg=hX?"#1a1a24":mt.h?"#1c0f0f":mt.sat||mt.dom?"#12142e":"#0b1626";
                       return (
                         <td key={g} onClick={()=>setCella({id:med.id,g})}
-                          style={{background:bg,border:"1px solid #0f2035",padding:"1px 2px",textAlign:"center",cursor:"pointer",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
-                          onMouseEnter={e=>e.currentTarget.style.background="#0f2035"}
+                          style={{background:bg,border:"1px solid #1e3a5f",padding:"1px 2px",textAlign:"center",cursor:"pointer",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
+                          onMouseEnter={e=>e.currentTarget.style.background="#22406b"}
                           onMouseLeave={e=>e.currentTarget.style.background=bg}>
                           <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
                             {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={s.man}/>)}
@@ -388,36 +398,62 @@ export default function App(){
                         </td>
                       );
                     })}
-                    <td style={{background:ov?"#1a0606":un?"#061a06":"#060c18",border:"1px solid #0f2035",padding:"2px 5px",textAlign:"center",fontWeight:700,fontSize:"12px",color:ov?"#f87171":un?"#4ade80":"#e2f0ff",fontFamily:"monospace"}}>{tot}</td>
-                    <td style={{background:"#060c18",border:"1px solid #0f2035",padding:"2px 5px",textAlign:"center",color:"#1e3a5f",fontSize:"11px",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":med.obiettivo}</td>
-                    <td style={{background:"#0a0718",border:"1px solid #0f2035",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:wkLib>=2?"#a78bfa":wkLib===1?"#7c3aed":"#4b5563",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":wkLib}</td>
-                    <td style={{background:"#050e08",border:"1px solid #0f2035",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:med.ambulatorio?ambN>0?"#34d399":"#065f46":"#1f2937",fontFamily:"monospace"}}>{med.ambulatorio?ambN:"—"}</td>
+                    <td style={{background:ov?"#1a0606":un?"#061a06":"#122036",border:"1px solid #1e3a5f",padding:"2px 5px",textAlign:"center",fontWeight:700,fontSize:"12px",color:ov?"#f87171":un?"#4ade80":"#e2f0ff",fontFamily:"monospace"}}>{tot}</td>
+                    <td style={{background:"#122036",border:"1px solid #1e3a5f",padding:"2px 5px",textAlign:"center",color:"#4b7aad",fontSize:"11px",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":med.obiettivo}</td>
+                    <td style={{background:"#141033",border:"1px solid #1e3a5f",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:wkLib>=2?"#a78bfa":wkLib===1?"#7c3aed":"#4b5563",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":wkLib}</td>
+                    <td style={{background:"#0a1a12",border:"1px solid #1e3a5f",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:med.ambulatorio?ambN>0?"#34d399":"#065f46":"#1f2937",fontFamily:"monospace"}}>{med.ambulatorio?ambN:"—"}</td>
                   </tr>
                 );
               })}
               <tr>
-                <td colSpan={2} style={{...TH,textAlign:"left",padding:"4px 8px",fontSize:"8px",color:"#0f2035"}}>Copertura M·P·N</td>
+                <td colSpan={2} style={{...TH,textAlign:"left",padding:"4px 8px",fontSize:"8px",color:"#3d5878"}}>Copertura M·P·N</td>
                 {giorni.map(g=>{
                   const mt=metaG(g);
                   return (
-                    <td key={g} style={{background:"#030810",border:"1px solid #0f2035",padding:"2px 1px",textAlign:"center",verticalAlign:"middle"}}>
+                    <td key={g} style={{background:"#0b1626",border:"1px solid #1e3a5f",padding:"2px 1px",textAlign:"center",verticalAlign:"middle"}}>
                       <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}/>
                     </td>
                   );
                 })}
-                <td colSpan={4} style={{background:"#060c18",border:"1px solid #0f2035"}}/>
+                <td colSpan={4} style={{background:"#122036",border:"1px solid #1e3a5f"}}/>
               </tr>
+              {/* BILANCIO DEL MESE — L+P · S · D · F. Solo F cambia colore: è il
+                  verdetto (D ≥ F ⇒ il fabbisogno è copribile). */}
+              {(()=>{
+                const b = calcolaBilancio(anno,mese,nd,medici,turni,regole);
+                const KPI = (lbl:string,val:number,bg:string,col:string,ttl:string)=>(
+                  <td title={ttl} style={{background:bg,border:"1px solid #1e3a5f",padding:"2px 3px",
+                    textAlign:"center",fontFamily:"monospace",lineHeight:1.15,color:col,cursor:"help"}}>
+                    <div style={{fontSize:"7px",letterSpacing:".06em",opacity:.8}}>{lbl}</div>
+                    <div style={{fontSize:"12px",fontWeight:700}}>{val}</div>
+                  </td>
+                );
+                return (
+                  <tr>
+                    <td colSpan={2+nd} style={{background:"#122036",border:"1px solid #1e3a5f",textAlign:"right",
+                      padding:"2px 8px",fontSize:"8px",color:"#3d5878",letterSpacing:".12em",fontFamily:"monospace"}}>
+                      BILANCIO MESE ▸
+                    </td>
+                    {KPI("L+P",b.lp,"#261a02","#fbbf24","Licenze e permessi manuali (L + 104 + p11 + ANA). Gli MPS sono esclusi: non hanno obiettivo.")}
+                    {KPI("S",b.s,"#0f2744","#93c5fd","Somma degli obiettivi mensili dei medici.")}
+                    {KPI("D",b.d,"#142033","#e2f0ff",`Turni lavorabili in reparto: S − (L+P) − PS. Turni di PS scalati: ${b.ps}.`)}
+                    {KPI("F",b.f,b.ok?"#052e16":"#1a0606",b.ok?"#4ade80":"#f87171",
+                      `Fabbisogno netto: ${b.fLordo} (minimi + ambulatori) − ${b.copertoMPS} coperti dagli MPS. `+
+                      (b.ok?`Copribile: margine +${b.d-b.f}.`:`Scoperto di ${b.f-b.d} turni.`))}
+                  </tr>
+                );
+              })()}
             </tbody>
           </table>
 
-          <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #0f2035",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
-            <span style={{color:"#0f2035",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
+          <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #1e3a5f",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
+            <span style={{color:"#3d5878",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
             {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"]].map(([tipo,desc])=>(
               <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
-                <Badge tipo={tipo} man/><span style={{color:"#1e3a5f",fontSize:"8px"}}>{desc}</span>
+                <Badge tipo={tipo} man/><span style={{color:"#4b7aad",fontSize:"8px"}}>{desc}</span>
               </div>
             ))}
-            <span style={{color:"#0f2035",fontSize:"8px",marginLeft:"8px"}}>pieno=manuale · semitrasparente=auto</span>
+            <span style={{color:"#3d5878",fontSize:"8px",marginLeft:"8px"}}>pieno=manuale · semitrasparente=auto</span>
           </div>
         </div>
       )}
@@ -426,7 +462,7 @@ export default function App(){
       {tab==="medici"&&(
         <div className="np" style={{padding:"16px",maxWidth:"700px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
-            <span style={{fontSize:"13px",fontWeight:700,color:"#c9dfff"}}>Gestione Medici</span>
+            <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Gestione Medici</span>
             <button onClick={()=>setEditDoc({nome:"",codice:"",stato:"MR",obiettivo:25,ambulatorio:false})}
               style={{background:"#052e16",color:"#4ade80",border:"1px solid #16a34a",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
               ➕ Aggiungi
@@ -435,34 +471,36 @@ export default function App(){
           {/* Riepilogo contatori */}
           <div style={{display:"flex",gap:"8px",marginBottom:"14px",flexWrap:"wrap"}}>
             {medici.filter(m=>m.stato!=="MPS").map(m=>{
-              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id);
+              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id);
               return (
-                <div key={m.id} style={{background:"#060c18",border:"1px solid #0f2035",borderRadius:"6px",padding:"5px 9px",fontSize:"10px",fontFamily:"monospace"}}>
-                  <div style={{color:"#c9dfff",fontWeight:700,marginBottom:"2px"}}>{m.nome.split(" ").pop()}</div>
+                <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"6px",padding:"5px 9px",fontSize:"10px",fontFamily:"monospace"}}>
+                  <div style={{color:"#e2eeff",fontWeight:700,marginBottom:"2px"}}>{m.nome.split(" ").pop()}</div>
                   <div style={{color:"#a78bfa"}}>🗓 {wkLib} wk</div>
                   {m.ambulatorio&&<div style={{color:"#34d399"}}>🏥 {ambN} amb</div>}
+                  <div style={{color:psN>0?"#fb923c":"#3d5878"}}>🚑 {psN} PS</div>
                 </div>
               );
             })}
           </div>
           {medici.map(m=>{
             const sc=SC[m.stato]||{bg:"",t:"",b:""}, tot=cntM(m.id);
-            const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id);
+            const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id);
             return (
-              <div key={m.id} style={{background:"#060c18",border:"1px solid #0f2035",borderRadius:"8px",padding:"10px 14px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"10px"}}>
+              <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"10px 14px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"10px"}}>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:700,color:"#c9dfff",fontSize:"11px",display:"flex",alignItems:"center",gap:"6px"}}>
+                  <div style={{fontWeight:700,color:"#e2eeff",fontSize:"11px",display:"flex",alignItems:"center",gap:"6px"}}>
                     {m.nome}
                     {m.ambulatorio&&<span style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>AMB</span>}
                   </div>
-                  <div style={{color:"#1e3a5f",fontSize:"10px",marginTop:"3px",display:"flex",gap:"10px",flexWrap:"wrap"}}>
+                  <div style={{color:"#4b7aad",fontSize:"10px",marginTop:"3px",display:"flex",gap:"10px",flexWrap:"wrap"}}>
                     <span>{m.codice||"—"} · {tot}{m.stato!=="MPS"?` / ${m.obiettivo}`:""} turni</span>
                     {m.stato!=="MPS"&&<span style={{color:"#4c1d95"}}>🗓 <span style={{color:"#a78bfa"}}>{wkLib}</span> wk liberi</span>}
                     {m.ambulatorio&&<span style={{color:"#065f46"}}>🏥 <span style={{color:"#34d399"}}>{ambN}</span> ambul.</span>}
+                    {psN>0&&<span style={{color:"#7c2d12"}}>🚑 <span style={{color:"#fb923c"}}>{psN}</span> turni PS</span>}
                   </div>
                 </div>
                 <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"4px",padding:"2px 8px",fontSize:"10px",fontWeight:700}}>{m.stato}</span>
-                <button onClick={()=>setEditDoc(m)} style={{background:"#0f2035",color:"#60a5fa",border:"1px solid #1e3a5f",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px"}}>✏</button>
+                <button onClick={()=>setEditDoc(m)} style={{background:"#1e3a5f",color:"#60a5fa",border:"1px solid #2f5a8a",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px"}}>✏</button>
                 <button onClick={()=>eliminaDoc(m)}
                   style={{background:delDoc===m.id?"#7f1d1d":"#1a0606",color:delDoc===m.id?"#fff":"#f87171",border:"1px solid #7f1d1d",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace"}}>
                   {delDoc===m.id?"Conferma ✕":"✕"}
@@ -478,7 +516,7 @@ export default function App(){
         const numInp = (val:number,onCh:(v:number)=>void) => (
           <input type="number" min={0} max={9} value={val}
             onChange={e=>onCh(Math.max(0,Math.min(9,+e.target.value||0)))}
-            style={{width:"52px",background:"#030810",border:"1px solid #1e3a5f",color:"#60a5fa",borderRadius:"6px",padding:"5px 7px",fontSize:"12px",fontFamily:"monospace",textAlign:"center"}}/>
+            style={{width:"52px",background:"#081120",border:"1px solid #2f5a8a",color:"#60a5fa",borderRadius:"6px",padding:"5px 7px",fontSize:"12px",fontFamily:"monospace",textAlign:"center"}}/>
         );
         type Fascia = "fer"|"sab"|"fest";
         type CampoFabb = "mMin"|"mMax"|"pMin"|"pMax";
@@ -492,7 +530,7 @@ export default function App(){
         type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett";
         const setTop = (campo:CampoTop,v:number) => updRegole({...regole,[campo]:v});
         const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
-        const BOX: React.CSSProperties = {background:"#060c18",border:"1px solid #0f2035",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
+        const BOX: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
         const righe: [Fascia,string][] = [["fer","Feriale"],["sab","Sabato"],["fest","Domenica / Festivo"]];
         const limiti: [CampoTop,string,string][] = [
           ["maxNotti","Max notti / mese","Tetto di notti (N) assegnabili in automatico a ciascun medico nel mese."],
@@ -504,7 +542,7 @@ export default function App(){
         return (
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
-              <span style={{fontSize:"13px",fontWeight:700,color:"#c9dfff"}}>Regole del reparto</span>
+              <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Regole del reparto</span>
               <button onClick={()=>updRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)))}
                 style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
                 Ripristina default
@@ -526,7 +564,7 @@ export default function App(){
                 <tbody>
                   {righe.map(([k,lbl])=>(
                     <tr key={k}>
-                      <td style={{...LBL,color:"#c9dfff",padding:"4px 14px 4px 0"}}>{lbl}</td>
+                      <td style={{...LBL,color:"#e2eeff",padding:"4px 14px 4px 0"}}>{lbl}</td>
                       <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMin,v=>setFabb(k,"mMin",v))}</td>
                       <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMax,v=>setFabb(k,"mMax",v))}</td>
                       <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMin,v=>setFabb(k,"pMin",v))}</td>
@@ -543,7 +581,7 @@ export default function App(){
                 <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
                   {numInp(regole[k],v=>setTop(k,v))}
                   <div>
-                    <div style={{...LBL,color:"#c9dfff",fontWeight:700}}>{lbl}</div>
+                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>{lbl}</div>
                     <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
                   </div>
                 </div>
