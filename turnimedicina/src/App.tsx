@@ -12,7 +12,7 @@ import { Badge } from "./components/Badge";
 import { CellModal } from "./components/CellModal";
 import { DocModal, type DocDraft } from "./components/DocModal";
 import { CovDots } from "./components/CovDots";
-import { calcolaBilancio, psMedico } from "./engine/bilancio";
+import { calcolaBilancio, dettaglioFabbisogno, psMedico } from "./engine/bilancio";
 
 // ─── DATI INIZIALI ────────────────────────────────────────────────────────────
 const MEDICI_INIZIALI: Medico[] = [
@@ -43,6 +43,7 @@ export default function App(){
   // lavora su un insieme di turni diverso.
   const [turniAll, setTurniAll] = useState<TurniAll>(saved?.turniAll ?? {});
   const [tab,    setTab]    = useState<"cal"|"medici"|"regole">("cal");
+  const [fabbAperto, setFabbAperto] = useState(false);
   const [cella,  setCella]  = useState<{id:number; g:number}|null>(null);
   const [editDoc,setEditDoc]= useState<DocDraft|null>(null);
   // Conferma eliminazione medico in-app: window.confirm() è bloccato negli
@@ -173,6 +174,10 @@ export default function App(){
   // Turni di pronto soccorso (1/2/3) del medico nel mese: CONTEGGIO di turni
   // (non vt). Il bilancio li scala da D usando vt, qui serve il numero grezzo.
   const cntPS = (id:number) => psMedico(turni, id, nd);
+
+  // Bilancio del mese + dettaglio del fabbisogno (per il pannello su "F").
+  const bil = calcolaBilancio(anno,mese,nd,medici,turni,regole);
+  const fab = dettaglioFabbisogno(anno,mese,nd,regole);
   const metaG = (g:number) => {
     const d=dowOf(anno,mese,g), h=isFestivo(anno,mese,g);
     return { d, h, sat:isSabN(d), dom:isDomN(d), sp:h||isDomN(d) };
@@ -420,11 +425,12 @@ export default function App(){
               {/* BILANCIO DEL MESE — L+P · S · D · F. Solo F cambia colore: è il
                   verdetto (D ≥ F ⇒ il fabbisogno è copribile). */}
               {(()=>{
-                const b = calcolaBilancio(anno,mese,nd,medici,turni,regole);
-                const KPI = (lbl:string,val:number,bg:string,col:string,ttl:string)=>(
-                  <td title={ttl} style={{background:bg,border:"1px solid #1e3a5f",padding:"2px 3px",
-                    textAlign:"center",fontFamily:"monospace",lineHeight:1.15,color:col,cursor:"help"}}>
-                    <div style={{fontSize:"7px",letterSpacing:".06em",opacity:.8}}>{lbl}</div>
+                const b = bil;
+                const KPI = (lbl:string,val:number,bg:string,col:string,ttl:string,onClick?:()=>void)=>(
+                  <td title={ttl} onClick={onClick} style={{background:bg,border:"1px solid #1e3a5f",padding:"2px 3px",
+                    textAlign:"center",fontFamily:"monospace",lineHeight:1.15,color:col,
+                    cursor:onClick?"pointer":"help",userSelect:"none"}}>
+                    <div style={{fontSize:"7px",letterSpacing:".06em",opacity:.8}}>{lbl}{onClick&&" ⓘ"}</div>
                     <div style={{fontSize:"12px",fontWeight:700}}>{val}</div>
                   </td>
                 );
@@ -438,8 +444,7 @@ export default function App(){
                     {KPI("S",b.s,"#0f2744","#93c5fd","Somma degli obiettivi mensili dei medici.")}
                     {KPI("D",b.d,"#142033","#e2f0ff",`Turni lavorabili in reparto: S − (L+P) − PS. Turni di PS scalati: ${b.ps}.`)}
                     {KPI("F",b.f,b.ok?"#052e16":"#1a0606",b.ok?"#4ade80":"#f87171",
-                      `Fabbisogno netto: ${b.fLordo} (minimi + ambulatori) − ${b.copertoMPS} coperti dagli MPS. `+
-                      (b.ok?`Copribile: margine +${b.d-b.f}.`:`Scoperto di ${b.f-b.d} turni.`))}
+                      "Tocca per il dettaglio del fabbisogno", ()=>setFabbAperto(true))}
                   </tr>
                 );
               })()}
@@ -586,6 +591,67 @@ export default function App(){
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── DETTAGLIO FABBISOGNO ── si apre toccando il contatore F.
+             m/p/n/a sono CONTEGGI di turni; il totale è in unità di vt (notte ×2). */}
+      {fabbAperto && (()=>{
+        const RIGA = (sig:string, lbl:string, n:number, peso:number, col:string) => (
+          <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"6px 0",borderBottom:"1px solid #1e3a5f"}}>
+            <span style={{width:"22px",textAlign:"center",fontWeight:700,color:col}}>{sig}</span>
+            <span style={{flex:1,color:"#8fb3d9",fontSize:"11px"}}>{lbl}</span>
+            <span style={{color:"#e2f0ff",fontWeight:700,fontSize:"13px",minWidth:"28px",textAlign:"right"}}>{n}</span>
+            <span style={{color:"#3d5878",fontSize:"10px",minWidth:"52px",textAlign:"right"}}>
+              {peso===2 ? `×2 = ${n*2}` : `= ${n}`}
+            </span>
+          </div>
+        );
+        return (
+          <div onClick={()=>setFabbAperto(false)}
+               style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"center",
+                       justifyContent:"center",zIndex:50,padding:"16px"}}>
+            <div onClick={e=>e.stopPropagation()}
+                 style={{background:"#0d1117",border:"1px solid #2f5a8a",borderRadius:"10px",padding:"16px",
+                         width:"100%",maxWidth:"360px",fontFamily:"monospace",boxShadow:"0 10px 40px #000"}}>
+              <div style={{fontSize:"8px",letterSpacing:".15em",textTransform:"uppercase",color:"#3d5878"}}>Fabbisogno del mese</div>
+              <div style={{fontSize:"15px",fontWeight:700,color:"#e2eeff",marginBottom:"10px"}}>{MESI[mese]} {anno}</div>
+
+              {RIGA("M","Mattine (minimo di copertura)", fab.m, 1, "#60a5fa")}
+              {RIGA("P","Pomeriggi (minimo di copertura)", fab.p, 1, "#a78bfa")}
+              {RIGA("N","Notti (una per giorno)", fab.n, 2, "#4ade80")}
+              {RIGA("A","Ambulatori (martedì non festivi)", fab.a, 1, "#34d399")}
+
+              <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a5f"}}>
+                <span style={{color:"#8fb3d9",fontSize:"11px"}}>Totale lordo</span>
+                <span style={{color:"#e2f0ff",fontWeight:700}}>{bil.fLordo}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a5f"}}>
+                <span style={{color:"#8fb3d9",fontSize:"11px"}}>− coperti dai medici MPS</span>
+                <span style={{color:"#c084fc",fontWeight:700}}>{bil.copertoMPS}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0"}}>
+                <span style={{color:"#e2eeff",fontSize:"12px",fontWeight:700}}>F — fabbisogno netto</span>
+                <span style={{color:bil.ok?"#4ade80":"#f87171",fontWeight:700,fontSize:"15px"}}>{bil.f}</span>
+              </div>
+
+              <div style={{background:bil.ok?"#052e16":"#1a0606",border:`1px solid ${bil.ok?"#166534":"#7f1d1d"}`,
+                           borderRadius:"6px",padding:"8px 10px",margin:"6px 0 12px",fontSize:"11px",
+                           color:bil.ok?"#4ade80":"#f87171",textAlign:"center",fontWeight:700}}>
+                {bil.ok ? `D ${bil.d} ≥ F ${bil.f} · copribile, margine +${bil.d-bil.f}`
+                        : `D ${bil.d} < F ${bil.f} · scoperto di ${bil.f-bil.d} turni`}
+              </div>
+
+              <div style={{fontSize:"9px",color:"#3d5878",lineHeight:1.6,marginBottom:"12px"}}>
+                I conteggi sono in turni; il totale è nell'unità della colonna Ob., dove la notte pesa 2.
+                L'ambulatorio non copre la mattina: il martedì servono {fab.a>0?"le mattine minime più l'ambulatorio":"le mattine minime"}.
+              </div>
+
+              <button onClick={()=>setFabbAperto(false)} style={{width:"100%",background:"#1e3a5f",color:"#bfdbfe",
+                border:"1px solid #2f5a8a",borderRadius:"6px",padding:"9px",cursor:"pointer",fontSize:"12px",
+                fontWeight:700,fontFamily:"monospace"}}>Chiudi</button>
             </div>
           </div>
         );
