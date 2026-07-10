@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { calcolaBilancio, fabbisognoLordo, psMedico } from "../bilancio";
+import { calcolaBilancio, dettaglioFabbisogno, fabbisognoLordo, psMedico } from "../bilancio";
 import { REGOLE_DEFAULT } from "../regole";
-import type { Medico, TurniMese } from "../types";
+import type { Cella, Medico, TurniMese } from "../types";
 
 const R = REGOLE_DEFAULT;
 const m = (id:number, stato:Medico["stato"], obiettivo:number): Medico =>
@@ -24,6 +24,18 @@ describe("fabbisognoLordo", () => {
     const zero = { ...R, fabb:{ fer:{mMin:0,mMax:0,pMin:0,pMax:0}, sab:{mMin:0,mMax:0,pMin:0,pMax:0}, fest:{mMin:0,mMax:0,pMin:0,pMax:0} } };
     // 31 notti × 2 + 4 ambulatori
     expect(fabbisognoLordo(2026, 6, 31, zero)).toBe(66);
+  });
+});
+
+describe("dettaglioFabbisogno", () => {
+  it("luglio 2026: 58 M, 31 P, 31 N, 4 A → 58+31+62+4 = 155", () => {
+    expect(dettaglioFabbisogno(2026, 6, 31, R)).toEqual({ m:58, p:31, n:31, a:4, vt:155 });
+  });
+  it("una notte per ogni giorno del mese", () => {
+    expect(dettaglioFabbisogno(2026, 1, 28, R).n).toBe(28);
+  });
+  it("il totale coincide con fabbisognoLordo", () => {
+    expect(dettaglioFabbisogno(2026, 7, 31, R).vt).toBe(fabbisognoLordo(2026, 7, 31, R));
   });
 });
 
@@ -63,7 +75,7 @@ describe("calcolaBilancio", () => {
 
   it("gli MPS abbassano F di quanto coprono", () => {
     const pieno = Object.fromEntries(
-      Array.from({length:31},(_,i)=>[i+1,{t:[{tipo:"N",man:true},{tipo:"M",man:true},{tipo:"P",man:true}]}]));
+      Array.from({length:31},(_,i)=>[i+1,{t:[{tipo:"N",man:true},{tipo:"M",man:true},{tipo:"P",man:true}]}] as [number, Cella]));
     const b3 = calcolaBilancio(2026,6,31,MED,{ 10:pieno } as TurniMese,R);
     expect(b3.copertoMPS).toBe(31*4);      // (N=2)+(M=1)+(P=1) per giorno
     expect(b3.f).toBe(155 - 124);
@@ -71,7 +83,7 @@ describe("calcolaBilancio", () => {
 
   it("F non scende sotto zero", () => {
     const pieno = Object.fromEntries(
-      Array.from({length:31},(_,i)=>[i+1,{t:[{tipo:"N",man:true},{tipo:"M",man:true},{tipo:"P",man:true}]}]));
+      Array.from({length:31},(_,i)=>[i+1,{t:[{tipo:"N",man:true},{tipo:"M",man:true},{tipo:"P",man:true}]}] as [number, Cella]));
     const b3 = calcolaBilancio(2026,6,31,MED,{ 10:pieno, 11:pieno } as TurniMese,R);
     expect(b3.f).toBe(0);
     expect(b3.ok).toBe(true);
@@ -81,7 +93,7 @@ describe("calcolaBilancio", () => {
     const T4: TurniMese = {};
     for (const md of MED) {
       if (md.stato === "MPS") continue;
-      T4[md.id] = Object.fromEntries(Array.from({length:12},(_,i)=>[i+1,{t:[{tipo:"L",man:true}]}]));
+      T4[md.id] = Object.fromEntries(Array.from({length:12},(_,i)=>[i+1,{t:[{tipo:"L",man:true}]}] as [number, Cella]));
     }
     const b4 = calcolaBilancio(2026,6,31,MED,T4,R);
     expect(b4.lp).toBe(9*12);
