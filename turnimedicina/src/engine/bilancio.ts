@@ -1,5 +1,5 @@
 import type { Medico, TurniMese, Regole } from "./types";
-import { vt } from "./turni";
+import { vt, isMatt, isPom, isNot } from "./turni";
 import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 
 // ─── BILANCIO DEL MESE ────────────────────────────────────────────────────────
@@ -38,13 +38,41 @@ export interface Bilancio {
 
 const gt = (T: TurniMese, id: number, g: number) => T[id]?.[g]?.t || [];
 
-/** Numero di turni PS (1/2/3) di un medico nel mese. Conteggio di TURNI, non di
- *  vt: è il numero che serve leggere nel riepilogo Medici. */
+/** Turni PS (1/2/3) di un medico nel mese, nell'unità di vt(): la notte (3)
+ *  pesa 2, mattina e pomeriggio 1. Coincide con la quota PS scalata da D. */
 export function psMedico(T: TurniMese, id: number, nd: number): number {
   let n = 0;
   for (let g = 1; g <= nd; g++)
-    for (const s of gt(T, id, g)) if (PS.includes(s.tipo)) n++;
+    for (const s of gt(T, id, g)) if (PS.includes(s.tipo)) n += vt(s.tipo, s.sott);
   return n;
+}
+
+/** Riepilogo generale dei turni di un medico (solo conteggio, nessun effetto sul
+ *  bilancio). m/p/n sono conteggi grezzi dei turni di reparto per tipo. `wk` è
+ *  il carico dei "weekend" (sabato, domenica E festivi infrasettimanali):
+ *  mattina/pomeriggio 1, notte 2, indifferente se PS o reparto; assenze escluse. */
+export interface RiepilogoMedico { m: number; p: number; n: number; wk: number; }
+
+export function riepilogoMedico(
+  T: TurniMese, id: number, nd: number, anno: number, mese: number,
+): RiepilogoMedico {
+  let m = 0, p = 0, n = 0, wk = 0;
+  for (let g = 1; g <= nd; g++) {
+    // isFestivo copre domeniche + festivi; aggiungo il sabato.
+    const we = isSabN(dowOf(anno, mese, g)) || isFestivo(anno, mese, g);
+    for (const s of gt(T, id, g)) {
+      if (!s.sott) {
+        if (s.tipo === "M") m++;
+        else if (s.tipo === "P") p++;
+        else if (s.tipo === "N") n++;
+      }
+      if (we && !s.sott) {
+        if (isNot(s.tipo)) wk += 2;
+        else if (isMatt(s.tipo) || isPom(s.tipo)) wk += 1;
+      }
+    }
+  }
+  return { m, p, n, wk };
 }
 
 /** Somma di vt() sui turni di un medico il cui tipo è in `tipi`. Se `soloMan`,
