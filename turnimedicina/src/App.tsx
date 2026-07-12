@@ -12,7 +12,7 @@ import { Badge } from "./components/Badge";
 import { CellModal } from "./components/CellModal";
 import { DocModal, type DocDraft } from "./components/DocModal";
 import { CovDots } from "./components/CovDots";
-import { calcolaBilancio, dettaglioFabbisogno, psMedico } from "./engine/bilancio";
+import { calcolaBilancio, dettaglioFabbisogno, psMedico, riepilogoMedico } from "./engine/bilancio";
 
 // ─── DATI INIZIALI ────────────────────────────────────────────────────────────
 const MEDICI_INIZIALI: Medico[] = [
@@ -171,9 +171,10 @@ export default function App(){
     for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A"].includes(s.tipo)) n++;
     return n;
   };
-  // Turni di pronto soccorso (1/2/3) del medico nel mese: CONTEGGIO di turni
-  // (non vt). Il bilancio li scala da D usando vt, qui serve il numero grezzo.
+  // Turni PS (1/2/3) del medico, pesati come nel bilancio: la notte (3) vale 2.
   const cntPS = (id:number) => psMedico(turni, id, nd);
+  // Riepilogo generale del medico: M/P/N di reparto + carico weekend.
+  const rieM  = (id:number) => riepilogoMedico(turni, id, nd, anno, mese);
 
   // Bilancio del mese + dettaglio del fabbisogno (per il pannello su "F").
   const bil = calcolaBilancio(anno,mese,nd,medici,turni,regole);
@@ -476,20 +477,26 @@ export default function App(){
           {/* Riepilogo contatori */}
           <div style={{display:"flex",gap:"8px",marginBottom:"14px",flexWrap:"wrap"}}>
             {medici.filter(m=>m.stato!=="MPS").map(m=>{
-              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id);
+              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id), r=rieM(m.id);
               return (
                 <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"6px",padding:"5px 9px",fontSize:"10px",fontFamily:"monospace"}}>
                   <div style={{color:"#e2eeff",fontWeight:700,marginBottom:"2px"}}>{m.nome.split(" ").pop()}</div>
-                  <div style={{color:"#a78bfa"}}>🗓 {wkLib} wk</div>
+                  <div style={{color:"#a78bfa"}}>🗓 {wkLib} wk lib.</div>
                   {m.ambulatorio&&<div style={{color:"#34d399"}}>🏥 {ambN} amb</div>}
                   <div style={{color:psN>0?"#fb923c":"#3d5878"}}>🚑 {psN} PS</div>
+                  <div style={{marginTop:"2px",display:"flex",gap:"6px"}}>
+                    <span style={{color:"#60a5fa"}}>M{r.m}</span>
+                    <span style={{color:"#c4b5fd"}}>P{r.p}</span>
+                    <span style={{color:"#6ee7b7"}}>N{r.n}</span>
+                  </div>
+                  <div style={{color:"#e879f9"}}>▦ {r.wk} wknd</div>
                 </div>
               );
             })}
           </div>
           {medici.map(m=>{
             const sc=SC[m.stato]||{bg:"",t:"",b:""}, tot=cntM(m.id);
-            const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id);
+            const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id), r=rieM(m.id);
             return (
               <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"10px 14px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"10px"}}>
                 <div style={{flex:1}}>
@@ -502,6 +509,10 @@ export default function App(){
                     {m.stato!=="MPS"&&<span style={{color:"#4c1d95"}}>🗓 <span style={{color:"#a78bfa"}}>{wkLib}</span> wk liberi</span>}
                     {m.ambulatorio&&<span style={{color:"#065f46"}}>🏥 <span style={{color:"#34d399"}}>{ambN}</span> ambul.</span>}
                     {psN>0&&<span style={{color:"#7c2d12"}}>🚑 <span style={{color:"#fb923c"}}>{psN}</span> turni PS</span>}
+                    <span style={{color:"#1e4976"}}>☀ <span style={{color:"#60a5fa"}}>{r.m}</span> M</span>
+                    <span style={{color:"#4c1d95"}}>◑ <span style={{color:"#c4b5fd"}}>{r.p}</span> P</span>
+                    <span style={{color:"#065f46"}}>☾ <span style={{color:"#6ee7b7"}}>{r.n}</span> N</span>
+                    <span style={{color:"#701a75"}}>▦ <span style={{color:"#e879f9"}}>{r.wk}</span> wknd</span>
                   </div>
                 </div>
                 <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"4px",padding:"2px 8px",fontSize:"10px",fontWeight:700}}>{m.stato}</span>
