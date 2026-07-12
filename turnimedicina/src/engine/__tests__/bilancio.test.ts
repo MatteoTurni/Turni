@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcolaBilancio, dettaglioFabbisogno, fabbisognoLordo, psMedico } from "../bilancio";
+import { calcolaBilancio, dettaglioFabbisogno, fabbisognoLordo, psMedico, riepilogoMedico } from "../bilancio";
 import { REGOLE_DEFAULT } from "../regole";
 import type { Cella, Medico, TurniMese } from "../types";
 
@@ -40,9 +40,46 @@ describe("dettaglioFabbisogno", () => {
 });
 
 describe("psMedico", () => {
-  it("conta i TURNI di PS, non il loro valore (la notte PS resta 1 turno)", () => {
+  it("pesa la notte PS (3) come 2: 1 + 3 → 3", () => {
     const T: TurniMese = { 3:{ 7:{t:[{tipo:"1",man:true},{tipo:"P",man:true}]}, 8:{t:[{tipo:"3",man:true}]} } };
-    expect(psMedico(T, 3, 31)).toBe(2);   // "1" e "3" → 2 turni (vt sarebbe 3)
+    expect(psMedico(T, 3, 31)).toBe(3);   // "1"(=1) + "3"(=2)
+  });
+  it("un PS sottolineato non conta", () => {
+    const T: TurniMese = { 3:{ 7:{t:[{tipo:"3",sott:true,man:true}]} } };
+    expect(psMedico(T, 3, 31)).toBe(0);
+  });
+});
+
+describe("riepilogoMedico", () => {
+  // luglio 2026: 4 e 11 sono sabati, 5 e 12 domeniche.
+  const T: TurniMese = {
+    1: {
+      4:  {t:[{tipo:"M"},{tipo:"P"}]},   // sabato: M+P di reparto
+      5:  {t:[{tipo:"3"}]},              // domenica: notte PS
+      6:  {t:[{tipo:"N"}]},              // lunedì: notte reparto (infrasettimanale)
+      11: {t:[{tipo:"1"},{tipo:"2"}]},   // sabato: PS mattina+pomeriggio
+      12: {t:[{tipo:"L"}]},              // domenica: assenza
+      7:  {t:[{tipo:"M"},{tipo:"M",sott:true}]}, // martedì: M reale + M sottolineata
+    },
+  };
+  const r = riepilogoMedico(T, 1, 31, 2026, 6);
+
+  it("conta le M di reparto, escluse le sottolineate", () => expect(r.m).toBe(2));
+  it("conta le P di reparto", () => expect(r.p).toBe(1));
+  it("conta le N di reparto (anche infrasettimanali)", () => expect(r.n).toBe(1));
+  it("PS non entra in M/P/N", () => expect(r).toMatchObject({ m:2, p:1, n:1 }));
+  it("weekend: M+P(2) + notte PS(2) + PS m/p(2) = 6; la N di lunedì e la L non contano", () =>
+    expect(r.wk).toBe(6));
+  it("la notte pesa 2 nel weekend, indifferente se PS o reparto", () => {
+    const T2: TurniMese = { 1:{ 4:{t:[{tipo:"N"}]}, 5:{t:[{tipo:"3"}]} } };
+    expect(riepilogoMedico(T2,1,31,2026,6).wk).toBe(4);
+  });
+  it("i festivi infrasettimanali contano come weekend", () => {
+    // 25 aprile 2026 (Liberazione) cade di sabato; 1 maggio 2026 è un venerdì
+    // festivo → deve contare. Uso agosto: Ferragosto 2026 è sabato, prendo invece
+    // il 2 giugno (Festa Repubblica) 2026, che è un martedì.
+    const T3: TurniMese = { 1:{ 2:{t:[{tipo:"M"},{tipo:"3"}]} } };  // 2 giugno = martedì festivo
+    expect(riepilogoMedico(T3,1,30,2026,5).wk).toBe(3);             // M(1) + notte(2)
   });
 });
 
