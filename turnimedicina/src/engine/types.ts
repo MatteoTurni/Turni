@@ -32,6 +32,9 @@ export interface Regole {
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;
+  /** Giorni della settimana con ambulatorio (0=Lun … 4=Ven, festivi sempre
+   *  esclusi). Default [1] = martedì. Lista vuota = nessun ambulatorio. */
+  giorniAmb: number[];
   fabb: { fer: FasciaFabb; sab: FasciaFabb; fest: FasciaFabb };
 }
 

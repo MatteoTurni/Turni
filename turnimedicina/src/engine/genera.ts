@@ -1,5 +1,6 @@
 import type { Medico, Risultato, TurniMese, AlternativaUC, CellaScoperta, WeekendPerso } from "./types";
 import { dowOf, isHol } from "./date";
+import { getRegole } from "./regole";
 import { cloneT, pulisciT, SPEC } from "./turni";
 import { ENG } from "./state";
 import { makeCtx } from "./ctx";
@@ -159,7 +160,7 @@ export function scegliMigliore(anno:number, mese:number, ndim:number, medici:Med
 export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese, relaxN?:boolean){
   const c = makeCtx(anno, mese, ndim, medici, turni, null, relaxN);
   const { giorniArr, isWk, cf, nmn, npn, canR, mdcOk, add, haQ, haM, haP,
-          cntWkLiberi, mrMdc, isMar, isH, gt, cnt, canAssDist, wkPairs, isLibWk } = c;
+          cntWkLiberi, mrMdc, isAmb, isH, gt, cnt, canAssDist, wkPairs, isLibWk } = c;
   const cand = (g:number,f:string) => mrMdc.filter(m=>!haQ(m.id,g)&&canR(m,g,f)&&mdcOk(m,g,f));
 
   // ── COSTO IN WEEKEND LIBERI DI UN'ASSEGNAZIONE (Fix 1+2) ────────────────────
@@ -194,8 +195,8 @@ export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medi
       : (cnt(a.id)-cnt(b.id)));
   for(const g of giorniArr){
     let guard: number;
-    // AMBULATORIO (martedì feriale) scoperto: assegna un medico d'ambulatorio libero.
-    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))){
+    // AMBULATORIO (giorno d'ambulatorio feriale) scoperto: assegna un medico d'ambulatorio libero.
+    if(isAmb(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))){
       const ambPool = mrMdc.filter(m=>m.ambulatorio && !haQ(m.id,g) && canR(m,g,"M"))
                             .sort((a,b)=>cnt(a.id)-cnt(b.id));
       if(ambPool.length) add(ambPool[0].id,g,"A");
@@ -232,7 +233,7 @@ export function problemiResidui(anno:number, mese:number, ndim:number, medici:Me
     if(c.cf(g,"M")<c.nmn(g).mn) P.push(`G${g}: mattine ${c.cf(g,"M")}/${c.nmn(g).mn} (IMPOSSIBILE)`);
     if(c.cf(g,"P")<c.npn(g).mn) P.push(`G${g}: pomeriggi ${c.cf(g,"P")}/${c.npn(g).mn} (IMPOSSIBILE)`);
     if(c.cf(g,"N")<1)           P.push(`G${g}: notte mancante (IMPOSSIBILE)`);
-    if(c.isMar(g)&&!c.isH(g)&&!medici.some(m=>c.gt(m.id,g).some(s=>["A"].includes(s.tipo))))
+    if(c.isAmb(g)&&!c.isH(g)&&!medici.some(m=>c.gt(m.id,g).some(s=>["A"].includes(s.tipo))))
       P.push(`G${g}: ambulatorio mancante`);
   }
   // Stessa rete di sicurezza della validazione globale.
@@ -615,16 +616,18 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
 // ROTAZIONE AMBULATORIO — indice successivo derivato dal tabellone ACCETTATO
 // La UI lo chiama sul risultato adottato e persiste il valore: la rotazione
 // avanza SOLO in base a ciò che è stato davvero pubblicato, non ai tentativi
-// scartati. Semantica: l'ultimo martedì feriale con una A automatica determina
-// il prossimo punto di partenza (indice dell'assegnatario + 1). Nessuna A
-// automatica nel mese → l'indice resta quello di partenza.
+// scartati. Semantica: l'ultimo giorno d'ambulatorio feriale con una A
+// automatica determina il prossimo punto di partenza (indice dell'assegnatario
+// + 1). Nessuna A automatica nel mese → l'indice resta quello di partenza.
+// I giorni d'ambulatorio vengono dalle REGOLE correnti (default martedì).
 // ═══════════════════════════════════════════════════════════════════════════
 export function calcAmbRotNext(turni:TurniMese, medici:Medico[], anno:number, mese:number, ndim:number, start:number){
   const ab = medici.filter(m=>m.ambulatorio);
   if(ab.length===0) return start;
+  const ambDw = new Set(getRegole().giorniAmb ?? [1]);
   let next = ((start % ab.length) + ab.length) % ab.length;
   for(let g=1; g<=ndim; g++){
-    if(dowOf(anno,mese,g)!==1 || isHol(anno,mese,g)) continue;   // solo martedì feriali
+    if(!ambDw.has(dowOf(anno,mese,g)) || isHol(anno,mese,g)) continue;   // solo giorni d'ambulatorio feriali
     for(let i=0;i<ab.length;i++){
       if((turni[ab[i].id]?.[g]?.t||[]).some(s=>s.tipo==="A" && !s.man)){ next=(i+1)%ab.length; break; }
     }

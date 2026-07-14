@@ -1,4 +1,5 @@
 import type { Medico, TurniMese } from "./types";
+import { DF } from "./date";
 import { isMatt, isPom, isNot } from "./turni";
 import { ENG, mkRng, shuf } from "./state";
 import type { Ctx } from "./ctx";
@@ -209,7 +210,8 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FASE 2 — AMBULATORIO MARTEDÌ (poi CONGELATO)
+// FASE 2 — AMBULATORIO nei giorni configurati (REGOLE.giorniAmb, default
+// martedì), poi CONGELATO.
 // Rotazione round-robin: l'indice di partenza è INIETTATO (ENG.AMB_ROT_START)
 // e avanzato solo LOCALMENTE. Niente più localStorage nel motore: la
 // persistenza dell'indice, calcolata dal SOLO tabellone accettato, è compito
@@ -217,12 +219,12 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 // equità per cui la rotazione avanzava nei tentativi scartati dal multi-tentativo.
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseAmbulatorio(ctx: Ctx){
-  const { giorniArr, isMar, isH, gt, add, medici, ambilitati, haX, haN, cnt, canConsec, canMatt } = ctx;
+  const { giorniArr, isAmb, isH, gt, add, medici, ambilitati, haX, haN, cnt, canConsec, canMatt } = ctx;
   const n = ambilitati.length;
   let nextIdx = n>0 ? ((ENG.AMB_ROT_START % n) + n) % n : 0;
   let ok=true;
   for(const g of giorniArr){
-    if(!isMar(g)||isH(g)) continue;
+    if(!isAmb(g)||isH(g)) continue;
     if(medici.some(m=>gt(m.id,g).some(s=>s.man&&["A"].includes(s.tipo)))) continue;
     if(medici.some(m=>gt(m.id,g).some(s=>!s.man&&s.tipo==="A"))) continue;
 
@@ -358,7 +360,7 @@ export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
 export function validaWeekend(ctx: Ctx){
   // NB: il controllo dei weekend liberi NON è qui: è nella validazione globale
   // finale (dopo le notti), perché le notti possono occupare weekend liberi.
-  const { giorniArr, isWk, cf, isMar, isH, medici, gt, checkRegolaN, needEff } = ctx;
+  const { giorniArr, isWk, cf, isAmb, isH, medici, gt, checkRegolaN, needEff } = ctx;
   for(const g of giorniArr){
     if(!isWk(g)) continue;
     // needEff: un sabato/festivo STRUTTURALMENTE impossibile non deve rendere
@@ -369,7 +371,7 @@ export function validaWeekend(ctx: Ctx){
     if(cf(g,"P")<needEff(g,"P")) return false;
   }
   for(const g of giorniArr){
-    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))) return false;
+    if(isAmb(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))) return false;
   }
   if(!checkRegolaN()) return false;
   return true;
@@ -631,7 +633,7 @@ export function faseDiurni(ctx: Ctx, seed: number){
 // VALIDAZIONE GLOBALE (controllo finale della prima generazione)
 // ═══════════════════════════════════════════════════════════════════════════
 export function validazioneGlobale(ctx: Ctx){
-  const { giorniArr, cf, nmn, npn, mrMdc, cntWkLiberi, isMar, isH, medici, gt, checkRegolaN, wkTargetMed, lavoraGiorno, MAX_CONSEC, trailingPrev, needEff, SPEC } = ctx;
+  const { giorniArr, cf, nmn, npn, mrMdc, cntWkLiberi, isAmb, isH, medici, gt, checkRegolaN, wkTargetMed, lavoraGiorno, MAX_CONSEC, trailingPrev, needEff, SPEC } = ctx;
   const probs: string[]=[];
   // I buchi si dichiarano sempre rispetto al fabbisogno PIENO (onestà in UI),
   // ma quelli sotto la capacità statica vengono marcati IMPOSSIBILE.
@@ -642,8 +644,8 @@ export function validazioneGlobale(ctx: Ctx){
     if(cf(g,"N")<1)          probs.push(`G${g}: notte mancante${imp(g,"N",1)}`);
   }
   for(const g of giorniArr){
-    if(isMar(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo))))
-      probs.push(`Martedì ${g}: ambulatorio mancante`);
+    if(isAmb(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo))))
+      probs.push(`${DF[ctx.dw(g)]} ${g}: ambulatorio mancante`);
   }
   // RETE DI SICUREZZA: una A AUTOMATICA su un medico non abilitato non è mai valida.
   for(const m of medici){

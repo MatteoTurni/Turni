@@ -172,7 +172,9 @@ export function makeCtx(
   const isSp = (g:number) => isD(g)||isH(g);
   const isWk = (g:number) => dw(g)>=5||isH(g);
   const isFer= (g:number) => !isWk(g);
-  const isMar= (g:number) => dw(g)===1;
+  // Giorni di ambulatorio dal pannello Regole (era il martedì hardcoded).
+  const AMB_DW = new Set(REG.giorniAmb ?? [1]);
+  const isAmb= (g:number) => AMB_DW.has(dw(g));
 
   // Fabbisogni giornalieri dal pannello Regole.
   const FB  = REG.fabb;
@@ -460,7 +462,7 @@ export function makeCtx(
 
   return {
     ndim, medici, T, gt, st, add, haX, haM, haP, haN, haQ, cnt, cntN,
-    dw, isS, isD, isH, isSp, isWk, isFer, isMar, nmn, npn, SPEC, cf,
+    dw, isS, isD, isH, isSp, isWk, isFer, isAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,

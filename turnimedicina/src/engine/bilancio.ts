@@ -98,7 +98,7 @@ export function dettaglioFabbisogno(anno: number, mese: number, nd: number, r: R
     const fs = sp ? r.fabb.fest : isSabN(dw) ? r.fabb.sab : r.fabb.fer;
     m += fs.mMin;
     p += fs.pMin;
-    if (dw === 1 && !h) a += 1;   // martedì → ambulatorio
+    if ((r.giorniAmb ?? [1]).includes(dw) && !h) a += 1;   // giorno d'ambulatorio feriale
   }
   const n = nd;                    // una notte per ogni giorno del mese
   return { m, p, n, a, vt: m + p + 2 * n + a };
