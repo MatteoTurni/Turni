@@ -16,6 +16,12 @@ import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
 export function generaCoperturaMinima(
   anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
   wkTargetOverride?:number|Record<number,number>|null, relaxN?:boolean,
+  // FEEDBACK FRA TENTATIVI (v0.3.9): il chiamante può passare un Set condiviso
+  // che ACCUMULA i giorni con notte scoperta attraverso i restart del
+  // multi-tentativo. I run successivi partono già "avvisati" dei colli di
+  // bottiglia scoperti dai precedenti (vincolo SOFT in faseWeekend: nessun
+  // rischio di sovra-vincolare). Senza parametro: comportamento invariato.
+  nottiCriticheAcc?: Set<number>,
 ): Risultato {
   const T = cloneT(ex);
   const ctx = makeCtx(anno, mese, ndim, medici, T, wkTargetOverride, relaxN);
@@ -32,7 +38,7 @@ export function generaCoperturaMinima(
   // quei weekend proprio ai medici eleggibili per quelle notti: la causa
   // tipica del fallimento delle Notti è che i pochi candidati alla notte del
   // sabato/domenica hanno tutti quel weekend prenotato come libero.
-  const nottiCritiche = new Set<number>();
+  const nottiCritiche = nottiCriticheAcc ?? new Set<number>();
 
   const fasi = [
     { nome:"Critici",     run:(seed:number)=>faseCritici(ctx,seed) },
@@ -363,84 +369,105 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MULTI-TENTATIVO — molti run con sale casuale diverso, si tiene il migliore
+// Diviso in TRE mattoni riusabili (v0.3.9), pensati per la generazione
+// PARALLELA su Web Worker:
+//   • misuraTabellone       — metro di giudizio unico (duro gerarchico + soft):
+//                             lo stesso identico metro per tutti i worker.
+//   • cercaMigliorTentativo — la sola RICERCA (random restart a due stadi),
+//                             senza rifinitura: è ciò che gira in ogni worker.
+//   • rifinituraFinale      — LNS, recupero weekend e alternativa di ultima
+//                             chance, eseguite UNA SOLA volta sul tabellone
+//                             vincente (chiunque l'abbia trovato).
+// generaMigliorTentativo (API invariata) = cerca + rifinitura, e resta il
+// percorso sincrono di fallback quando i Worker non sono disponibili.
 // ═══════════════════════════════════════════════════════════════════════════
-export function generaMigliorTentativo(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, maxMs=12000): Risultato {
-  // Valuta un tabellone con la validazione STRETTA. Punteggio GERARCHICO:
-  // buchi di copertura (1000) > violazioni di regola (500) > deficit weekend
-  // liberi (10) > avvisi minori (1). A parità di duro decide il SOFT (equità:
-  // varianza notti ×100, carichi ×10, wk liberi ×5, −2 per wk libero extra).
-  const misura = (turni:TurniMese) => {
-    const c = makeCtx(anno, mese, ndim, medici, turni);
-    const probs = validazioneGlobale(c);
-    // I buchi si contano sul fabbisogno EFFICACE (needEff): le celle
-    // strutturalmente impossibili sono un offset costante fra tutti i
-    // candidati e sporcavano solo il confronto — nei giorni difficili il
-    // punteggio non distingueva più il tabellone che copre il COPRIBILE.
-    // In probs (e quindi in UI) restano dichiarate col fabbisogno pieno.
-    let s = 0, buchi = 0, wkDef = 0;
-    for(let g=1; g<=ndim; g++){
-      if(c.cf(g,"M")<c.needEff(g,"M")) buchi++;
-      if(c.cf(g,"P")<c.needEff(g,"P")) buchi++;
-      if(c.cf(g,"N")<c.needEff(g,"N")) buchi++;
-    }
-    for(const m of c.mrMdc) wkDef += Math.max(0, c.wkTargetMed(m.id)-c.cntWkLiberi(m.id));
-    s = buchi*1000 + (!c.checkRegolaN()?500:0) + wkDef*10 + probs.length;
-    const varOf = (a:number[]) => { if(a.length<2) return 0; const mu=a.reduce((x,y)=>x+y,0)/a.length; return a.reduce((q,v)=>q+(v-mu)*(v-mu),0)/a.length; };
-    const notti   = c.mrMdc.map(m2=>c.cntN(m2.id));
-    const carichi = c.att.map(m2=>c.cnt(m2.id));
-    const wkLib   = c.mrMdc.map(m2=>c.cntWkLiberi(m2.id));
-    const wkExtra = c.mrMdc.reduce((q,m2)=>q+Math.max(0,c.cntWkLiberi(m2.id)-c.wkTargetMed(m2.id)),0);
-    const soft = varOf(notti)*100 + varOf(carichi)*10 + varOf(wkLib)*5 - wkExtra*2;
-    return { s, soft, probs, buchi, wkDef };
-  };
-  const wrap = (turni:TurniMese, m:{probs:string[]}): Risultato =>
-    ({ turni:pulisciT(turni), ok:m.probs.length===0, parziale:m.probs.length>0, problemi:m.probs });
 
-  // Delta tra il tabellone PRIMARIO (base) e la variante di ultima chance (alt):
-  // quali buchi COLMABILI del primario vengono chiusi e quali medici perdono
-  // weekend liberi. needEff dipende solo da manuali/immovibili → identico tra i
-  // due tabelloni, quindi si può usare quello di base per entrambi.
-  const costruisciAlternativa = (base:TurniMese, alt:TurniMese, problemi:string[]): AlternativaUC => {
-    const cB = makeCtx(anno, mese, ndim, medici, base);
-    const cA = makeCtx(anno, mese, ndim, medici, alt);
-    const celleCoperte: CellaScoperta[] = [];
-    for(let g=1; g<=ndim; g++) for(const f of ["M","P","N"] as const){
-      const need = cB.needEff(g,f);
-      if(cB.cf(g,f) < need && cA.cf(g,f) >= need) celleCoperte.push({ g, f });
-    }
-    const weekendPersi: WeekendPerso[] = [];
-    for(const m of cB.mrMdc){
-      const da = cB.cntWkLiberi(m.id), a = cA.cntWkLiberi(m.id);
-      if(a < da) weekendPersi.push({ id:m.id, nome:m.nome, da, a });
-    }
-    return { turni: pulisciT(alt), problemi, celleCoperte, weekendPersi };
-  };
+// Valuta un tabellone con la validazione STRETTA. Punteggio GERARCHICO:
+// buchi di copertura (1000) > violazioni di regola (500) > deficit weekend
+// liberi (10) > avvisi minori (1). A parità di duro decide il SOFT (equità:
+// varianza notti ×100, carichi ×10, wk liberi ×5, −2 per wk libero extra).
+export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
+  const c = makeCtx(anno, mese, ndim, medici, turni);
+  const probs = validazioneGlobale(c);
+  // I buchi si contano sul fabbisogno EFFICACE (needEff): le celle
+  // strutturalmente impossibili sono un offset costante fra tutti i
+  // candidati e sporcavano solo il confronto — nei giorni difficili il
+  // punteggio non distingueva più il tabellone che copre il COPRIBILE.
+  // In probs (e quindi in UI) restano dichiarate col fabbisogno pieno.
+  let s = 0, buchi = 0, wkDef = 0;
+  for(let g=1; g<=ndim; g++){
+    if(c.cf(g,"M")<c.needEff(g,"M")) buchi++;
+    if(c.cf(g,"P")<c.needEff(g,"P")) buchi++;
+    if(c.cf(g,"N")<c.needEff(g,"N")) buchi++;
+  }
+  for(const m of c.mrMdc) wkDef += Math.max(0, c.wkTargetMed(m.id)-c.cntWkLiberi(m.id));
+  s = buchi*1000 + (!c.checkRegolaN()?500:0) + wkDef*10 + probs.length;
+  const varOf = (a:number[]) => { if(a.length<2) return 0; const mu=a.reduce((x,y)=>x+y,0)/a.length; return a.reduce((q,v)=>q+(v-mu)*(v-mu),0)/a.length; };
+  const notti   = c.mrMdc.map(m2=>c.cntN(m2.id));
+  const carichi = c.att.map(m2=>c.cnt(m2.id));
+  const wkLib   = c.mrMdc.map(m2=>c.cntWkLiberi(m2.id));
+  const wkExtra = c.mrMdc.reduce((q,m2)=>q+Math.max(0,c.cntWkLiberi(m2.id)-c.wkTargetMed(m2.id)),0);
+  const soft = varOf(notti)*100 + varOf(carichi)*10 + varOf(wkLib)*5 - wkExtra*2;
+  return { s, soft, probs, buchi, wkDef };
+}
+export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
+const wrapRisultato = (turni:TurniMese, probs:string[]): Risultato =>
+  ({ turni:pulisciT(turni), ok:probs.length===0, parziale:probs.length>0, problemi:probs });
+
+// Delta tra il tabellone PRIMARIO (base) e la variante di ultima chance (alt):
+// quali buchi COLMABILI del primario vengono chiusi e quali medici perdono
+// weekend liberi. needEff dipende solo da manuali/immovibili → identico tra i
+// due tabelloni, quindi si può usare quello di base per entrambi.
+function costruisciAlternativa(anno:number, mese:number, ndim:number, medici:Medico[],
+                               base:TurniMese, alt:TurniMese, problemi:string[]): AlternativaUC {
+  const cB = makeCtx(anno, mese, ndim, medici, base);
+  const cA = makeCtx(anno, mese, ndim, medici, alt);
+  const celleCoperte: CellaScoperta[] = [];
+  for(let g=1; g<=ndim; g++) for(const f of ["M","P","N"] as const){
+    const need = cB.needEff(g,f);
+    if(cB.cf(g,f) < need && cA.cf(g,f) >= need) celleCoperte.push({ g, f });
+  }
+  const weekendPersi: WeekendPerso[] = [];
+  for(const m of cB.mrMdc){
+    const da = cB.cntWkLiberi(m.id), a = cA.cntWkLiberi(m.id);
+    if(a < da) weekendPersi.push({ id:m.id, nome:m.nome, da, a });
+  }
+  return { turni: pulisciT(alt), problemi, celleCoperte, weekendPersi };
+}
+
+// ─── RICERCA: random restart a due stadi (il "cuore" che gira nei worker) ────
+export interface OpzioniCerca {
+  /** Sale addizionale, diverso per worker: entra nello XOR di OGNI SALT del
+   *  loop, così due worker non ripercorrono mai la stessa sequenza di semi. */
+  saltSeed?: number;
+  /** Chiamata a ogni adozione di un tabellone migliore (per postMessage). */
+  onMiglioramento?: (turni:TurniMese, m:MisuraTab)=>void;
+  /** Chiamata ogni ~25 tentativi con (tentativi, punteggio duro corrente). */
+  onProgresso?: (tentativi:number, s:number)=>void;
+}
+export function cercaMigliorTentativo(
+  anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
+  maxMs=12000, opz?:OpzioniCerca,
+): { turni:TurniMese; m:MisuraTab; tentativi:number } {
+  const misura = (t:TurniMese) => misuraTabellone(anno, mese, ndim, medici, t);
   const BT=ENG.BT, TR=ENG.TRIES, CN=ENG.CLUSTER_NODES, RN=ENG.REBAL_NODES;   // budget originali
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
   // e il control-flow di TS non le vedrebbe, stringendo i tipi a `null`.
-  const best: { turni: TurniMese|null; m: ReturnType<typeof misura>|null } = { turni:null, m:null };
-  // ── ADOZIONE ASIMMETRICA (P1) ──────────────────────────────────────────
-  // I tabelloni AGGRESSIVI (ultima chance: spende weekend liberi di proposito)
-  // non competono col punteggio pieno: vengono adottati SOLO se riducono
-  // strettamente i buchi colmabili — la ragione per cui esistono. Prima
-  // entravano in gara alla pari: a parità di buchi potevano vincere per un
-  // wkDef o un soft marginalmente migliori, e nei mesi con celle impossibili
-  // NON provate da capCell (impossibilità cumulative/combinatorie → needEff
-  // pieno → buchi>0 → l'ultima chance scatta comunque) il tabellone rilasciato
-  // era quasi sempre quello aggressivo, senza alcun guadagno di copertura.
-  // A parità di buchi l'adozione resta possibile solo se il punteggio duro
-  // migliora (es. sana una violazione di Regola N) SENZA pagare in weekend.
-  const registra = (turni:TurniMese, soloSeCopreDiPiu=false) => {
+  const best: { turni: TurniMese|null; m: MisuraTab|null } = { turni:null, m:null };
+  const registra = (turni:TurniMese) => {
     const m = misura(turni);
-    const adotta = best.m===null
-      || (soloSeCopreDiPiu
-            ? (m.buchi < best.m.buchi ||
-               (m.buchi === best.m.buchi && m.s < best.m.s && m.wkDef <= best.m.wkDef))
-            : (m.s < best.m.s || (m.s === best.m.s && m.soft < best.m.soft)));
-    if(adotta){ best.m=m; best.turni=turni; }
+    const adotta = best.m===null || m.s < best.m.s || (m.s === best.m.s && m.soft < best.m.soft);
+    if(adotta){ best.m=m; best.turni=turni; opz?.onMiglioramento?.(turni, m); }
     return best.m!.s===0;
   };
+
+  // FEEDBACK FRA TENTATIVI (punto 3, v0.3.9): l'unione dei giorni con notte
+  // rimasta scoperta ACCUMULA attraverso i restart. Prima ogni tentativo
+  // riscopriva da capo gli stessi colli di bottiglia; ora i run successivi
+  // partono già "avvisati" (vincolo SOFT in faseWeekend, nessun rischio di
+  // sovra-vincolare: al peggio il suggerimento viene ignorato).
+  const nottiAcc = new Set<number>();
 
   // ── RICERCA A DUE STADI ─────────────────────────────────────────────────
   // STADIO 1 (≈55% del tempo): molti random restart ECONOMICI.
@@ -456,9 +483,10 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
   //   • stop anticipato se il soft non migliora da STALLO_MAX tentativi.
   const OTTIM_MS   = Math.min(4000, maxMs*0.4);
   const STALLO_MAX = 60;
+  const SEED = (opz?.saltSeed ?? 0)>>>0;
   while(true){
     const now = Date.now();
-    if(now - t0 >= maxMs) break;
+    if(t>0 && now - t0 >= maxMs) break;          // almeno UN tentativo, sempre
     if(perfetto){
       if(now - tPerfetto >= OTTIM_MS) break;
       if(stallo >= STALLO_MAX) break;
@@ -467,30 +495,55 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
       ENG.BT=15; ENG.TRIES=8; ENG.CLUSTER_NODES=40000; ENG.REBAL_NODES=80000;
       deep = true;
     }
-    ENG.SALT = (((Math.random()*0x100000000)>>>0) ^ Math.imul(++t,2654435761))>>>0;
-    let r: Risultato; try{ r = generaCoperturaMinima(anno, mese, ndim, medici, ex); }catch(_){ continue; }
+    ENG.SALT = (((((Math.random()*0x100000000)>>>0) ^ Math.imul(++t,2654435761))>>>0) ^ SEED)>>>0;
+    let r: Risultato; try{ r = generaCoperturaMinima(anno, mese, ndim, medici, ex, undefined, undefined, nottiAcc); }catch(_){ continue; }
     const softPrima = best.m ? best.m.soft : Infinity;
     const isPerf = registra(r.turni);
     if(isPerf && !perfetto){ perfetto=true; tPerfetto=Date.now(); stallo=0; }
     else if(perfetto){ stallo = (best.m!.soft < softPrima) ? 0 : stallo+1; }
+    if(t%25===0) opz?.onProgresso?.(t, best.m ? best.m.s : Infinity);
   }
 
   ENG.BT=BT; ENG.TRIES=TR; ENG.CLUSTER_NODES=CN; ENG.REBAL_NODES=RN; ENG.SALT=0;
+
+  // Rete di sicurezza: se OGNI tentativo è andato in eccezione (best vuoto),
+  // un ultimo run SENZA catch — se fallisce anche questo, l'errore risale al
+  // chiamante con il suo messaggio vero invece di un crash su null.
+  if(!best.turni){ registra(generaCoperturaMinima(anno, mese, ndim, medici, ex).turni); }
+  return { turni: best.turni!, m: best.m!, tentativi: t };
+}
+
+// ─── RIFINITURA: eseguita UNA volta sul tabellone vincente ───────────────────
+export function rifinituraFinale(
+  anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
+  turniIn:TurniMese, msUC=1200,
+): Risultato {
+  const misura = (t:TurniMese) => misuraTabellone(anno, mese, ndim, medici, t);
+  let bestT = turniIn, bestM = misura(turniIn);
+  // Adozione simmetrica, stesso metro di registra(). (La vecchia "adozione
+  // asimmetrica" per i tabelloni aggressivi è rimossa: da quando l'ultima
+  // chance è un'ALTERNATIVA proposta in UI e mai adottata d'ufficio, quel
+  // ramo non era più raggiungibile.)
+  const prova = (turni:TurniMese) => {
+    const m = misura(turni);
+    if(m.s < bestM.s || (m.s === bestM.s && m.soft < bestM.soft)){ bestT=turni; bestM=m; }
+  };
+  // NB: s===0 ⇒ buchi=0 ∧ wkDef=0 ⇒ sui tabelloni perfetti non si esegue nulla
+  // (equivale al vecchio guard `!perfetto &&`).
 
   // ── RIPARAZIONE LOCALE (LNS) ────────────────────────────────────────────
   // Prima dell'ultima chance: si prova a RIPARARE il miglior tentativo invece
   // di rigenerare da capo. Svuota una finestra di ±2 giorni attorno a ogni
   // buco colmabile e la risolve con risolviCluster a budget pieno, lasciando
   // intatto tutto il resto del tabellone. Lavora su una copia: si adotta solo
-  // se registra() la giudica migliore (i buchi possono solo diminuire, il
-  // costo massimo è qualche weekend libero — che il recupero finale sotto e
-  // il peso 1000-contro-10 di misura rendono comunque un buon affare). Se la
-  // riparazione chiude tutti i buchi, l'ultima chance non scatta nemmeno.
-  if(!perfetto && best.m && best.m.buchi>0){
+  // se prova() la giudica migliore (i buchi possono solo diminuire, il costo
+  // massimo è qualche weekend libero — che il recupero sotto e il peso
+  // 1000-contro-10 di misura rendono comunque un buon affare).
+  if(bestM.buchi>0){
     try{
-      const copia = cloneT(best.turni!);
+      const copia = cloneT(bestT);
       const c = makeCtx(anno, mese, ndim, medici, copia);
-      if(riparaBuchi(c, 424243, ENG.REBAL_NODES)) registra(copia);
+      if(riparaBuchi(c, 424243, ENG.REBAL_NODES)) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
@@ -498,13 +551,12 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
   // Weekend liberi mancanti → ultimo riequilibrio col BUDGET NODI PIENO.
   // Anticipato PRIMA dell'ultima chance: così il primario è già il migliore
   // possibile quando lo si confronta con la variante, e il "costo weekend"
-  // mostrato all'utente è calcolato in modo equo. Lavora su una copia: si
-  // adotta solo se registra() la giudica migliore.
-  if(!perfetto && best.m && best.m.wkDef>0){
+  // mostrato all'utente è calcolato in modo equo.
+  if(bestM.wkDef>0){
     try{
-      const copia = cloneT(best.turni!);
+      const copia = cloneT(bestT);
       const c = makeCtx(anno, mese, ndim, medici, copia);
-      if(riequilibraWeekendLiberi(c)) registra(copia);
+      if(riequilibraWeekendLiberi(c)) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
@@ -516,19 +568,26 @@ export function generaMigliorTentativo(anno:number, mese:number, ndim:number, me
   // l'utente in UI. Sui mesi in cui i buchi sono in realtà impossibili,
   // l'ultima chance non copre di più → nessuna variante, nessuna domanda.
   let alternativaUC: AlternativaUC | undefined;
-  if(!perfetto && best.m && best.m.buchi>0){
+  if(bestM.buchi>0){
     try{
-      const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, t0 + maxMs - Date.now()));
-      const mUC = misura(r.turni);
-      if(mUC.buchi < best.m.buchi){                 // copre STRETTAMENTE di più
-        alternativaUC = costruisciAlternativa(best.turni!, r.turni, r.problemi);
+      const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, msUC));
+      const mUC = misuraTabellone(anno, mese, ndim, medici, r.turni);
+      if(mUC.buchi < bestM.buchi){                 // copre STRETTAMENTE di più
+        alternativaUC = costruisciAlternativa(anno, mese, ndim, medici, bestT, r.turni, r.problemi);
       }
     }catch(_){ /* nessuna alternativa: si rilascia solo il primario */ }
   }
 
-  const res = wrap(best.turni!, best.m!);
+  const res = wrapRisultato(bestT, bestM.probs);
   if(alternativaUC) res.alternativaUC = alternativaUC;
   return res;
+}
+
+// API invariata: cerca + rifinitura (percorso sincrono / fallback senza Worker).
+export function generaMigliorTentativo(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, maxMs=12000): Risultato {
+  const t0 = Date.now();
+  const { turni } = cercaMigliorTentativo(anno, mese, ndim, medici, ex, maxMs);
+  return rifinituraFinale(anno, mese, ndim, medici, ex, turni, Math.max(1200, t0 + maxMs - Date.now()));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

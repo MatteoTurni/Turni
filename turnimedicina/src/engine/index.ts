@@ -11,6 +11,7 @@ export { makeCtx, type Ctx } from "./ctx";
 export { validazioneGlobale, riequilibraWeekendLiberi, riparaBuchi } from "./fasi";
 export {
   generaCoperturaMinima, generaConUltimaChance, generaMigliorTentativo,
+  cercaMigliorTentativo, rifinituraFinale, misuraTabellone, type MisuraTab, type OpzioniCerca,
   completaObiettivi, riempimentoEmergenza, problemiResidui, buchiCopertura,
   scoreCopertura, scegliMigliore, calcAmbRotNext,
 } from "./genera";

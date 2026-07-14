@@ -39,11 +39,15 @@ export interface Bilancio {
 const gt = (T: TurniMese, id: number, g: number) => T[id]?.[g]?.t || [];
 
 /** Turni PS (1/2/3) di un medico nel mese, nell'unità di vt(): la notte (3)
- *  pesa 2, mattina e pomeriggio 1. Coincide con la quota PS scalata da D. */
-export function psMedico(T: TurniMese, id: number, nd: number): number {
+ *  pesa 2, mattina e pomeriggio 1. Con `contaSott=false` (default) i turni
+ *  sottolineati valgono 0 e il totale COINCIDE con la quota PS scalata da D
+ *  nel bilancio. Con `contaSott=true` anche i sottolineati contano (col peso
+ *  della loro versione piena): è la modalità del contatore riassuntivo in UI,
+ *  che mostra TUTTI i turni fatti in PS, scalati o no dall'obiettivo. */
+export function psMedico(T: TurniMese, id: number, nd: number, contaSott = false): number {
   let n = 0;
   for (let g = 1; g <= nd; g++)
-    for (const s of gt(T, id, g)) if (PS.includes(s.tipo)) n += vt(s.tipo, s.sott);
+    for (const s of gt(T, id, g)) if (PS.includes(s.tipo)) n += vt(s.tipo, contaSott ? false : s.sott);
   return n;
 }
 
