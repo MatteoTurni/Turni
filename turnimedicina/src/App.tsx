@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Medico, Turno, TurniAll, AlternativaUC } from "./engine/types";
-import { MESI, DL, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
+import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
 import { vt, SPEC } from "./engine/turni";
 import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
@@ -592,6 +592,31 @@ export default function App(){
             </div>
 
             <div style={BOX}>
+              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>GIORNI DI AMBULATORIO</div>
+              <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginBottom:"8px"}}>
+                {[0,1,2,3,4].map(d=>{
+                  const on = regole.giorniAmb.includes(d);
+                  return (
+                    <button key={d}
+                      onClick={()=>updRegole({...regole,giorniAmb:
+                        (on ? regole.giorniAmb.filter(x=>x!==d) : [...regole.giorniAmb,d]).sort((a,b)=>a-b)})}
+                      style={{background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
+                              border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
+                              padding:"7px 13px",cursor:"pointer",fontSize:"11px",fontWeight:700,
+                              fontFamily:"monospace"}}>
+                      {DF[d]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{...LBL,fontSize:"9px",lineHeight:1.6}}>
+                Nei giorni selezionati (se non festivi) viene generato un turno A con la solita
+                rotazione fra i medici abilitati. Nessun giorno selezionato = nessun ambulatorio.
+                I festivi restano sempre esclusi.
+              </div>
+            </div>
+
+            <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>LIMITI PER MEDICO</div>
               {limiti.map(([k,lbl,hint])=>(
                 <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
@@ -633,7 +658,7 @@ export default function App(){
               {RIGA("M","Mattine (minimo di copertura)", fab.m, 1, "#60a5fa")}
               {RIGA("P","Pomeriggi (minimo di copertura)", fab.p, 1, "#a78bfa")}
               {RIGA("N","Notti (una per giorno)", fab.n, 2, "#4ade80")}
-              {RIGA("A","Ambulatori (martedì non festivi)", fab.a, 1, "#34d399")}
+              {RIGA("A",`Ambulatori (${regole.giorniAmb.length?regole.giorniAmb.map(d=>DF[d].toLowerCase()).join(", ")+" non festivi":"nessun giorno"})`, fab.a, 1, "#34d399")}
 
               <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a5f"}}>
                 <span style={{color:"#8fb3d9",fontSize:"11px"}}>Totale lordo</span>
@@ -657,7 +682,7 @@ export default function App(){
 
               <div style={{fontSize:"9px",color:"#3d5878",lineHeight:1.6,marginBottom:"12px"}}>
                 I conteggi sono in turni; il totale è nell'unità della colonna Ob., dove la notte pesa 2.
-                L'ambulatorio non copre la mattina: il martedì servono {fab.a>0?"le mattine minime più l'ambulatorio":"le mattine minime"}.
+                L'ambulatorio non copre la mattina: nei giorni di ambulatorio servono {fab.a>0?"le mattine minime più l'ambulatorio":"le mattine minime"}.
               </div>
 
               <button onClick={()=>setFabbAperto(false)} style={{width:"100%",background:"#1e3a5f",color:"#bfdbfe",
