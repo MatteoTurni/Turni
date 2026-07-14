@@ -37,6 +37,16 @@ describe("dettaglioFabbisogno", () => {
   it("il totale coincide con fabbisognoLordo", () => {
     expect(dettaglioFabbisogno(2026, 7, 31, R).vt).toBe(fabbisognoLordo(2026, 7, 31, R));
   });
+  it("giorniAmb configurabile: mar+mer raddoppia, vuoto azzera", () => {
+    // Luglio 2026: 4 martedì + 5 mercoledì, tutti non festivi → 9 A
+    const r2 = { ...R, giorniAmb: [1, 2] };
+    expect(dettaglioFabbisogno(2026, 6, 31, r2).a).toBe(9);
+    expect(dettaglioFabbisogno(2026, 6, 31, r2).vt).toBe(160);
+    // Nessun giorno di ambulatorio → a = 0
+    const r0 = { ...R, giorniAmb: [] };
+    expect(dettaglioFabbisogno(2026, 6, 31, r0).a).toBe(0);
+    expect(dettaglioFabbisogno(2026, 6, 31, r0).vt).toBe(151);
+  });
 });
 
 describe("psMedico", () => {

@@ -246,3 +246,51 @@ describe("rotazione ambulatorio", () => {
     expect(calcAmbRotNext(TM, medici, anno, mese, nd, 1)).toBe(1);
   });
 });
+
+describe("giorni di ambulatorio configurabili (regole.giorniAmb)", () => {
+  it("con martedì+mercoledì la A viene generata su ENTRAMBI i giorni feriali", () => {
+    setRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), giorniAmb:[1,2] });
+    const anno=2026, mese=5, nd=dimOf(anno,mese);   // giugno 2026 (2/6 festivo di martedì)
+    const medici = mediciTest();
+    const r = generaMigliorTentativo(anno, mese, nd, medici, {}, 3000);
+    expect(r.ok).toBe(true);
+
+    for(let g=1; g<=nd; g++){
+      const dw = dowOf(anno,mese,g), fer = !isHol(anno,mese,g);
+      const assegnatari = medici.filter(m=>(r.turni[m.id]?.[g]?.t||[]).some(s=>s.tipo==="A"));
+      if((dw===1||dw===2) && fer){
+        // ogni martedì/mercoledì feriale ha l'ambulatorio, a un abilitato
+        expect(assegnatari.length).toBeGreaterThanOrEqual(1);
+        expect(assegnatari.every(m=>m.ambulatorio)).toBe(true);
+      } else {
+        // nessuna A automatica fuori dai giorni configurati
+        expect(assegnatari.length).toBe(0);
+      }
+    }
+  });
+
+  it("calcAmbRotNext segue i giorni configurati: una A del mercoledì fa avanzare l'indice", () => {
+    setRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), giorniAmb:[1,2] });
+    const anno=2026, mese=5, nd=dimOf(anno,mese);
+    const medici = mediciTest();                       // abilitati: ids 2,5,6,8 → indici 0..3
+    // Mercoledì 24 giugno 2026: A automatica a id 8 (idx 3) → next = 0.
+    // Col solo martedì (default) questo giorno sarebbe IGNORATO.
+    const T: TurniMese = { "8": { "24": { t:[{tipo:"A",sott:false,man:false}] } } };
+    expect(dowOf(anno,mese,24)).toBe(2);
+    expect(calcAmbRotNext(T, medici, anno, mese, nd, 1)).toBe(0);
+    setRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)));
+    expect(calcAmbRotNext(T, medici, anno, mese, nd, 1)).toBe(1);
+  });
+
+  it("con giorniAmb vuoto non viene generata NESSUNA A e la validazione non protesta", () => {
+    setRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), giorniAmb:[] });
+    const anno=2026, mese=5, nd=dimOf(anno,mese);
+    const medici = mediciTest();
+    const r = generaMigliorTentativo(anno, mese, nd, medici, {}, 3000);
+    expect(r.ok).toBe(true);
+    expect(r.problemi).toEqual([]);
+    for(let g=1; g<=nd; g++)
+      for(const m of medici)
+        expect((r.turni[m.id]?.[g]?.t||[]).some(s=>s.tipo==="A")).toBe(false);
+  });
+});

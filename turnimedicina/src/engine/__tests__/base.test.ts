@@ -44,6 +44,19 @@ describe("regole", () => {
     expect(r2.fabb.fer.pMax).toBe(REGOLE_DEFAULT.fabb.fer.pMax);
     expect(mergeRegole(null)).toEqual(REGOLE_DEFAULT);
   });
+
+  it("giorniAmb: assente → default martedì; presente → sanitizzato", () => {
+    // Salvataggi pre-v0.3.8 senza il campo → default [1]
+    expect(mergeRegole({ maxNotti: 4 } as any).giorniAmb).toEqual([1]);
+    // Presente e valido → conservato (ordinato, dedup)
+    expect(mergeRegole({ giorniAmb: [2, 1, 2] } as any).giorniAmb).toEqual([1, 2]);
+    // Vuoto è LEGITTIMO: nessun ambulatorio
+    expect(mergeRegole({ giorniAmb: [] } as any).giorniAmb).toEqual([]);
+    // Valori fuori range (weekend, negativi, non interi) scartati
+    expect(mergeRegole({ giorniAmb: [5, 6, -1, 1.5, 3] } as any).giorniAmb).toEqual([3]);
+    // Tipo sbagliato → default
+    expect(mergeRegole({ giorniAmb: "martedì" } as any).giorniAmb).toEqual([1]);
+  });
 });
 
 describe("utility turni", () => {
