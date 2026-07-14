@@ -4,7 +4,8 @@ import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./
 import { vt, SPEC } from "./engine/turni";
 import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
-import { generaMigliorTentativo, completaObiettivi, calcAmbRotNext } from "./engine/genera";
+import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
+import { generaParallelo } from "./generaParallelo";
 import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
 import { esportaExcel } from "./export/excel";
 import { SC } from "./components/costanti";
@@ -92,12 +93,16 @@ export default function App(){
   const generaCopertura = () => {
     setBusy(true);
     setAltUC(null);
-    setTimeout(()=>{
+    setTimeout(async ()=>{
       try{
         setPrevContext(turniAll,anno,mese);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
-        const r = generaMigliorTentativo(anno,mese,nd,medici,turni);
+        // GENERAZIONE PARALLELA (v0.3.9): pool di Web Worker, ognuno con la
+        // propria sequenza di semi → più tentativi nello stesso tempo e main
+        // thread libero. Fallback automatico al percorso sincrono se i Worker
+        // non sono disponibili.
+        const r = await generaParallelo(anno,mese,nd,medici,turni);
         saveAmbRot({ nextIdx: calcAmbRotNext(r.turni, medici, anno, mese, nd, rotStart) });
         setTurni(r.turni);
         if(r.ok) showMsg("✓ Copertura minima completata!");
@@ -172,7 +177,9 @@ export default function App(){
     return n;
   };
   // Turni PS (1/2/3) del medico, pesati come nel bilancio: la notte (3) vale 2.
-  const cntPS = (id:number) => psMedico(turni, id, nd);
+  // Contati ANCHE i sottolineati (contaSott=true): il riassunto mostra tutti i
+  // turni fatti in PS; il bilancio (quota scalata da D) resta ai soli pieni.
+  const cntPS = (id:number) => psMedico(turni, id, nd, true);
   // Riepilogo generale del medico: M/P/N di reparto + carico weekend.
   const rieM  = (id:number) => riepilogoMedico(turni, id, nd, anno, mese);
 
