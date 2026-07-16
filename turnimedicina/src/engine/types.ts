@@ -54,6 +54,14 @@ export interface AlternativaUC {
   weekendPersi: WeekendPerso[];    // medici che perdono weekend liberi vs primario
 }
 
+/** Diagnosi EMPIRICA della generazione (v0.3.10): per ogni cella "g-f", in
+ *  quanti tentativi del multi-tentativo è rimasta scoperta. Una cella bucata
+ *  nel tabellone finale con conteggio === tentativi non è MAI stata coperta
+ *  da nessun tentativo: quasi certamente impossibile per il motore (la prova
+ *  formale, dove esiste, arriva da diagnosiStatica). Solo telemetria in
+ *  lettura: non influenza in alcun modo la ricerca. */
+export interface DiagnosiGen { tentativi:number; conteggi: Record<string, number>; }
+
 export interface Risultato {
   turni: TurniMese;
   ok: boolean;
@@ -62,4 +70,6 @@ export interface Risultato {
   /** Presente solo quando esiste una variante di ultima chance che copre di più
    *  del primario. Opzionale: i consumatori esistenti la ignorano. */
   alternativaUC?: AlternativaUC;
+  /** Presente solo per le generazioni multi-tentativo (pulsante ①). */
+  diagnosi?: DiagnosiGen;
 }

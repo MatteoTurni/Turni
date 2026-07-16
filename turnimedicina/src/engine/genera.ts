@@ -395,10 +395,14 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // punteggio non distingueva più il tabellone che copre il COPRIBILE.
   // In probs (e quindi in UI) restano dichiarate col fabbisogno pieno.
   let s = 0, buchi = 0, wkDef = 0;
+  // `celle`: le stesse celle contate in `buchi`, in forma esplicita. Serve alla
+  // diagnosi empirica (conteggio "mai coperta" fra i tentativi); additivo, i
+  // consumatori esistenti continuano a leggere solo s/soft/probs/buchi/wkDef.
+  const celle: CellaScoperta[] = [];
   for(let g=1; g<=ndim; g++){
-    if(c.cf(g,"M")<c.needEff(g,"M")) buchi++;
-    if(c.cf(g,"P")<c.needEff(g,"P")) buchi++;
-    if(c.cf(g,"N")<c.needEff(g,"N")) buchi++;
+    if(c.cf(g,"M")<c.needEff(g,"M")){ buchi++; celle.push({g,f:"M"}); }
+    if(c.cf(g,"P")<c.needEff(g,"P")){ buchi++; celle.push({g,f:"P"}); }
+    if(c.cf(g,"N")<c.needEff(g,"N")){ buchi++; celle.push({g,f:"N"}); }
   }
   for(const m of c.mrMdc) wkDef += Math.max(0, c.wkTargetMed(m.id)-c.cntWkLiberi(m.id));
   s = buchi*1000 + (!c.checkRegolaN()?500:0) + wkDef*10 + probs.length;
@@ -408,7 +412,7 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const wkLib   = c.mrMdc.map(m2=>c.cntWkLiberi(m2.id));
   const wkExtra = c.mrMdc.reduce((q,m2)=>q+Math.max(0,c.cntWkLiberi(m2.id)-c.wkTargetMed(m2.id)),0);
   const soft = varOf(notti)*100 + varOf(carichi)*10 + varOf(wkLib)*5 - wkExtra*2;
-  return { s, soft, probs, buchi, wkDef };
+  return { s, soft, probs, buchi, wkDef, celle };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -455,8 +459,12 @@ export function cercaMigliorTentativo(
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
   // e il control-flow di TS non le vedrebbe, stringendo i tipi a `null`.
   const best: { turni: TurniMese|null; m: MisuraTab|null } = { turni:null, m:null };
+  // DIAGNOSI EMPIRICA (v0.3.10): per ogni cella "g-f", in quanti tentativi è
+  // rimasta scoperta. Solo telemetria: non tocca la ricerca né l'adozione.
+  const conteggi: Record<string, number> = {};
   const registra = (turni:TurniMese) => {
     const m = misura(turni);
+    for(const c of m.celle){ const k=`${c.g}-${c.f}`; conteggi[k]=(conteggi[k]||0)+1; }
     const adotta = best.m===null || m.s < best.m.s || (m.s === best.m.s && m.soft < best.m.soft);
     if(adotta){ best.m=m; best.turni=turni; opz?.onMiglioramento?.(turni, m); }
     return best.m!.s===0;
@@ -510,7 +518,7 @@ export function cercaMigliorTentativo(
   // un ultimo run SENZA catch — se fallisce anche questo, l'errore risale al
   // chiamante con il suo messaggio vero invece di un crash su null.
   if(!best.turni){ registra(generaCoperturaMinima(anno, mese, ndim, medici, ex).turni); }
-  return { turni: best.turni!, m: best.m!, tentativi: t };
+  return { turni: best.turni!, m: best.m!, tentativi: t, conteggi };
 }
 
 // ─── RIFINITURA: eseguita UNA volta sul tabellone vincente ───────────────────
@@ -586,8 +594,10 @@ export function rifinituraFinale(
 // API invariata: cerca + rifinitura (percorso sincrono / fallback senza Worker).
 export function generaMigliorTentativo(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, maxMs=12000): Risultato {
   const t0 = Date.now();
-  const { turni } = cercaMigliorTentativo(anno, mese, ndim, medici, ex, maxMs);
-  return rifinituraFinale(anno, mese, ndim, medici, ex, turni, Math.max(1200, t0 + maxMs - Date.now()));
+  const { turni, tentativi, conteggi } = cercaMigliorTentativo(anno, mese, ndim, medici, ex, maxMs);
+  const res = rifinituraFinale(anno, mese, ndim, medici, ex, turni, Math.max(1200, t0 + maxMs - Date.now()));
+  res.diagnosi = { tentativi, conteggi };
+  return res;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
