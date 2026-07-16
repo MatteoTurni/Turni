@@ -642,7 +642,7 @@ export default function App(){
         const BOX: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
         const righe: [Fascia,string][] = [["fer","Feriale"],["sab","Sabato"],["fest","Domenica / Festivo"]];
         const limiti: [CampoTop,string,string][] = [
-          ["maxNotti","Max notti / mese","Tetto di notti (N) assegnabili in automatico a ciascun medico nel mese."],
+          ["maxNotti","Max notti / mese","Tetto di notti per medico nel mese. Contano tutte le notti già in tabellone — N e 3, anche sottolineate — più quelle assegnate in automatico."],
           ["maxNottiConsec","Max notti di fila","Notti ravvicinate (una sola notte libera in mezzo: N-libero-N-libero-N) oltre le quali la successiva è vietata. 2 = ammesse due notti così, la terza no."],
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
@@ -720,6 +720,21 @@ export default function App(){
                   </div>
                 </div>
               ))}
+              {(()=>{ const on = regole.notteLiberoNotte; return (
+                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"2px"}}>
+                  <button onClick={()=>updRegole({...regole,notteLiberoNotte:!on})}
+                    style={{width:"52px",background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
+                            border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
+                            padding:"5px 0",cursor:"pointer",fontSize:"11px",fontWeight:700,
+                            fontFamily:"monospace"}}>
+                    {on?"ON":"OFF"}
+                  </button>
+                  <div>
+                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Notte → libero → notte</div>
+                    <div style={{...LBL,fontSize:"9px"}}>Se attivo, due giorni dopo una notte è ammessa un'altra Notte (invece che al massimo un Pomeriggio) già nella generazione di base, e il pattern non è più segnalato come violazione. Resta il tetto «Max notti di fila». Se spento, la deroga resta usata solo dall'ultima chance.</div>
+                  </div>
+                </div>
+              );})()}
             </div>
           </div>
         );
