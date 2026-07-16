@@ -453,7 +453,7 @@ export interface OpzioniCerca {
 export function cercaMigliorTentativo(
   anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
   maxMs=12000, opz?:OpzioniCerca,
-): { turni:TurniMese; m:MisuraTab; tentativi:number } {
+): { turni:TurniMese; m:MisuraTab; tentativi:number; conteggi:Record<string,number> } {
   const misura = (t:TurniMese) => misuraTabellone(anno, mese, ndim, medici, t);
   const BT=ENG.BT, TR=ENG.TRIES, CN=ENG.CLUSTER_NODES, RN=ENG.REBAL_NODES;   // budget originali
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
