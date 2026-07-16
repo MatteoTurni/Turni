@@ -20,8 +20,9 @@ function bruteCnt(T: TurniMese, id: number, ndim: number){
   let t=0; for(let g=1;g<=ndim;g++) for(const s of (T[id]?.[g]?.t||[])) t+=vt(s.tipo,s.sott);
   return t;
 }
+// v0.3.11: ai fini di cntN contano TUTTE le notti (N e 3, anche sottolineate).
 function bruteCntN(T: TurniMese, id: number, ndim: number){
-  let n=0; for(let g=1;g<=ndim;g++) for(const s of (T[id]?.[g]?.t||[])) if(isNot(s.tipo)&&!s.sott) n++;
+  let n=0; for(let g=1;g<=ndim;g++) for(const s of (T[id]?.[g]?.t||[])) if(isNot(s.tipo)) n++;
   return n;
 }
 // Vista normalizzata di T (le celle vuote sono equivalenti a celle assenti).
