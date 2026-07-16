@@ -145,9 +145,16 @@ export function diagnosiStatica(
     // giorni in cui il medico potrebbe staticamente fare la notte
     let gg = 0;
     for(let g=1;g<=ndim;g++) if(opzioni(m,g).includes("N") && covMan(g,"N")===0) gg++;
-    const c = Math.min(REG.maxNotti, gg);
+    // BUDGET RESIDUO (v0.3.11): le notti MANUALI già presenti (N e 3, anche
+    // sottolineate — stessa semantica di cntN in ctx) consumano il tetto
+    // maxNotti: al motore restano solo le rimanenti. Fatti immovibili → il
+    // certificato resta una sovrastima corretta della capacità.
+    let nMan = 0;
+    for(let g=1;g<=ndim;g++) nMan += man(m.id,g).filter(s=>isNot(s.tipo)).length;
+    const budget = Math.max(0, REG.maxNotti - nMan);
+    const c = Math.min(budget, gg);
     capNotti += c;
-    if(c<REG.maxNotti) dett.push(`${m.nome.split(" ").pop()} max ${c}${m.stato==="MDC"?" (MDC: serve un \u00AB3\u00BB in giornata)":""}`);
+    if(c<REG.maxNotti) dett.push(`${m.nome.split(" ").pop()} max ${c}${nMan?` (${nMan} nott${nMan===1?"e":"i"} manuali nel mese)`:""}${m.stato==="MDC"?" (MDC: serve un \u00AB3\u00BB in giornata)":""}`);
   }
   const mesi: CertMese[] = [];
   if(richieste > capNotti){

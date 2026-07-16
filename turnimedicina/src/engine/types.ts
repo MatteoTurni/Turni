@@ -29,6 +29,11 @@ export interface FasciaFabb { mMin: number; mMax: number; pMin: number; pMax: nu
 export interface Regole {
   maxNotti: number;
   maxNottiConsec: number;   // max notti "di fila" (a passo 2: N-libero-N-libero-N…)
+  /** true = dopo una notte, il 2° giorno (g+2) può essere di nuovo una Notte
+   *  (N-libero-N) già nella generazione DI BASE e nella validazione, non solo
+   *  nell'ultima chance. Il tetto maxNottiConsec sulle catene a passo 2 resta
+   *  sempre attivo. false = comportamento storico (a g+2 al massimo un P). */
+  notteLiberoNotte: boolean;
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;

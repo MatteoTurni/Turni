@@ -11,6 +11,7 @@ import type { Regole } from "./types";
 export const REGOLE_DEFAULT: Regole = {
   maxNotti: 5,      // max notti/mese per medico
   maxNottiConsec: 2,// max notti "di fila" a passo 2 (N-libero-N-libero-N = 3 → vietato)
+  notteLiberoNotte: false, // N-libero-N in generazione base: OFF = solo ultima chance (storico)
   maxConsec: 7,     // max giorni consecutivi di lavoro
   wkTarget: 2,      // obiettivo weekend liberi (resta ADATTIVO: è il tetto)
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
@@ -35,7 +36,10 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const gA = Array.isArray(s.giorniAmb)
     ? [...new Set(s.giorniAmb.filter(g=>Number.isInteger(g)&&g>=0&&g<=4))].sort((a,b)=>a-b)
     : d.giorniAmb;
-  return { ...d, ...s, giorniAmb: gA, fabb:{
+  // notteLiberoNotte: campo ASSENTE (salvataggi pre-v0.3.11) → default false;
+  // presente ma non boolean → coercizione difensiva.
+  const nLN = s.notteLiberoNotte===undefined ? d.notteLiberoNotte : !!s.notteLiberoNotte;
+  return { ...d, ...s, giorniAmb: gA, notteLiberoNotte: nLN, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},

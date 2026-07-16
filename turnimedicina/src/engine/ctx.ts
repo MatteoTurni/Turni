@@ -42,9 +42,22 @@ export function makeCtx(
 ){
   const REG = getRegole();
 
+  // ── REGOLA CONFIGURABILE notte→libero→notte (v0.3.11) ──────────────────────
+  // Con REG.notteLiberoNotte attiva, la semantica di relaxN (a g+2 dopo una
+  // notte è ammessa anche una Notte) diventa la regola NORMALE del reparto:
+  // vale per la generazione di base, per add(), per checkRegolaN e per la
+  // validazione (un N-libero-N non è più una violazione). Il parametro
+  // relaxN dell'ultima chance resta un'eccezione locale come prima; qui si
+  // calcola l'OR una sola volta, prima che le closure lo catturino.
+  relaxN = !!relaxN || REG.notteLiberoNotte === true;
+
   // ── contatori incrementali per-medico ──────────────────────────────────────
   const cellVal = (a: Turno[]) => { let v=0; for(const s of a) v+=vt(s.tipo,!!s.sott); return v; };
-  const cellNot = (a: Turno[]) => { let v=0; for(const s of a) if(isNot(s.tipo)&&!s.sott) v++; return v; };
+  // Notti ai fini del TETTO maxNotti e dell'equità (byN, varianza soft): una
+  // notte affatica il medico ovunque sia fatta → contano N e 3, COMPRESE le
+  // varianti sottolineate (v0.3.11; prima i sottolineati erano esclusi). Il
+  // peso nel carico/bilancio resta invariato (vt: sottolineato = 0).
+  const cellNot = (a: Turno[]) => { let v=0; for(const s of a) if(isNot(s.tipo)) v++; return v; };
   const cntMap  = new Map<number, number>();
   const cntNMap = new Map<number, number>();
   // Contatori di FABBISOGNO per giorno (solo turni reali M/P/N, solo medici
@@ -233,8 +246,8 @@ export function makeCtx(
   // Una CATENA di notti = notti distanziate di 2 giorni, cioè con un solo giorno
   // libero in mezzo (N, libero, N, libero, N…). È la spaziatura più fitta
   // possibile: la Regola N tiene sempre libero il giorno DOPO la notte, e solo il
-  // relaxN dell'ultima chance ammette la N successiva già a g+2 (in modalità
-  // normale le notti stanno ad almeno 3 giorni). Due notti a 3+ giorni (≥2 liberi
+  // relaxN (ultima chance, oppure regola notteLiberoNotte attiva) ammette la N
+  // successiva già a g+2 (in modalità stretta le notti stanno ad almeno 3 giorni). Due notti a 3+ giorni (≥2 liberi
   // in mezzo) NON fanno catena: è una pausa vera. Tetto configurabile dal pannello
   // Regole; 0 non ha senso (vieterebbe ogni notte) → minimo effettivo 1.
   const MAX_NOTTI_CONSEC = Math.max(1, REG.maxNottiConsec);
@@ -253,7 +266,7 @@ export function makeCtx(
     // Tetto notti di fila: non superare MAX_NOTTI_CONSEC notti nella stessa catena
     // a passo 2 (vale sia in normale sia in relaxN, dove le catene fitte nascono).
     if(!canNConsec(id,g)) return false;
-    // relaxN (attivo SOLO nell'ultima chance): g+2 dopo una notte può essere anche
+    // relaxN (ultima chance, o regola notteLiberoNotte): g+2 dopo una notte può essere anche
     // una Notte, non solo un Pomeriggio. Resta fermo il vincolo g+1 libero e M vietata a g+2.
     if(postN1(id,g)||(!relaxN&&postN2(id,g))) return false;
     if(hasAnteN(id,g)) return false;                               // ANA/L/per11/X/104 in g+1 bloccano la Notte in g
