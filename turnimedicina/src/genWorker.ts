@@ -9,7 +9,8 @@
 // Protocollo (worker → main):
 //   { tipo:"best",      turni, s, soft, buchi }   a ogni tabellone migliore
 //   { tipo:"progresso", tentativi, s }            ogni ~25 tentativi
-//   { tipo:"fine",      turni, tentativi }        best finale del worker
+//   { tipo:"fine",      turni, tentativi, conteggi }  best finale del worker
+//                                                 (conteggi: diagnosi empirica)
 //   { tipo:"errore",    msg }                     eccezione irrecuperabile
 import { cercaMigliorTentativo } from "./engine/genera";
 import { setRegole } from "./engine/regole";
@@ -41,7 +42,7 @@ ws.onmessage = (e: MessageEvent) => {
       onMiglioramento: (turni, m) => ws.postMessage({ tipo:"best", turni, s:m.s, soft:m.soft, buchi:m.buchi }),
       onProgresso:     (tentativi, s) => ws.postMessage({ tipo:"progresso", tentativi, s }),
     });
-    ws.postMessage({ tipo:"fine", turni:r.turni, tentativi:r.tentativi });
+    ws.postMessage({ tipo:"fine", turni:r.turni, tentativi:r.tentativi, conteggi:r.conteggi });
   }catch(err){
     ws.postMessage({ tipo:"errore", msg:String((err as Error)?.message ?? err) });
   }

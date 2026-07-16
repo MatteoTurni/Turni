@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import type { Medico, Turno, TurniAll, AlternativaUC } from "./engine/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Medico, Turno, TurniAll, AlternativaUC, DiagnosiGen } from "./engine/types";
+import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
 import { vt, SPEC } from "./engine/turni";
 import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
@@ -63,6 +64,10 @@ export default function App(){
   // generazione, per poterlo ricalcolare sul tabellone effettivamente adottato
   // se l'utente applica la variante.
   const [altUC,  setAltUC]  = useState<{alt:AlternativaUC; rotStart:number}|null>(null);
+  // DIAGNOSI (v0.3.10) — diagGen: telemetria dell'ULTIMA generazione (per mese
+  // corrente; si azzera cambiando mese). diagOpen: pannello espanso/compresso.
+  const [diagGen, setDiagGen] = useState<DiagnosiGen|null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
   const [busy,   setBusy]   = useState(false);
   const [printing, setPrinting] = useState(false);
   const calRef = useRef<HTMLDivElement>(null);
@@ -82,6 +87,7 @@ export default function App(){
   };
 
   useEffect(()=>{ saveS({anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
+  useEffect(()=>{ setDiagGen(null); },[anno,mese]);   // la telemetria vale solo per il mese generato
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
 
@@ -109,6 +115,7 @@ export default function App(){
         else showMsg("⚠ Copertura parziale (mostrato il tabellone migliore): "+r.problemi.slice(0,4).join(" · "),"warn");
         // Variante di ultima chance disponibile → si propone senza applicarla.
         if(r.alternativaUC) setAltUC({ alt:r.alternativaUC, rotStart });
+        setDiagGen(r.diagnosi ?? null);
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
@@ -203,6 +210,39 @@ export default function App(){
     }
     return n;
   };
+
+  // ── DIAGNOSI COPERTURA (v0.3.10) ──────────────────────────────────────────
+  // Statica: certificati d'impossibilità dai soli turni MANUALI del mese
+  // (diagnosiStatica filtra i manuali da sé: si può passare `turni` intero).
+  // Ricalcolata a ogni modifica: vale anche PRIMA di generare.
+  const diagStat = useMemo(
+    ()=>diagnosiStatica(anno, mese, nd, medici, turni, regole),
+    [anno, mese, nd, medici, turni, regole]);
+  const minDi = (g:number,f:"M"|"P"|"N") => {
+    const mt=metaG(g), fb=mt.sp?regole.fabb.fest:mt.sat?regole.fabb.sab:regole.fabb.fer;
+    return f==="M"?fb.mMin:f==="P"?fb.pMin:1;
+  };
+  // Badge per fascia (solo se la cella è DAVVERO sotto-minimo adesso):
+  // ⊘ certificata (cella o giornata) > ⚠ mai coperta in nessun tentativo.
+  const diagFlag = (g:number,f:"M"|"P"|"N"): "imp"|"mai"|undefined => {
+    if(cfApp(g,f) >= minDi(g,f)) return undefined;
+    if(diagStat.celle.some(c=>c.g===g&&c.f===f) || diagStat.giorni.some(d=>d.g===g)) return "imp";
+    if(diagGen && diagGen.tentativi>=10 && (diagGen.conteggi[`${g}-${f}`]||0)===diagGen.tentativi) return "mai";
+    return undefined;
+  };
+  // Celle bucate MAI coperte (non già certificate): per il pannello.
+  const maiCoperte = useMemo(()=>{
+    if(!diagGen || diagGen.tentativi<10) return [] as {g:number;f:"M"|"P"|"N"}[];
+    const out:{g:number;f:"M"|"P"|"N"}[]=[];
+    for(let g=1;g<=nd;g++) for(const f of ["M","P","N"] as const){
+      if(cfApp(g,f)>=minDi(g,f)) continue;
+      if(diagStat.celle.some(c=>c.g===g&&c.f===f)||diagStat.giorni.some(d=>d.g===g)) continue;
+      if((diagGen.conteggi[`${g}-${f}`]||0)===diagGen.tentativi) out.push({g,f});
+    }
+    return out;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[diagGen, diagStat, turni, regole, nd]);
+  const nCert = diagStat.celle.length + diagStat.giorni.length + diagStat.mese.length;
 
   // ── salvataggio dal DocModal (nuovo o modifica) ────────────────────────────
   const salvaDoc = (f: DocDraft) => {
@@ -356,6 +396,51 @@ export default function App(){
         );
       })()}
 
+      {/* PANNELLO DIAGNOSI COPERTURA (v0.3.10) — impossibilità certificate (⊘)
+          e celle mai coperte in nessun tentativo (⚠). Solo lettura: aiuta a
+          capire PERCHÉ certi buchi restano, senza toccare la generazione. */}
+      {tab==="cal" && (nCert>0 || maiCoperte.length>0) && (()=>{
+        const FL: Record<string,string> = { M:"mattine", P:"pomeriggi", N:"notte" };
+        const gLbl = (g:number)=>`${DF[dowOf(anno,mese,g)].slice(0,3)} ${g}`;
+        // "mai coperte" raggruppate per giorno: "Mar 4: mattine · pomeriggi"
+        const maiByG = new Map<number,string[]>();
+        for(const c of maiCoperte){ const l=maiByG.get(c.g)||[]; l.push(FL[c.f]); maiByG.set(c.g,l); }
+        return (
+          <div className="np" style={{margin:"8px 12px 0",background:"#0b1220",border:"1px solid #4c1d95",
+            borderRadius:"10px",fontFamily:"monospace",fontSize:"11px",color:"#e2f0ff",overflow:"hidden"}}>
+            <div onClick={()=>setDiagOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:"8px",
+              padding:"8px 12px",cursor:"pointer",userSelect:"none"}}>
+              <span style={{color:"#a78bfa",fontWeight:700}}>Diagnosi copertura</span>
+              {nCert>0 && <span style={{color:"#c4b5fd"}}>&#8856; {nCert} impossibil{nCert===1?"e certificata":"i certificate"}</span>}
+              {maiCoperte.length>0 && <span style={{color:"#fbbf24"}}>&#9888; {maiCoperte.length} mai copert{maiCoperte.length===1?"a":"e"} in {diagGen?.tentativi} tentativi</span>}
+              <span style={{marginLeft:"auto",color:"#4b7aad"}}>{diagOpen?"▾":"▸"}</span>
+            </div>
+            {diagOpen && (
+              <div style={{padding:"0 12px 10px",borderTop:"1px solid #1e3a5f"}}>
+                {(diagStat.giorni.length>0||diagStat.celle.length>0||diagStat.mese.length>0) && (
+                  <div style={{marginTop:"8px"}}>
+                    <div style={{color:"#a78bfa",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#8856; CERTIFICATE (dimostrate dai turni manuali e dalle regole — nessuna generazione potrà coprirle)</div>
+                    {diagStat.giorni.map((d,i)=><div key={"g"+i} style={{color:"#c4b5fd",margin:"3px 0"}}>&#8226; {d.motivo}</div>)}
+                    {diagStat.celle.map((c,i)=><div key={"c"+i} style={{color:"#c4b5fd",margin:"3px 0"}}>&#8226; {c.motivo}</div>)}
+                    {diagStat.mese.map((m,i)=><div key={"m"+i} style={{color:"#c4b5fd",margin:"3px 0"}}>&#8226; {m.motivo}</div>)}
+                  </div>
+                )}
+                {maiByG.size>0 && (
+                  <div style={{marginTop:"8px"}}>
+                    <div style={{color:"#fbbf24",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#9888; MAI COPERTE — scoperte in TUTTI i {diagGen?.tentativi} tentativi: quasi certamente incompatibili con gli altri vincoli (assenze e turni dei giorni vicini)</div>
+                    {[...maiByG.entries()].sort((x,y)=>x[0]-y[0]).map(([g,fl])=>
+                      <div key={g} style={{color:"#fde68a",margin:"3px 0"}}>&#8226; {gLbl(g)}: {fl.join(" · ")}</div>)}
+                  </div>
+                )}
+                <div style={{marginTop:"8px",fontSize:"9px",color:"#64748b"}}>
+                  I badge &#8856;/&#9888; compaiono anche sulla riga Copertura M&#183;P&#183;N in fondo al calendario. La diagnosi &#232; solo informativa: non cambia come il motore genera.
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* CALENDARIO */}
       {tab==="cal"&&(
         <div ref={calRef} style={{overflowX:"auto"}}>
@@ -424,7 +509,8 @@ export default function App(){
                   const mt=metaG(g);
                   return (
                     <td key={g} style={{background:"#0b1626",border:"1px solid #1e3a5f",padding:"2px 1px",textAlign:"center",verticalAlign:"middle"}}>
-                      <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}/>
+                      <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}
+                        diag={{M:diagFlag(g,"M"),P:diagFlag(g,"P"),N:diagFlag(g,"N")}}/>
                     </td>
                   );
                 })}

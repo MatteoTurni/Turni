@@ -38,6 +38,9 @@ export function generaParallelo(
     let bestT: TurniMese | null = null;
     let bestS = Infinity, bestSoft = Infinity;
     const tentPerW = new Array<number>(nW).fill(0);
+    // DIAGNOSI EMPIRICA (v0.3.10): somma dei conteggi "cella scoperta" di tutti
+    // i worker. I tentativi totali sono la somma dei tentativi per worker.
+    const conteggiTot: Record<string, number> = {};
     const workers: Worker[] = [];
     let chiusi = 0, risolto = false;
 
@@ -53,7 +56,9 @@ export function generaParallelo(
       for(const w of workers) w.terminate();
       // Nessun best (tutti i worker in errore) → percorso sincrono completo.
       if(!bestT){ resolve(generaMigliorTentativo(anno, mese, ndim, medici, ex, Math.min(4000, maxMs))); return; }
-      resolve(rifinituraFinale(anno, mese, ndim, medici, ex, bestT, 2000));
+      const res = rifinituraFinale(anno, mese, ndim, medici, ex, bestT, 2000);
+      res.diagnosi = { tentativi: tentPerW.reduce((a,b)=>a+b,0), conteggi: conteggiTot };
+      resolve(res);
     };
     // Guardia: se un worker non risponde (tab in background, throttling) non si
     // aspetta per sempre — si conclude col migliore raccolto fin lì.
@@ -66,8 +71,9 @@ export function generaParallelo(
       }catch(_){ if(++chiusi>=nW) concludi(); continue; }
       workers.push(w);
       w.onmessage = (ev: MessageEvent) => {
-        const d = ev.data as { tipo:string; turni?:TurniMese; tentativi?:number };
+        const d = ev.data as { tipo:string; turni?:TurniMese; tentativi?:number; conteggi?:Record<string,number> };
         if((d.tipo==="best" || d.tipo==="fine") && d.turni) considera(d.turni);
+        if(d.tipo==="fine" && d.conteggi) for(const k in d.conteggi) conteggiTot[k]=(conteggiTot[k]||0)+d.conteggi[k];
         if(d.tipo==="progresso" || d.tipo==="fine"){
           if(d.tentativi!=null) tentPerW[i]=d.tentativi;
           onProgress?.({ tentativi: tentPerW.reduce((a,b)=>a+b,0), s: bestS===Infinity?-1:bestS, workers: nW });
