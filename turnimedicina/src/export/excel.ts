@@ -35,8 +35,11 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   });
 
   // ---------- righe (stesso impianto del modello, 1-based in ExcelJS) ----------
-  // r1: fascia logo · r2-r4: intestazione testuale · r5: spaziatore ·
+  // r1: margine alto · r2-r4: intestazione testuale · r5: fascia banner ·
   // r6: MEDICINA · r7: anno + numeri giorno · r8: mese + lettere giorno · r9+: medici
+  // v0.3.12: il banner stava in r1 sopra i testi, che gli finivano attaccati
+  // (sovrapposizione visiva). Nel modello ospedaliero l'ordine è testi → banner:
+  // ora il banner vive in r5, con margine sopra e sotto.
   const hdr = [
     "Azienda Ospedaliero-Universitaria  ",
     "San Giovanni di Dio e Ruggi d\u2019Aragona  -  Salerno",
@@ -69,7 +72,27 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
       const ts = (turni[m.id]?.[g]?.t || [])
         .filter(s => s.tipo !== "X")
         .sort((a, b) => rankTurno(a.tipo) - rankTurno(b.tipo));
-      if (ts.length > 0) ws.getCell(r, 1 + g).value = ts.map(s => s.tipo).join("");
+      if (ts.length > 0) {
+        const cell = ws.getCell(r, 1 + g);
+        // v0.3.12: i turni sottolineati (sott) vanno resi con l'underline anche
+        // nel file Excel, come nel modello dell'ospedale. Una cella può
+        // mescolare turni normali e sottolineati (es. M reale + 2 sottolineato),
+        // quindi si usa il rich text di ExcelJS: un "run" per turno, con
+        // underline solo sui run sott. I font per-run prevalgono sullo stile di
+        // cella impostato dal loop degli stili più sotto, che resta invariato.
+        const testo = ts.map(s => s.tipo).join("");
+        const sz = corpoTurni(testo);
+        if (ts.some(s => s.sott)) {
+          cell.value = {
+            richText: ts.map(s => ({
+              text: s.tipo,
+              font: { name: "Calibri", size: sz, bold: true, ...(s.sott ? { underline: true } : {}) },
+            })),
+          };
+        } else {
+          cell.value = testo;
+        }
+      }
     }
   });
   const lastRow = FIRST_MED + medici.length - 1;
@@ -82,7 +105,7 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
       cell.border = BORD;
       cell.font = (c === 1 || r === R_NUM || isDow)
         ? { name: "Arial", size: 12, bold: isDow }
-        : { name: "Calibri", size: 12, bold: true };
+        : { name: "Calibri", size: corpoCella(cell), bold: true };
       cell.alignment = { horizontal: (c === 1 && isMed) ? "left" : "center", vertical: "middle" };
       if (c >= 2 && isFestivo(anno, mese, c - 1))
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORANGE } };
@@ -92,21 +115,42 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   // ---------- dimensioni ----------
   ws.getColumn(1).width = 26;
   for (let c = 2; c <= nd + 1; c++) ws.getColumn(c).width = 6.3;
-  ws.getRow(1).height = 45;                      // fascia logo
-  ws.getRow(5).height = 6;                       // spaziatore
+  ws.getRow(1).height = 10;                      // margine alto
+  ws.getRow(5).height = 46;                      // fascia banner (56 px + aria)
   for (let r = R_NUM - 1; r <= lastRow; r++) ws.getRow(r).height = 23;
 
-  // ---------- logo (ancorato alla fascia alta, dimensioni del modello) ----------
-  // Nel template ufficiale l'immagine è mostrata a ~13.154.025 × 533.400 EMU
-  // (≈ 1381 × 56 px). tl usa coordinate frazionarie 0-based di ExcelJS.
+  // ---------- logo (fascia r5, sotto l'intestazione testuale) ----------
+  // Dimensioni del template ufficiale: ~13.154.025 × 533.400 EMU (≈ 1381 × 56
+  // px). tl usa coordinate frazionarie 0-based di ExcelJS: row 4.05 = riga 5
+  // con un piccolo offset, così il banner resta dentro la fascia (46 pt ≈ 61
+  // px) senza toccare né i testi sopra né MEDICINA sotto.
   const imgId = wb.addImage({ base64: LOGO_PNG_BASE64, extension: "png" });
-  ws.addImage(imgId, { tl: { col: 0.2, row: 0.05 }, ext: { width: 1381, height: 56 } });
+  ws.addImage(imgId, { tl: { col: 0.2, row: 4.05 }, ext: { width: 1381, height: 56 } });
 
   // ---------- area di stampa ----------
   const lastColL = colLetter(nd + 1);
   ws.pageSetup.printArea = `A1:${lastColL}${lastRow}`;
 
   return wb;
+}
+
+// v0.3.12: i codici lunghi (ANA, 104, per11, o più turni concatenati come MPN)
+// a corpo 12 escono dalla cella da 6.3: da 3 caratteri in su si scende a 10.
+// I codici corti (M, P, N, MP…) restano a 12.
+function corpoTurni(testo: string): number {
+  return testo.length >= 3 ? 10 : 12;
+}
+
+// Ricava il testo di una cella già scritta (stringa semplice o rich text) per
+// calcolarne il corpo nel loop degli stili. Nei rich text il corpo effettivo è
+// quello dei run, ma tenere coerente anche lo stile di cella non guasta.
+function corpoCella(cell: ExcelJS.Cell): number {
+  const v = cell.value as unknown;
+  const testo = typeof v === "string" ? v
+    : (v && typeof v === "object" && "richText" in (v as object))
+      ? (v as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("")
+      : "";
+  return corpoTurni(testo);
 }
 
 // Rango temporale di un turno per l'ordinamento nelle celle: mattina (0),
