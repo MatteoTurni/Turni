@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Medico, Turno, TurniAll, AlternativaUC, DiagnosiGen } from "./engine/types";
+import type { Medico, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
 import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
 import { vt, SPEC } from "./engine/turni";
@@ -67,6 +67,9 @@ export default function App(){
   // DIAGNOSI (v0.3.10) — diagGen: telemetria dell'ULTIMA generazione (per mese
   // corrente; si azzera cambiando mese). diagOpen: pannello espanso/compresso.
   const [diagGen, setDiagGen] = useState<DiagnosiGen|null>(null);
+  // DIAGNOSI CAUSALE (v0.3.13): il "vero problema" dietro i buchi dell'ultima
+  // generazione (cluster di giorni, vincolo determinante, collo di bottiglia).
+  const [diagCaus, setDiagCaus] = useState<DiagnosiCausale|null>(null);
   const [diagOpen, setDiagOpen] = useState(false);
   const [busy,   setBusy]   = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -87,7 +90,7 @@ export default function App(){
   };
 
   useEffect(()=>{ saveS({anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
-  useEffect(()=>{ setDiagGen(null); },[anno,mese]);   // la telemetria vale solo per il mese generato
+  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); },[anno,mese]);   // la telemetria vale solo per il mese generato
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
 
@@ -116,6 +119,7 @@ export default function App(){
         // Variante di ultima chance disponibile → si propone senza applicarla.
         if(r.alternativaUC) setAltUC({ alt:r.alternativaUC, rotStart });
         setDiagGen(r.diagnosi ?? null);
+        setDiagCaus(r.causale ?? null);
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
@@ -243,6 +247,14 @@ export default function App(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[diagGen, diagStat, turni, regole, nd]);
   const nCert = diagStat.celle.length + diagStat.giorni.length + diagStat.mese.length;
+  // Cluster causali ancora ATTUALI: almeno una cella del cluster è tuttora
+  // sotto-minimo, oppure uno dei suoi ambulatori è tuttora scoperto. Se
+  // l'utente sistema a mano quei giorni, il cluster sparisce da sé.
+  const ambMancaApp = (g:number) =>
+    (regole.giorniAmb ?? [1]).includes(dowOf(anno,mese,g)) && !metaG(g).h &&
+    !medici.some(m=>gT(m.id,g).some(s=>s.tipo==="A"));
+  const causVis = !diagCaus ? [] : diagCaus.cluster.filter(cl=>
+    cl.celle.some(c=>cfApp(c.g,c.f)<minDi(c.g,c.f)) || cl.ambGiorni.some(ambMancaApp));
 
   // ── salvataggio dal DocModal (nuovo o modifica) ────────────────────────────
   const salvaDoc = (f: DocDraft) => {
@@ -399,7 +411,7 @@ export default function App(){
       {/* PANNELLO DIAGNOSI COPERTURA (v0.3.10) — impossibilità certificate (⊘)
           e celle mai coperte in nessun tentativo (⚠). Solo lettura: aiuta a
           capire PERCHÉ certi buchi restano, senza toccare la generazione. */}
-      {tab==="cal" && (nCert>0 || maiCoperte.length>0) && (()=>{
+      {tab==="cal" && (nCert>0 || maiCoperte.length>0 || causVis.length>0) && (()=>{
         const FL: Record<string,string> = { M:"mattine", P:"pomeriggi", N:"notte" };
         const gLbl = (g:number)=>`${DF[dowOf(anno,mese,g)].slice(0,3)} ${g}`;
         // "mai coperte" raggruppate per giorno: "Mar 4: mattine · pomeriggi"
@@ -413,6 +425,7 @@ export default function App(){
               <span style={{color:"#a78bfa",fontWeight:700}}>Diagnosi copertura</span>
               {nCert>0 && <span style={{color:"#c4b5fd"}}>&#8856; {nCert} impossibil{nCert===1?"e certificata":"i certificate"}</span>}
               {maiCoperte.length>0 && <span style={{color:"#fbbf24"}}>&#9888; {maiCoperte.length} mai copert{maiCoperte.length===1?"a":"e"} in {diagGen?.tentativi} tentativi</span>}
+              {causVis.length>0 && <span style={{color:"#34d399"}}>&#9670; {causVis.length} caus{causVis.length===1?"a individuata":"e individuate"}</span>}
               <span style={{marginLeft:"auto",color:"#4b7aad"}}>{diagOpen?"▾":"▸"}</span>
             </div>
             {diagOpen && (
@@ -430,6 +443,26 @@ export default function App(){
                     <div style={{color:"#fbbf24",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#9888; MAI COPERTE — scoperte in TUTTI i {diagGen?.tentativi} tentativi: quasi certamente incompatibili con gli altri vincoli (assenze e turni dei giorni vicini)</div>
                     {[...maiByG.entries()].sort((x,y)=>x[0]-y[0]).map(([g,fl])=>
                       <div key={g} style={{color:"#fde68a",margin:"3px 0"}}>&#8226; {gLbl(g)}: {fl.join(" · ")}</div>)}
+                  </div>
+                )}
+                {/* DIAGNOSI CAUSALE (v0.3.13) — il VERO problema dietro i buchi:
+                    analisi controfattuale per finestre sull'ultimo tabellone
+                    generato. Ogni voce indica il cluster di giorni, la causa
+                    (vincolo determinante / conflitto globale / deficit
+                    materiale) e, quando trovato, il collo di bottiglia. */}
+                {causVis.length>0 && (
+                  <div style={{marginTop:"8px"}}>
+                    <div style={{color:"#34d399",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#9670; CAUSA PROBABILE — analisi dei giorni attorno ai buchi dell'ultima generazione: qual &#232; il blocco REALE (spesso a monte della cella dichiarata scoperta)</div>
+                    {causVis.map((cl,i)=>(
+                      <div key={"cs"+i} style={{margin:"3px 0 6px"}}>
+                        <div style={{color:"#6ee7b7"}}>&#8226; {cl.motivo}</div>
+                        {cl.dettagli.map((d,j)=>
+                          <div key={j} style={{color:"#8ad9bd",margin:"2px 0 0 12px",fontSize:"10px"}}>&#8627; {d}</div>)}
+                      </div>
+                    ))}
+                    {diagCaus && !diagCaus.completa && (
+                      <div style={{color:"#64748b",fontSize:"9px"}}>Analisi interrotta per limite di tempo: alcune finestre potrebbero non essere state esaminate.</div>
+                    )}
                   </div>
                 )}
                 <div style={{marginTop:"8px",fontSize:"9px",color:"#64748b"}}>
