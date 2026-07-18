@@ -540,10 +540,17 @@ export default function App(){
                 <td colSpan={2} style={{...TH,textAlign:"left",padding:"4px 8px",fontSize:"8px",color:"#3d5878"}}>Copertura M·P·N</td>
                 {giorni.map(g=>{
                   const mt=metaG(g);
+                  // Giorno d'ambulatorio FERIALE (segue regole.giorniAmb, quindi
+                  // anche giorni diversi dal martedì se configurati): quarto
+                  // quadratino con il codice del medico che ha la A, o "A?" se
+                  // la A manca. undefined = giorno normale, niente quadratino.
+                  const ambDay = (regole.giorniAmb ?? [1]).includes(mt.d) && !mt.h;
+                  const ambMed = ambDay ? medici.find(m=>gT(m.id,g).some(s=>s.tipo==="A")) : undefined;
                   return (
-                    <td key={g} style={{background:"#0b1626",border:"1px solid #1e3a5f",padding:"2px 1px",textAlign:"center",verticalAlign:"middle"}}>
+                    <td key={g} style={{background:"#0b1626",border:"1px solid #1e3a5f",padding:"3px 1px",textAlign:"center",verticalAlign:"top"}}>
                       <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}
-                        diag={{M:diagFlag(g,"M"),P:diagFlag(g,"P"),N:diagFlag(g,"N")}}/>
+                        diag={{M:diagFlag(g,"M"),P:diagFlag(g,"P"),N:diagFlag(g,"N")}}
+                        amb={ambDay ? (ambMed?.codice ?? null) : undefined}/>
                     </td>
                   );
                 })}
