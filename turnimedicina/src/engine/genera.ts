@@ -6,6 +6,7 @@ import { ENG } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
          riequilibraWeekendLiberi, riparaBuchi, validazioneGlobale, type Blocco } from "./fasi";
+import { diagnosiCausale } from "./diagnosiCausale";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PULSANTE 1 — GENERA COPERTURA MINIMA
@@ -588,6 +589,17 @@ export function rifinituraFinale(
 
   const res = wrapRisultato(bestT, bestM.probs);
   if(alternativaUC) res.alternativaUC = alternativaUC;
+
+  // ── DIAGNOSI CAUSALE (v0.3.13) ──────────────────────────────────────────
+  // Solo sui tabelloni rilasciati CON buchi o ambulatori scoperti: analisi
+  // controfattuale per finestre che indica il VERO blocco (cluster di giorni,
+  // vincolo determinante, cella-collo di bottiglia) invece del solo sintomo
+  // finale. In sola lettura, budget di tempo proprio: mai un rallentamento
+  // percettibile, mai un effetto sulla generazione. Un errore qui non deve
+  // mai far perdere il tabellone: try/catch e si rilascia senza diagnosi.
+  if(bestM.buchi>0 || bestM.probs.some(p=>p.includes("ambulatorio mancante"))){
+    try{ res.causale = diagnosiCausale(anno, mese, ndim, medici, bestT, { maxMs: 1500 }); }catch(_){}
+  }
   return res;
 }
 

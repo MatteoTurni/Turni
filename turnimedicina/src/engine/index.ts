@@ -10,6 +10,7 @@ export { ENG, setPrevContext, setAmbRotStart, setSalt, mkRng, shuf } from "./sta
 export { makeCtx, type Ctx } from "./ctx";
 export { validazioneGlobale, riequilibraWeekendLiberi, riparaBuchi } from "./fasi";
 export { diagnosiStatica, type DiagnosiStatica, type CertCella, type CertGiorno, type CertMese } from "./diagnosi";
+export { diagnosiCausale } from "./diagnosiCausale";
 export {
   generaCoperturaMinima, generaConUltimaChance, generaMigliorTentativo,
   cercaMigliorTentativo, rifinituraFinale, misuraTabellone, type MisuraTab, type OpzioniCerca,

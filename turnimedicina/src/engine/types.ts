@@ -59,6 +59,37 @@ export interface AlternativaUC {
   weekendPersi: WeekendPerso[];    // medici che perdono weekend liberi vs primario
 }
 
+/** Vincoli sondabili dalla diagnosi CAUSALE (v0.3.13). */
+export type CausaVincolo = "ambMove" | "ambOff" | "regN" | "maxNotti" | "nottiConsec" | "maxConsec" | "obiettivo";
+
+/** Analisi causale di UNA finestra di giorni con buchi (v0.3.13).
+ *  esito: "locale"       = la finestra si copre già riorganizzando i suoi turni
+ *                          (il buco nasce dai vincoli globali o dalla ricerca);
+ *         "vincolo"      = uno o più rilassamenti SINGOLI (in `vincoli`) la
+ *                          rendono copribile: quelli sono la causa;
+ *         "combinazione" = risolvibile solo rilassando più vincoli insieme;
+ *         "struttura"    = incopribile anche senza alcun vincolo del motore
+ *                          (deficit materiale: assenze/manuali).
+ *  nucleo: celle il cui SACRIFICIO sblocca tutto il resto della finestra — il
+ *  "vero problema", che può non coincidere con le celle dichiarate scoperte. */
+export interface CausaCluster {
+  lo: number; hi: number;
+  celle: CellaScoperta[];        // buchi M/P/N analizzati nella finestra
+  ambGiorni: number[];           // giorni d'ambulatorio SENZA A nella finestra
+  esito: "locale" | "vincolo" | "combinazione" | "struttura";
+  vincoli: CausaVincolo[];
+  nucleo: CellaScoperta[];
+  /** false = le celle del nucleo sono ALTERNATIVE (ognuna da sola sblocca il
+   *  resto); true = vanno sacrificate INSIEME (set minimo, deficit profondo). */
+  nucleoCongiunto: boolean;
+  motivo: string;                // frase principale, leggibile
+  dettagli: string[];            // righe aggiuntive (motivi ambulatorio, suggerimenti, costi weekend)
+}
+
+/** Risultato completo della diagnosi causale. `completa:false` = budget di
+ *  tempo esaurito prima di analizzare tutto (i cluster presenti restano validi). */
+export interface DiagnosiCausale { cluster: CausaCluster[]; completa: boolean; ms: number; }
+
 /** Diagnosi EMPIRICA della generazione (v0.3.10): per ogni cella "g-f", in
  *  quanti tentativi del multi-tentativo è rimasta scoperta. Una cella bucata
  *  nel tabellone finale con conteggio === tentativi non è MAI stata coperta
@@ -77,4 +108,8 @@ export interface Risultato {
   alternativaUC?: AlternativaUC;
   /** Presente solo per le generazioni multi-tentativo (pulsante ①). */
   diagnosi?: DiagnosiGen;
+  /** Diagnosi CAUSALE (v0.3.13): calcolata in rifinituraFinale solo quando il
+   *  tabellone rilasciato ha buchi o ambulatori scoperti. Opzionale: i
+   *  consumatori esistenti la ignorano. */
+  causale?: DiagnosiCausale;
 }
