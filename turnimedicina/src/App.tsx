@@ -802,8 +802,8 @@ export default function App(){
                 </div>
               ))}
               {(()=>{ const on = regole.notteLiberoNotte; return (
-                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"2px"}}>
-                  <button onClick={()=>updRegole({...regole,notteLiberoNotte:!on})}
+                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
+                  <button onClick={()=>updRegole({...regole,notteLiberoNotte:!on,riposoEsteso:!on?false:regole.riposoEsteso})}
                     style={{width:"52px",background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
                             border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
                             padding:"5px 0",cursor:"pointer",fontSize:"11px",fontWeight:700,
@@ -812,7 +812,22 @@ export default function App(){
                   </button>
                   <div>
                     <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Notte → libero → notte</div>
-                    <div style={{...LBL,fontSize:"9px"}}>Se attivo, due giorni dopo una notte è ammessa un'altra Notte (invece che al massimo un Pomeriggio) già nella generazione di base, e il pattern non è più segnalato come violazione. Resta il tetto «Max notti di fila». Se spento, la deroga resta usata solo dall'ultima chance.</div>
+                    <div style={{...LBL,fontSize:"9px"}}>Se attivo, due giorni dopo una notte è ammessa un'altra Notte (invece che al massimo un Pomeriggio) già nella generazione di base, e il pattern non è più segnalato come violazione. Resta il tetto «Max notti di fila». Se spento, la deroga resta usata solo dall'ultima chance. Incompatibile con «Riposo esteso»: attivarne uno spegne l'altro.</div>
+                  </div>
+                </div>
+              );})()}
+              {(()=>{ const on = regole.riposoEsteso; return (
+                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"2px"}}>
+                  <button onClick={()=>updRegole({...regole,riposoEsteso:!on,notteLiberoNotte:!on?false:regole.notteLiberoNotte})}
+                    style={{width:"52px",background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
+                            border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
+                            padding:"5px 0",cursor:"pointer",fontSize:"11px",fontWeight:700,
+                            fontFamily:"monospace"}}>
+                    {on?"ON":"OFF"}
+                  </button>
+                  <div>
+                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Riposo esteso dopo la notte</div>
+                    <div style={{...LBL,fontSize:"9px"}}>Se attivo, dopo una Notte anche il SECONDO giorno deve restare completamente libero: nessun turno, ammessi solo X, ANA, per11, 104 o L. Vieta quindi anche il Pomeriggio a g+2. È un vincolo duro: prevale su «Notte → libero → notte» e non viene mai derogato, nemmeno dall'ultima chance. Incompatibile con «Notte → libero → notte»: attivarne uno spegne l'altro.</div>
                   </div>
                 </div>
               );})()}
