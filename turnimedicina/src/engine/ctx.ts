@@ -292,6 +292,10 @@ export function makeCtx(
 
   // ── MAX GIORNI CONSECUTIVI DI LAVORO ──────────────────────────────────────
   const MAX_CONSEC = REG.maxConsec;
+  // Catena di continuità mattine: lunghezza-obiettivo dei blocchi. Cappata a
+  // MAX_CONSEC (un blocco più lungo del massimo di giorni lavorabili di fila
+  // sarebbe comunque irrealizzabile). 0 = catena disattivata.
+  const BLOCCO_M = Math.max(0, Math.min(REG.blocchiMattina ?? 0, MAX_CONSEC));
   const lavoraGiorno = (id:number,g:number) => g<=ndim && gtB(id,g).some(s=>!SPEC.includes(s.tipo));
   const runConsec = (id:number,g:number) => {
     let n=1;
@@ -484,7 +488,7 @@ export function makeCtx(
     ndim, medici, T, gt, st, add, haX, haM, haP, haN, haQ, cnt, cntN,
     dw, isS, isD, isH, isSp, isWk, isFer, isAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, needEff,
-    canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev,
+    canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,
     relaxN: !!relaxN,

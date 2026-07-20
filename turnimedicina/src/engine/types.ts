@@ -43,6 +43,13 @@ export interface Regole {
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;
+  /** CATENA DI CONTINUITÀ delle mattine (v0.3.17): nei tratti di giorni SENZA
+   *  una mattina del ML, un unico medico "portatore" prende le mattine per
+   *  blocchi di ~N giorni, con passaggio di consegne (l'ultima mattina
+   *  dell'uscente coincide con la prima dell'entrante) e affiancamento ai
+   *  bordi col ML — sempre ENTRO il fabbisogno MINIMO. Preferenza SOFT:
+   *  nessuna cella dipende dalla catena per essere coperta. 0 = disattivata. */
+  blocchiMattina: number;
   /** Giorni della settimana con ambulatorio (0=Lun … 4=Ven, festivi sempre
    *  esclusi). Default [1] = martedì. Lista vuota = nessun ambulatorio. */
   giorniAmb: number[];

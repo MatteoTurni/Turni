@@ -560,6 +560,90 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FASE 5A-bis — CATENA DI CONTINUITÀ DELLE MATTINE (v0.3.17)
+// Nei giorni con una mattina del ML la continuità di reparto è già garantita
+// da lui. Nei TRATTI scoperti (assenze del ML, weekend/festivi, o l'intero
+// mese se un ML non c'è) la catena designa un "PORTATORE": un unico medico che
+// prende le mattine del tratto a blocchi di ~K giorni, con PASSAGGIO DI
+// CONSEGNE (l'ultima mattina dell'uscente coincide con la prima dell'entrante)
+// e AFFIANCAMENTO ai bordi col ML (ultima mattina prima dell'assenza, prima
+// mattina al rientro). TUTTO ENTRO IL FABBISOGNO MINIMO: la catena non
+// aggiunge mattine al mese, decide solo CHI occupa slot che la 5B riempirebbe
+// comunque. È una preferenza SOFT per costruzione: ogni inserimento passa da
+// canR (obiettivo, consecutivi, riposi) e da add() (guardie dure, che possono
+// rifiutare in silenzio); se un anello non è realizzabile si salta e la 5B
+// completa come sempre. K=0 → la fase non esiste (comportamento storico).
+// I weekend NON vengono assegnati qui (restano alla fase weekend, già chiusa):
+// la catena vi si ADATTA adottando come portatore il medico che ha già la M
+// del weekend, così da ottenere ven–sab–dom–lun continui quando possibile.
+export function catenaContinuita(ctx: Ctx){
+  const { ndim, ml, mrMdc, isFer, gt, haM, haQ, canR, mdcOk, cf, nmn, byL, add, BLOCCO_M } = ctx;
+  const K = BLOCCO_M;
+  if(K<=0 || mrMdc.length===0) return;
+
+  // Giorno "coperto dal ML" = almeno una M VERA di un medico ML (manuale o 5A).
+  const mlM    = (g:number) => ml.some(m=>gt(m.id,g).some(s=>s.tipo==="M"));
+  // Portatore valido: giornata completamente libera (niente P/assenze/PS) +
+  // tutti i vincoli di canR. Il !haQ tiene i blocchi "puliti": gli associati
+  // restano un affare della 5C.
+  const valido = (m:Medico,g:number) => !haQ(m.id,g) && canR(m,g,"M") && mdcOk(m,g,"M");
+  // add() può rifiutare in silenzio (guardie dure): true solo se la M è entrata.
+  const metti  = (m:Medico,g:number) => { add(m.id,g,"M"); return haM(m.id,g); };
+  const spazio = (g:number) => nmn(g).mn - cf(g,"M");   // slot residui nel MINIMO
+
+  let g=1;
+  while(g<=ndim){
+    if(mlM(g)){ g++; continue; }
+    let fine=g; while(fine+1<=ndim && !mlM(fine+1)) fine++;
+
+    // ── copertura del tratto [g, fine] ────────────────────────────────────
+    let carrier: Medico|null = null, blocco = 0;
+    let primo:   Medico|null = null;      // primo portatore (per il bordo iniziale)
+    for(let d=g; d<=fine; d++){
+      if(!isFer(d)){
+        // Weekend/festivo: le M sono già state decise dalla fase weekend.
+        // La catena SI ADATTA: chi lavora la M del weekend diventa (o resta)
+        // il portatore, per proseguire senza stacchi sul lunedì.
+        const wCar = mrMdc.filter(m=>gt(m.id,d).some(s=>s.tipo==="M"));
+        if(wCar.length){
+          if(carrier && wCar.some(m=>m.id===carrier!.id)) blocco++;
+          else { carrier = byL(wCar)[0]; blocco = 1; if(!primo) primo = carrier; }
+        }
+        continue;                          // nessuna M di weekend → il blocco resta sospeso
+      }
+      if(spazio(d)<=0) continue;           // minimo già pieno (manuali): nulla da decidere
+      // Il portatore prosegue il suo blocco?
+      if(carrier && blocco<K && valido(carrier,d) && metti(carrier,d)){
+        blocco++; if(!primo) primo = carrier; continue;
+      }
+      // Cambio (fine blocco, portatore non valido, o primo anello del tratto).
+      const uscente = (carrier && blocco>=K && valido(carrier,d)) ? carrier : null;
+      let nuovo: Medico|null = null;
+      for(const m of byL(mrMdc.filter(x=>valido(x,d) && (!carrier || x.id!==carrier!.id)))){
+        if(metti(m,d)){ nuovo = m; break; }
+      }
+      if(nuovo){
+        // PASSAGGIO DI CONSEGNE: se il minimo ha un secondo slot, l'uscente fa
+        // qui la sua ultima mattina accanto alla prima dell'entrante.
+        if(uscente && spazio(d)>=1) metti(uscente,d);
+        carrier = nuovo; blocco = 1; if(!primo) primo = nuovo;
+      } else if(carrier && valido(carrier,d) && metti(carrier,d)){
+        blocco++;                          // nessun sostituto: l'attuale prosegue oltre K
+      } else { carrier = null; blocco = 0; }  // anello impossibile: si riparte più avanti
+    }
+
+    // ── AFFIANCAMENTO AI BORDI COL ML (entro il minimo, best-effort) ──────
+    // Per costruzione g-1 (se ≥1) e fine+1 (se ≤ndim) hanno una M del ML.
+    // Bordo iniziale: il primo portatore entra già nell'ultima M del ML.
+    if(primo && g-1>=1 && spazio(g-1)>=1 && valido(primo,g-1)) metti(primo,g-1);
+    // Bordo finale: l'ultimo portatore accompagna la prima M del ML al rientro.
+    if(carrier && blocco>0 && fine+1<=ndim && spazio(fine+1)>=1 && valido(carrier,fine+1)) metti(carrier,fine+1);
+
+    g = fine+1;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // FASE 5 — DIURNI FERIALI (copertura minima)
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseDiurni(ctx: Ctx, seed: number){
@@ -587,6 +671,11 @@ export function faseDiurni(ctx: Ctx, seed: number){
         add(m.id,g,"M");
       }
     }
+
+    // 5A-bis — catena di continuità nei tratti senza mattine del ML.
+    // Deterministica ma sensibile all'esito (randomizzato) della 5A: viene
+    // quindi rieseguita a ogni tentativo, dentro il rollback.
+    catenaContinuita(ctx);
 
     // 5B — completa mattine al minimo, preferendo consecutive per lo stesso medico
     for(const g of feriali){

@@ -16,6 +16,7 @@ export const REGOLE_DEFAULT: Regole = {
   maxConsec: 7,     // max giorni consecutivi di lavoro
   wkTarget: 2,      // obiettivo weekend liberi (resta ADATTIVO: è il tetto)
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
+  blocchiMattina: 4,// catena di continuità mattine: blocchi da ~4 giorni (0 = off)
   giorniAmb: [1],   // giorni di ambulatorio (0=Lun … 4=Ven): default martedì
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
@@ -42,7 +43,11 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const nLN = s.notteLiberoNotte===undefined ? d.notteLiberoNotte : !!s.notteLiberoNotte;
   // riposoEsteso: campo ASSENTE (salvataggi pre-v0.3.16) → default false.
   const rE  = s.riposoEsteso===undefined ? d.riposoEsteso : !!s.riposoEsteso;
-  return { ...d, ...s, giorniAmb: gA, notteLiberoNotte: nLN, riposoEsteso: rE, fabb:{
+  // blocchiMattina: campo ASSENTE (salvataggi pre-v0.3.17) → default; presente
+  // ma non intero ≥ 0 → default. Lo 0 è LEGITTIMO: catena disattivata.
+  const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
+    ? (s.blocchiMattina as number) : d.blocchiMattina;
+  return { ...d, ...s, giorniAmb: gA, notteLiberoNotte: nLN, riposoEsteso: rE, blocchiMattina: bM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},
