@@ -68,6 +68,7 @@ export function diagnosiStatica(
     if(manNotte(m.id,g)) return [];                        // notte manuale oggi: giornata piena
     if(manNotte(m.id,g-1)) return [];                      // g+1 di una notte immovibile: riposo
     const noM = manNotte(m.id,g-2);                        // g+2 di una notte immovibile: M vietata
+    if(noM && REG.riposoEsteso) return [];                 // riposo esteso: g+2 completamente libero
     const hasM = manMside(m.id,g), hasP = manPside(m.id,g);
     if(hasM && hasP) return [];                            // giornata già piena (anche 1+2, 1+P, M+2)
     if(hasM) return ["P"];                                 // completamento a giornata piena

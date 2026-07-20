@@ -34,6 +34,12 @@ export interface Regole {
    *  nell'ultima chance. Il tetto maxNottiConsec sulle catene a passo 2 resta
    *  sempre attivo. false = comportamento storico (a g+2 al massimo un P). */
   notteLiberoNotte: boolean;
+  /** true = RIPOSO ESTESO: dopo una Notte anche il 2° giorno (g+2) deve essere
+   *  COMPLETAMENTE libero (nessun turno, oppure solo codici SPEC: X, ANA,
+   *  per11, 104, L). Vieta quindi anche la P a g+2. È più stringente di tutto:
+   *  quando attivo neutralizza notteLiberoNotte e la deroga relaxN dell'ultima
+   *  chance (vincolo duro). false = comportamento storico (a g+2 max un P). */
+  riposoEsteso: boolean;
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;

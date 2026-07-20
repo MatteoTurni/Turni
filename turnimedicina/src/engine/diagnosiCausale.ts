@@ -126,12 +126,13 @@ export function diagnosiCausale(
 
   // ── 3) La SONDA: svuota la finestra, applica il rilassamento, risolvi ──────
   const prova = (lo: number, hi: number, mod: Mod): EsitoProva => {
-    const tocca = mod.maxNotti || mod.nottiConsec || mod.maxConsec;
+    const tocca = mod.maxNotti || mod.nottiConsec || mod.maxConsec || (mod.relaxN && REG0.riposoEsteso);
     if (tocca) setRegole({
       ...REG0,
       maxNotti: mod.maxNotti ? 999 : REG0.maxNotti,
       maxNottiConsec: mod.nottiConsec ? 999 : REG0.maxNottiConsec,
       maxConsec: mod.maxConsec ? 999 : REG0.maxConsec,
+      riposoEsteso: mod.relaxN ? false : REG0.riposoEsteso,  // la sonda regN prova anche senza riposo esteso
     });
     try {
       const meds = mod.obiettivo ? medici.map(m => ({ ...m, obiettivo: 9999 })) : medici;
@@ -206,7 +207,7 @@ export function diagnosiCausale(
   const ETI: Record<CausaVincolo, string> = {
     ambMove: "l'assegnatario dell'ambulatorio",
     ambOff: "l'obbligo di coprire l'ambulatorio",
-    regN: "il riposo a g+2 dopo la notte (Regola N stretta)",
+    regN: REG0.riposoEsteso ? "il riposo esteso dopo la notte (anche g+2 libero)" : "il riposo a g+2 dopo la notte (Regola N stretta)",
     maxNotti: `il tetto di ${REG0.maxNotti} notti/mese per medico`,
     nottiConsec: `il tetto di ${REG0.maxNottiConsec} notti ravvicinate`,
     maxConsec: `il massimo di ${REG0.maxConsec} giorni lavorativi consecutivi`,
@@ -215,7 +216,9 @@ export function diagnosiCausale(
   const HINT: Record<CausaVincolo, string> = {
     ambMove: "Suggerimento: assegna manualmente la A di quel giorno a un altro abilitato e rigenera.",
     ambOff: "Suggerimento: copri l'ambulatorio in altro modo o sposta il giorno d'ambulatorio (pannello Regole).",
-    regN: "Suggerimento: attivare \u00ABnotte-libero-notte\u00BB dal pannello Regole sbloccherebbe questi giorni.",
+    regN: REG0.riposoEsteso
+      ? "Suggerimento: disattivare \u00ABRiposo esteso dopo la notte\u00BB dal pannello Regole sbloccherebbe questi giorni."
+      : "Suggerimento: attivare \u00ABnotte-libero-notte\u00BB dal pannello Regole sbloccherebbe questi giorni.",
     maxNotti: "Suggerimento: alzare il tetto notti/mese dal pannello Regole sbloccherebbe questi giorni.",
     nottiConsec: "Suggerimento: alzare il tetto di notti ravvicinate dal pannello Regole sbloccherebbe questi giorni.",
     maxConsec: "Suggerimento: alzare il massimo di giorni consecutivi dal pannello Regole sbloccherebbe questi giorni.",
@@ -269,7 +272,7 @@ export function diagnosiCausale(
         if (scaduto()) { completa = false; break; }
         if ((k === "ambMove" || k === "ambOff") && !haAmbFin) continue;
         if (k === "ambOff" && vincoli.includes("ambMove")) continue;  // implicato
-        if (k === "regN" && REG0.notteLiberoNotte) continue;          // gi\u00E0 attivo
+        if (k === "regN" && REG0.notteLiberoNotte && !REG0.riposoEsteso) continue; // gi\u00E0 attivo (e nessun riposo esteso da rilassare)
         if (prova(lo, hi, mod).ok) vincoli.push(k);
       }
 

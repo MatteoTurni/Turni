@@ -49,7 +49,11 @@ export function makeCtx(
   // validazione (un N-libero-N non è più una violazione). Il parametro
   // relaxN dell'ultima chance resta un'eccezione locale come prima; qui si
   // calcola l'OR una sola volta, prima che le closure lo catturino.
-  relaxN = !!relaxN || REG.notteLiberoNotte === true;
+  // RIPOSO ESTESO (v0.3.16): g+2 dopo una notte completamente libero (solo
+  // SPEC). Regola più stringente di tutte: quando attiva NEUTRALIZZA sia
+  // notteLiberoNotte sia il relaxN dell'ultima chance (vincolo duro).
+  const strictN2 = REG.riposoEsteso === true;
+  relaxN = (!!relaxN || REG.notteLiberoNotte === true) && !strictN2;
 
   // ── contatori incrementali per-medico ──────────────────────────────────────
   const cellVal = (a: Turno[]) => { let v=0; for(const s of a) v+=vt(s.tipo,!!s.sott); return v; };
@@ -157,7 +161,7 @@ export function makeCtx(
       // 2) Riposo post-notte (Regola N): non aggiungere turni che rompono una notte adiacente.
       if(!SPEC.includes(tipo)){
         if(postN1(id,g)) return;                                 // g+1 di una notte: deve restare libero
-        if(postN2(id,g) && (isMatt(tipo)||(!relaxN&&isNot(tipo)))) return;  // g+2 di una notte: solo P (o anche N se relaxN, coerente con canN/checkRegolaN)
+        if(postN2(id,g) && violaG2(tipo)) return;                // g+2 di una notte: solo P (o N se relaxN; NULLA col riposo esteso)
         if(isNot(tipo) && !canNConsec(id,g)) return;             // max notti di fila (catena a passo 2): mai oltre il tetto in automatico
         // 3) MAX GIORNI CONSECUTIVI DI LAVORO: se questo turno rende "lavorato" un
         //    giorno finora libero e la sequenza risultante di giorni lavorati
@@ -238,8 +242,11 @@ export function makeCtx(
   const postN2 = (id:number,g:number) => haNB(id,g-2);   // g è due giorni DOPO una notte (=g+2)
   // hasAnteN (ANA/L/per11/X/104 in g+1) vincola SOLO la Notte (vedi canN).
   const canLav = (id:number,g:number) => !postN1(id,g);
+  // Un turno non-SPEC di questo tipo viola il g+2 di una notte?
+  // Storico: M sempre, N salvo relaxN, P mai. Riposo esteso: qualsiasi cosa.
+  const violaG2 = (tipo:string) => strictN2 || isMatt(tipo) || (!relaxN&&isNot(tipo));
   const canMatt= (id:number,g:number) => canLav(id,g) && !postN2(id,g);          // M vietata a g+1 e g+2 di una notte
-  const canPom = (id:number,g:number) => !postN1(id,g);                          // P vietata solo a g+1
+  const canPom = (id:number,g:number) => !postN1(id,g) && !(strictN2&&postN2(id,g)); // P vietata a g+1 (e a g+2 col riposo esteso)
   const canAss = (id:number,g:number) => canMatt(id,g) && canPom(id,g);          // associato: vietato g+1 e g+2
 
   // ── MAX NOTTI "DI FILA" (a passo 2) ─────────────────────────────────────────
@@ -271,7 +278,7 @@ export function makeCtx(
     if(postN1(id,g)||(!relaxN&&postN2(id,g))) return false;
     if(hasAnteN(id,g)) return false;                               // ANA/L/per11/X/104 in g+1 bloccano la Notte in g
     if(g+1<=ndim){ const sh1=gt(id,g+1); if(sh1.some(s=>!SPEC.includes(s.tipo))) return false; }      // g+1 libero
-    if(g+2<=ndim){ const sh2=gt(id,g+2); if(sh2.some(s=>!SPEC.includes(s.tipo)&&(isMatt(s.tipo)||(!relaxN&&isNot(s.tipo))))) return false; } // g+2 max P (o N se relaxN)
+    if(g+2<=ndim){ const sh2=gt(id,g+2); if(sh2.some(s=>!SPEC.includes(s.tipo)&&violaG2(s.tipo))) return false; } // g+2 max P (o N se relaxN; NULLA col riposo esteso)
     return true;
   };
 
@@ -420,10 +427,10 @@ export function makeCtx(
       // solo il conflitto con turni AUTOMATICI del mese corrente.
       if(haNB(m.id,0)){
         const sh1=gt(m.id,1); if(sh1.some(s=>!SPEC.includes(s.tipo)&&!s.man)) return false;
-        if(ndim>=2){ const sh2=gt(m.id,2); if(sh2.some(s=>!SPEC.includes(s.tipo)&&!s.man&&(isMatt(s.tipo)||(!relaxN&&isNot(s.tipo))))) return false; }
+        if(ndim>=2){ const sh2=gt(m.id,2); if(sh2.some(s=>!SPEC.includes(s.tipo)&&!s.man&&violaG2(s.tipo))) return false; }
       }
       if(haNB(m.id,-1)){
-        const sh1=gt(m.id,1); if(sh1.some(s=>!SPEC.includes(s.tipo)&&!s.man&&(isMatt(s.tipo)||(!relaxN&&isNot(s.tipo))))) return false;
+        const sh1=gt(m.id,1); if(sh1.some(s=>!SPEC.includes(s.tipo)&&!s.man&&violaG2(s.tipo))) return false;
       }
       for(let g=1;g<=ndim;g++){
         const nSh = gt(m.id,g).find(s=>isNot(s.tipo));
@@ -438,7 +445,7 @@ export function makeCtx(
           }
           if(g+2<=ndim){
             const sh2=gt(m.id,g+2);
-            const offend=sh2.filter(s=>!SPEC.includes(s.tipo)&&(isMatt(s.tipo)||(!relaxN&&isNot(s.tipo)))); // relaxN: N ammessa a g+2
+            const offend=sh2.filter(s=>!SPEC.includes(s.tipo)&&violaG2(s.tipo)); // relaxN: N ammessa a g+2; riposo esteso: tutto vietato
             if(offend.some(s=>!s.man||!nMan)) return false;
             const pomP=sh2.filter(s=>isPom(s.tipo)&&!isMatt(s.tipo)&&!isNot(s.tipo));
             if(pomP.length>1 && (!nMan || pomP.some(s=>!s.man))) return false;
