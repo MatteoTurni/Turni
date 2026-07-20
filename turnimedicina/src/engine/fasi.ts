@@ -616,7 +616,20 @@ export function catenaContinuita(ctx: Ctx){
       if(carrier && blocco<K && valido(carrier,d) && metti(carrier,d)){
         blocco++; if(!primo) primo = carrier; continue;
       }
-      // Cambio (fine blocco, portatore non valido, o primo anello del tratto).
+      // PAUSA (non cambio): un impedimento di UN solo giorno del portatore a
+      // metà blocco — ambulatorio (la fase A gira prima dei diurni), turno PS
+      // manuale, permesso isolato, giorno post-notte — NON spezza il blocco:
+      // se al prossimo feriale del tratto il portatore torna valido, oggi
+      // copre un SUPPLENTE di giornata e il blocco riprende domani. Il
+      // testimone NON passa qui: passa solo ai cambi veri di fine blocco.
+      if(carrier && blocco<K && !valido(carrier,d)){
+        let nf=0; for(let x=d+1;x<=fine;x++) if(isFer(x)){ nf=x; break; }
+        if(nf && valido(carrier,nf)){
+          for(const m of byL(mrMdc.filter(x=>valido(x,d) && x.id!==carrier!.id))) if(metti(m,d)) break;
+          continue;
+        }
+      }
+      // Cambio (fine blocco, portatore fermo a lungo, o primo anello del tratto).
       const uscente = (carrier && blocco>=K && valido(carrier,d)) ? carrier : null;
       let nuovo: Medico|null = null;
       for(const m of byL(mrMdc.filter(x=>valido(x,d) && (!carrier || x.id!==carrier!.id)))){
@@ -647,7 +660,7 @@ export function catenaContinuita(ctx: Ctx){
 // FASE 5 — DIURNI FERIALI (copertura minima)
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseDiurni(ctx: Ctx, seed: number){
-  const { mark, rollback, snapshot, restore, ndim, feriali, ml, mrMdc, byL, add, canR, mdcOk, cf,
+  const { mark, rollback, snapshot, restore, ndim, feriali, ml, mrMdc, byL, add, canR, mdcOk, cf, gt,
           nmn, npn, haM, haP, haN, haQ, cnt, eleggibili, haAss, canAssDist, checkRegolaN, maxAssSett, needEff } = ctx;
   const nSett  = (g:number) => Math.floor((g-1)/7);
   const assInS = (id:number,s:number) => { let n=0; for(let g=1;g<=ndim;g++) if(nSett(g)===s&&haAss(id,g)) n++; return n; };
@@ -677,14 +690,17 @@ export function faseDiurni(ctx: Ctx, seed: number){
     // quindi rieseguita a ogni tentativo, dentro il rollback.
     catenaContinuita(ctx);
 
-    // 5B — completa mattine al minimo, preferendo consecutive per lo stesso medico
+    // 5B — completa mattine al minimo, preferendo consecutive per lo stesso medico.
+    // "Consecutiva" = M VERA adiacente (tipo "M"): A e 1 sono mattinieri per
+    // isMatt ma NON sono continuità di reparto — contarli creava pseudo-blocchi.
+    const haMR = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="M");
     for(const g of feriali){
       let at=0;
       while(cf(g,"M")<nmn(g).mn && at<20){
         at++;
         const base=[...ml,...mrMdc].filter(m=>!haM(m.id,g)&&canR(m,g,"M")&&mdcOk(m,g,"M")&&!haQ(m.id,g));
         if(base.length===0) break;
-        const consec = base.filter(m=>haM(m.id,g-1)||haM(m.id,g+1));
+        const consec = base.filter(m=>haMR(m.id,g-1)||haMR(m.id,g+1));
         const scelta = (consec.length?byL(consec):byL(base))[0];
         if(!scelta) break;
         add(scelta.id,g,"M");

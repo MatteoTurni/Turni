@@ -619,9 +619,12 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   const T = cloneT(ex);
   const ctx = makeCtx(anno, mese, ndim, medici, T);
   const { feriali, ml, mrMdc, byL, add, canR, mdcOk, cf, nmn, npn,
-          haM, haP, haN, haQ, cnt, haAss, canAssDist, maxAssSett } = ctx;
+          haM, haP, haN, haQ, cnt, haAss, canAssDist, maxAssSett, gt } = ctx;
   const nSett  = (g:number) => Math.floor((g-1)/7);
   const assInS = (id:number,s:number) => { let n=0; for(let g=1;g<=ndim;g++) if(nSett(g)===s&&haAss(id,g)) n++; return n; };
+  // M VERA adiacente: per la preferenza di consecutività A e 1 non contano
+  // (isMatt li include, ma non sono continuità di reparto).
+  const haMR = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="M");
 
   // ── M: privilegia sequenze di mattine consecutive ──
   for(const m of byL([...ml,...mrMdc])){
@@ -631,8 +634,8 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
       const cand = feriali.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
       if(cand.length===0) break;
       cand.sort((a,b)=>{
-        const ca=(haM(m.id,a-1)||haM(m.id,a+1))?0:1;
-        const cb=(haM(m.id,b-1)||haM(m.id,b+1))?0:1;
+        const ca=(haMR(m.id,a-1)||haMR(m.id,a+1))?0:1;
+        const cb=(haMR(m.id,b-1)||haMR(m.id,b+1))?0:1;
         return ca-cb || a-b;
       });
       add(m.id,cand[0],"M"); progress=true;
