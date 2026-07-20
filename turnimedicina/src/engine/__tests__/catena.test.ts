@@ -95,6 +95,28 @@ describe("catenaContinuita", () => {
     }
   });
 
+  it("PAUSA: un impedimento di un giorno (es. turno PS '1') non spezza il blocco né brucia il testimone", () => {
+    setRegole(mergeRegole({ ...REGOLE_DEFAULT, blocchiMattina: 3 }));
+    // Il primo portatore (byL a parità di carico → id 1) ha un "1" manuale il
+    // giorno 3, a metà del suo blocco. Giugno 2026: g1 lun, g2 FESTIVO
+    // (2 giugno), g3-g5 mer-ven, g8 lunedì successivo.
+    const T: TurniMese = { 1: { 3: { t: [{ tipo: "1", sott: false, man: true }] } } };
+    const ctx = makeCtx(ANNO, MESE, NDIM, mediciNoML(), T);
+    catenaContinuita(ctx);
+
+    // Blocco di id1: g1, poi PAUSA il g3 (coperto da un supplente ≠ id1),
+    // ripresa g4-g5 — il "1" non conta come continuità né la interrompe.
+    expect(mDi(ctx.T, 1, 1)).toBe(true);
+    expect(mDi(ctx.T, 1, 3)).toBe(false);
+    expect(ctx.cf(3, "M")).toBeGreaterThanOrEqual(1);            // supplente di giornata
+    expect(mDi(ctx.T, 1, 4)).toBe(true);
+    expect(mDi(ctx.T, 1, 5)).toBe(true);
+    // Il testimone passa al CAMBIO vero (g8, blocco pieno): due M quel giorno,
+    // una delle quali è l'ultima di id1.
+    expect(ctx.cf(8, "M")).toBe(2);
+    expect(mDi(ctx.T, 1, 8)).toBe(true);
+  });
+
   it("rispetta le mattine del ML: nei giorni coperti dal ML non assegna nulla", () => {
     setRegole(mergeRegole({ ...REGOLE_DEFAULT, blocchiMattina: 3 }));
     const medici: Medico[] = [
