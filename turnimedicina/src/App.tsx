@@ -8,6 +8,7 @@ import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
 import { generaParallelo } from "./generaParallelo";
 import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
+import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
 import { esportaExcel } from "./export/excel";
 import { SC } from "./components/costanti";
 import { Badge } from "./components/Badge";
@@ -57,7 +58,35 @@ export default function App(){
   const [confMan, setConfMan] = useState(false);
   // Pannello Regole: stato React specchio delle regole del motore per il re-render.
   const [regole, setRegoleState] = useState(getRegole());
-  const updRegole = (next: typeof regole) => { setRegole(next); setRegoleState(next); saveRegole(next); };
+  const updRegole = (next: typeof regole) => { setRegole(next); setRegoleState(next); saveRegole(next); salvaRemoto("regole", next); };
+  // ── SYNC REMOTO (v0.3.14) ──────────────────────────────────────────────────
+  // editabile: questo browser ha la chiave di modifica (o il remoto non è
+  // configurato → comportamento locale identico alle versioni precedenti).
+  // remotoOk.current: finché il primo caricamento non è concluso, l'effect di
+  // persistenza NON spinge verso il server (eviterebbe di sovrascrivere il
+  // remoto con lo stato locale vecchio).
+  const editabile = puoModificare();
+  const remotoOk  = useRef(!remotoConfigurato());
+  const applicaRemoto = (r: NonNullable<Awaited<ReturnType<typeof caricaRemoto>>>, ancheData=true) => {
+    if(r.regole){ const m = { ...getRegole(), ...r.regole }; setRegole(m); setRegoleState(m); saveRegole(m); }
+    if(r.ambRot) saveAmbRot(r.ambRot);
+    if(r.stato){
+      if(ancheData && r.stato.anno!=null) setAnno(r.stato.anno);
+      if(ancheData && r.stato.mese!=null) setMese(r.stato.mese);
+      if(r.stato.medici)     setMedici(r.stato.medici);
+      if(r.stato.turniAll)   setTurniAll(r.stato.turniAll);
+    }
+  };
+  useEffect(()=>{
+    let vivo = true;
+    caricaRemoto().then(r=>{ if(!vivo) return; if(r) applicaRemoto(r); remotoOk.current = true; });
+    // Sola lettura: i colleghi vedono le modifiche senza ricaricare la pagina.
+    // ancheData=false → il refresh non strappa il mese che si sta sfogliando.
+    const poll = !editabile ? setInterval(async ()=>{
+      const r = await caricaRemoto(); if(vivo && r) applicaRemoto(r, false);
+    }, 60000) : undefined;
+    return ()=>{ vivo=false; if(poll) clearInterval(poll); };
+  },[]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [toast,  setToast]  = useState<{txt:string; tp:string}|null>(null);
   // Variante di ultima chance proposta ma NON ancora applicata (proposta 1 non
   // bloccante): si conserva anche l'indice di rotazione ambulatorio usato alla
@@ -89,7 +118,7 @@ export default function App(){
     });
   };
 
-  useEffect(()=>{ saveS({anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
+  useEffect(()=>{ saveS({anno,mese,medici,turniAll}); if(remotoOk.current && editabile) salvaRemoto("stato",{anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
   useEffect(()=>{ setDiagGen(null); setDiagCaus(null); },[anno,mese]);   // la telemetria vale solo per il mese generato
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
@@ -113,6 +142,7 @@ export default function App(){
         // non sono disponibili.
         const r = await generaParallelo(anno,mese,nd,medici,turni);
         saveAmbRot({ nextIdx: calcAmbRotNext(r.turni, medici, anno, mese, nd, rotStart) });
+        salvaRemoto("ambRot", loadAmbRot());
         setTurni(r.turni);
         if(r.ok) showMsg("✓ Copertura minima completata!");
         else showMsg("⚠ Copertura parziale (mostrato il tabellone migliore): "+r.problemi.slice(0,4).join(" · "),"warn");
@@ -132,6 +162,7 @@ export default function App(){
     if(!altUC) return;
     setTurni(altUC.alt.turni);
     saveAmbRot({ nextIdx: calcAmbRotNext(altUC.alt.turni, medici, anno, mese, nd, altUC.rotStart) });
+    salvaRemoto("ambRot", loadAmbRot());
     const nc = altUC.alt.celleCoperte.length;
     setAltUC(null);
     showMsg(`✓ Variante applicata: +${nc} ${nc===1?"cella coperta":"celle coperte"}.`);
@@ -330,14 +361,22 @@ export default function App(){
             style={{background:"#081120",border:"1px solid #2f5a8a",color:"#60a5fa",borderRadius:"6px",padding:"6px 8px",fontSize:"12px",fontFamily:"monospace",width:"78px"}}/>
         </div>
 
-        <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center"}}>
+          {!editabile &&
+            <span title="Stai consultando il tabellone pubblicato. Per modificare, apri il link con #modifica in fondo."
+              style={{background:"#78350f",color:"#fde68a",border:"1px solid #b45309",borderRadius:"6px",
+              padding:"6px 10px",fontSize:"10px",fontWeight:700,fontFamily:"monospace",letterSpacing:".08em"}}>
+              👁 SOLA LETTURA
+            </span>}
           {([
             ["①","Copertura", busy?"#0f1a2a":"#1d4ed8", generaCopertura, busy],
             ["②","Obiettivi", busy?"#0f1a2a":"#6d28d9", generaObiettivi, busy],
             ["⊘","Rimuovi App","#4c1d95", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>s.man)}; } return n; }); showMsg("Turni app rimossi."); }, false],
             ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#7f1d1d", rimuoviManuali, false],
             ["⎙","Excel", printing?"#0f1a2a":"#064e3b", handlePrint, printing],
-          ] as [string,string,string,()=>void,boolean][]).map(([ic,lb,cl,fn,ds])=>(
+          ] as [string,string,string,()=>void,boolean][])
+            .filter(([,lb])=> editabile || lb==="Excel")
+            .map(([ic,lb,cl,fn,ds])=>(
             <button key={lb} onClick={fn} disabled={!!ds} style={{background:ds?"#0f1a2a":cl,color:ds?"#3d5878":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
               <span>{ic}</span><span>{lb}</span>
             </button>
@@ -346,7 +385,9 @@ export default function App(){
 
         {/* Segmented control: un solo contenitore, la pillola dice DOVE sei. */}
         <div style={{display:"flex",gap:0,background:"#0a1524",border:"1px solid #24405f",borderRadius:"9px",padding:"3px"}}>
-          {([["cal","Calendario"],["medici","Medici"],["regole","Regole"]] as ["cal"|"medici"|"regole",string][]).map(([t,l])=>(
+          {([["cal","Calendario"],["medici","Medici"],["regole","Regole"]] as ["cal"|"medici"|"regole",string][])
+            .filter(([t])=> editabile || t==="cal")
+            .map(([t,l])=>(
             <button key={t} onClick={()=>setTab(t)} aria-selected={tab===t} style={{
               background:tab===t?"#1e3a5f":"transparent", color:tab===t?"#bfdbfe":"#5b7ea8",
               border:"none", borderRadius:"7px", padding:"8px 16px", cursor:"pointer",
@@ -519,10 +560,10 @@ export default function App(){
                       const hX=ct.some(s=>s.tipo==="X"), vis=ct.filter(s=>s.tipo!=="X");
                       const bg=hX?"#1a1a24":mt.h?"#1c0f0f":mt.sat||mt.dom?"#12142e":"#0b1626";
                       return (
-                        <td key={g} onClick={()=>setCella({id:med.id,g})}
-                          style={{background:bg,border:"1px solid #1e3a5f",padding:"1px 2px",textAlign:"center",cursor:"pointer",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
-                          onMouseEnter={e=>e.currentTarget.style.background="#22406b"}
-                          onMouseLeave={e=>e.currentTarget.style.background=bg}>
+                        <td key={g} onClick={editabile ? ()=>setCella({id:med.id,g}) : undefined}
+                          style={{background:bg,border:"1px solid #1e3a5f",padding:"1px 2px",textAlign:"center",cursor:editabile?"pointer":"default",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
+                          onMouseEnter={editabile ? e=>e.currentTarget.style.background="#22406b" : undefined}
+                          onMouseLeave={editabile ? e=>e.currentTarget.style.background=bg : undefined}>
                           <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
                             {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={s.man}/>)}
                           </div>
