@@ -218,6 +218,16 @@ export default function App(){
     for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A"].includes(s.tipo)) n++;
     return n;
   };
+  // Conta i permessi (L / ANA / 104 / per11) del medico nel mese, con
+  // dettaglio per tipo. X resta fuori: è un'esclusione, non un permesso.
+  const PERM = ["L","ANA","104","per11"] as const;
+  const cntPerm = (id:number) => {
+    const det: Record<string,number> = {};
+    let tot=0;
+    for(let g=1;g<=nd;g++) for(const s of gT(id,g))
+      if((PERM as readonly string[]).includes(s.tipo)){ det[s.tipo]=(det[s.tipo]||0)+1; tot++; }
+    return { tot, det };
+  };
   // Turni PS (1/2/3) del medico, pesati come nel bilancio: la notte (3) vale 2.
   // Contati ANCHE i sottolineati (contaSott=true): il riassunto mostra tutti i
   // turni fatti in PS; il bilancio (quota scalata da D) resta ai soli pieni.
@@ -648,56 +658,50 @@ export default function App(){
               ➕ Aggiungi
             </button>
           </div>
-          {/* Riepilogo contatori */}
-          <div style={{display:"flex",gap:"8px",marginBottom:"14px",flexWrap:"wrap"}}>
-            {medici.filter(m=>m.stato!=="MPS").map(m=>{
-              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id), r=rieM(m.id);
+          {/* Card medici (stile D): un'unica griglia sostituisce riepilogo + righe */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:"8px"}}>
+            {medici.map(m=>{
+              const sc=SC[m.stato]||{bg:"",t:"",b:""}, tot=cntM(m.id);
+              const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id), r=rieM(m.id), pm=cntPerm(m.id);
+              const permTxt = PERM.filter(k=>pm.det[k]).map(k=>`${k}${pm.det[k]}`).join("·");
+              const RIGA: React.CSSProperties = {display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:"10px",color:"#4b7aad",padding:"2.5px 0",fontFamily:"monospace"};
+              const SEG: React.CSSProperties = {flex:1,textAlign:"center",fontSize:"10px",padding:"4px 0",background:"#0d1930",fontFamily:"monospace"};
               return (
-                <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"6px",padding:"5px 9px",fontSize:"10px",fontFamily:"monospace"}}>
-                  <div style={{color:"#e2eeff",fontWeight:700,marginBottom:"2px"}}>{m.nome.split(" ").pop()}</div>
-                  <div style={{color:"#a78bfa"}}>🗓 {wkLib} wk lib.</div>
-                  {m.ambulatorio&&<div style={{color:"#34d399"}}>🏥 {ambN} amb</div>}
-                  <div style={{color:psN>0?"#fb923c":"#3d5878"}}>🚑 {psN} PS</div>
-                  <div style={{marginTop:"2px",display:"flex",gap:"6px"}}>
-                    <span style={{color:"#60a5fa"}}>M{r.m}</span>
-                    <span style={{color:"#c4b5fd"}}>P{r.p}</span>
-                    <span style={{color:"#6ee7b7"}}>N{r.n}</span>
+                <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"10px 12px",display:"flex",flexDirection:"column"}}>
+                  {/* intestazione: nome + badge + azioni */}
+                  <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap",paddingBottom:"7px",marginBottom:"7px",borderBottom:"1px solid #16304f"}}>
+                    <span style={{fontWeight:700,color:"#e2eeff",fontSize:"11px",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nome}</span>
+                    {m.ambulatorio&&<span style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>AMB</span>}
+                    <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"3px",padding:"1px 6px",fontSize:"9px",fontWeight:700}}>{m.stato}</span>
+                    <button onClick={()=>setEditDoc(m)} style={{background:"#1e3a5f",color:"#60a5fa",border:"1px solid #2f5a8a",borderRadius:"4px",padding:"2px 7px",cursor:"pointer",fontSize:"10px"}}>✏</button>
+                    <button onClick={()=>eliminaDoc(m)}
+                      style={{background:delDoc===m.id?"#7f1d1d":"#1a0606",color:delDoc===m.id?"#fff":"#f87171",border:"1px solid #7f1d1d",borderRadius:"4px",padding:"2px 7px",cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace"}}>
+                      {delDoc===m.id?"Conferma ✕":"✕"}
+                    </button>
                   </div>
-                  <div style={{color:"#e879f9"}}>▦ {r.wk} wknd</div>
+                  {/* turni / obiettivo */}
+                  <div style={RIGA}>
+                    <span>{m.codice||"—"} · Turni</span>
+                    <span style={{color:"#e2eeff",fontWeight:700}}>{tot}{m.stato!=="MPS"&&<span style={{color:"#2d5a8a",fontWeight:400}}> / {m.obiettivo}</span>}</span>
+                  </div>
+                  {/* blocchetto M/P/N a segmenti */}
+                  <div style={{display:"flex",border:"1px solid #16304f",borderRadius:"5px",overflow:"hidden",margin:"6px 0 3px"}}>
+                    <span style={{...SEG,color:"#60a5fa"}}><b style={{display:"block",fontSize:"13px"}}>{r.m}</b>M</span>
+                    <span style={{...SEG,color:"#c4b5fd",borderLeft:"1px solid #16304f"}}><b style={{display:"block",fontSize:"13px"}}>{r.p}</b>P</span>
+                    <span style={{...SEG,color:"#6ee7b7",borderLeft:"1px solid #16304f"}}><b style={{display:"block",fontSize:"13px"}}>{r.n}</b>N</span>
+                  </div>
+                  <div style={RIGA}><span style={{color:"#e879f9"}}>▦ Weekend lav.</span><b style={{color:"#e879f9"}}>{r.wk}</b></div>
+                  {m.stato!=="MPS"&&<div style={RIGA}><span style={{color:"#a78bfa"}}>🗓 Wk liberi</span><b style={{color:"#a78bfa"}}>{wkLib}</b></div>}
+                  {m.ambulatorio&&<div style={RIGA}><span style={{color:"#34d399"}}>🏥 Ambulatorio</span><b style={{color:"#34d399"}}>{ambN}</b></div>}
+                  <div style={RIGA}><span style={{color:psN>0?"#fb923c":"#3d5878"}}>🚑 PS</span><b style={{color:psN>0?"#fb923c":"#3d5878"}}>{psN}</b></div>
+                  <div style={RIGA}>
+                    <span style={{color:pm.tot>0?"#fbbf24":"#3d5878"}}>📋 Permessi</span>
+                    <b style={{color:pm.tot>0?"#fbbf24":"#3d5878"}}>{pm.tot}{pm.tot>0&&<span style={{color:"#a16207",fontWeight:400}}> {permTxt}</span>}</b>
+                  </div>
                 </div>
               );
             })}
           </div>
-          {medici.map(m=>{
-            const sc=SC[m.stato]||{bg:"",t:"",b:""}, tot=cntM(m.id);
-            const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id), r=rieM(m.id);
-            return (
-              <div key={m.id} style={{background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"10px 14px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"10px"}}>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,color:"#e2eeff",fontSize:"11px",display:"flex",alignItems:"center",gap:"6px"}}>
-                    {m.nome}
-                    {m.ambulatorio&&<span style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>AMB</span>}
-                  </div>
-                  <div style={{color:"#4b7aad",fontSize:"10px",marginTop:"3px",display:"flex",gap:"10px",flexWrap:"wrap"}}>
-                    <span>{m.codice||"—"} · {tot}{m.stato!=="MPS"?` / ${m.obiettivo}`:""} turni</span>
-                    {m.stato!=="MPS"&&<span style={{color:"#4c1d95"}}>🗓 <span style={{color:"#a78bfa"}}>{wkLib}</span> wk liberi</span>}
-                    {m.ambulatorio&&<span style={{color:"#065f46"}}>🏥 <span style={{color:"#34d399"}}>{ambN}</span> ambul.</span>}
-                    {psN>0&&<span style={{color:"#7c2d12"}}>🚑 <span style={{color:"#fb923c"}}>{psN}</span> turni PS</span>}
-                    <span style={{color:"#1e4976"}}>☀ <span style={{color:"#60a5fa"}}>{r.m}</span> M</span>
-                    <span style={{color:"#4c1d95"}}>◑ <span style={{color:"#c4b5fd"}}>{r.p}</span> P</span>
-                    <span style={{color:"#065f46"}}>☾ <span style={{color:"#6ee7b7"}}>{r.n}</span> N</span>
-                    <span style={{color:"#701a75"}}>▦ <span style={{color:"#e879f9"}}>{r.wk}</span> wknd</span>
-                  </div>
-                </div>
-                <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"4px",padding:"2px 8px",fontSize:"10px",fontWeight:700}}>{m.stato}</span>
-                <button onClick={()=>setEditDoc(m)} style={{background:"#1e3a5f",color:"#60a5fa",border:"1px solid #2f5a8a",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px"}}>✏</button>
-                <button onClick={()=>eliminaDoc(m)}
-                  style={{background:delDoc===m.id?"#7f1d1d":"#1a0606",color:delDoc===m.id?"#fff":"#f87171",border:"1px solid #7f1d1d",borderRadius:"5px",padding:"4px 9px",cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace"}}>
-                  {delDoc===m.id?"Conferma ✕":"✕"}
-                </button>
-              </div>
-            );
-          })}
         </div>
       )}
 
@@ -717,7 +721,7 @@ export default function App(){
           if(campo.endsWith("Max") && f[campo.replace("Max","Min") as CampoFabb]>v) f[campo.replace("Max","Min") as CampoFabb]=v;
           updRegole({...regole,fabb:{...regole.fabb,[fascia]:f}});
         };
-        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett";
+        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett"|"blocchiMattina";
         const setTop = (campo:CampoTop,v:number) => updRegole({...regole,[campo]:v});
         const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
         const BOX: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
@@ -728,6 +732,7 @@ export default function App(){
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
           ["maxAssSett","Max turni associati / settimana","Massimo di M+P nella stessa giornata per medico, per settimana."],
+          ["blocchiMattina","Continuità mattine (blocchi)","Nei giorni SENZA mattina del ML, un unico medico \"porta\" le mattine per blocchi di ~N giorni, con passaggio di consegne: l'ultima mattina dell'uscente affianca la prima dell'entrante, entro il fabbisogno MINIMO. Preferenza morbida, mai vincolante. 0 = disattivata."],
         ];
         return (
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
