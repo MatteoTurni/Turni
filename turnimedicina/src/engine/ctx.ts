@@ -2,6 +2,7 @@ import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
 import { isMatt, isPom, isNot, vt, SPEC, cloneT } from "./turni";
 import { getRegole } from "./regole";
+import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
 
 // ─── CONTEXT FACTORY: helper condivisi tra i due generatori ───────────────────
@@ -62,8 +63,13 @@ export function makeCtx(
   // varianti sottolineate (v0.3.11; prima i sottolineati erano esclusi). Il
   // peso nel carico/bilancio resta invariato (vt: sottolineato = 0).
   const cellNot = (a: Turno[]) => { let v=0; for(const s of a) if(isNot(s.tipo)) v++; return v; };
+  // CARICO WEEKEND (v0.3.19) — usa la metrica UNICA pesoWeekend (vedi bilancio),
+  // così il contatore riassuntivo e l'equità soft byWk restano SEMPRE identici.
+  // Include sabato (mattina esclusa), domenica/festivi, e la notte PREFESTIVA.
+  const cellWkVal = (g: number, a: Turno[]) => pesoWeekend(anno, mese, ndim, g, a);
   const cntMap  = new Map<number, number>();
   const cntNMap = new Map<number, number>();
+  const cntWkMap= new Map<number, number>();
   // Contatori di FABBISOGNO per giorno (solo turni reali M/P/N, solo medici
   // della lista — stessa semantica della vecchia cf, che iterava `medici`).
   const inMedici = new Set(medici.map(m=>m.id));
@@ -73,14 +79,14 @@ export function makeCtx(
   const cellMPN = (a: Turno[]) => { let m=0,p=0,n=0; for(const s of a){ if(s.tipo==="M")m++; else if(s.tipo==="P")p++; else if(s.tipo==="N")n++; } return [m,p,n] as const; };
   for(const idS in T){
     const id=+idS; const gi=T[idS]; if(!gi) continue;
-    let v=0,n=0;
+    let v=0,n=0,wk=0;
     for(const gS in gi){
       const g=+gS; if(g<1||g>ndim) continue;   // come i vecchi cnt/cntN: solo 1..ndim
       const c=gi[gS]?.t; if(!c) continue;
-      v+=cellVal(c); n+=cellNot(c);
+      v+=cellVal(c); n+=cellNot(c); wk+=cellWkVal(g,c);
       if(inMedici.has(id)){ const [dm,dp,dn]=cellMPN(c); cfM[g]+=dm; cfP[g]+=dp; cfN[g]+=dn; }
     }
-    cntMap.set(id,v); cntNMap.set(id,n);
+    cntMap.set(id,v); cntNMap.set(id,n); cntWkMap.set(id,wk);
   }
   const aggCf = (id:number,g:number,a:Turno[],segno:1|-1) => {
     if(!inMedici.has(id) || g<1 || g>ndim) return;
@@ -98,6 +104,7 @@ export function makeCtx(
     log.push({ id, g, prev });
     cntMap.set(id,(cntMap.get(id)||0) + cellVal(a) - (prev?cellVal(prev):0));
     cntNMap.set(id,(cntNMap.get(id)||0) + cellNot(a) - (prev?cellNot(prev):0));
+    cntWkMap.set(id,(cntWkMap.get(id)||0) + cellWkVal(g,a) - (prev?cellWkVal(g,prev):0));
     if(prev) aggCf(id,g,prev,-1);
     aggCf(id,g,a,1);
     if(!T[id])T[id]={};
@@ -111,6 +118,7 @@ export function makeCtx(
       const cur = T[e.id]?.[e.g]?.t;
       cntMap.set(e.id,(cntMap.get(e.id)||0) + (e.prev?cellVal(e.prev):0) - (cur?cellVal(cur):0));
       cntNMap.set(e.id,(cntNMap.get(e.id)||0) + (e.prev?cellNot(e.prev):0) - (cur?cellNot(cur):0));
+      cntWkMap.set(e.id,(cntWkMap.get(e.id)||0) + (e.prev?cellWkVal(e.g,e.prev):0) - (cur?cellWkVal(e.g,cur):0));
       if(cur) aggCf(e.id,e.g,cur,-1);
       if(e.prev) aggCf(e.id,e.g,e.prev,1);
       if(e.prev===undefined){ if(T[e.id]) delete T[e.id][e.g]; }
@@ -181,6 +189,7 @@ export function makeCtx(
   // O(1): letti dai contatori incrementali (prima O(31·turni) dentro ogni sort).
   const cnt = (id:number) => cntMap.get(id) || 0;
   const cntN= (id:number) => cntNMap.get(id) || 0;
+  const cntWk= (id:number) => cntWkMap.get(id) || 0;
 
   const dw   = (g:number) => dowOf(anno,mese,g);
   const isS  = (g:number) => isSabN(dw(g));
@@ -188,6 +197,9 @@ export function makeCtx(
   const isH  = (g:number) => isFestivo(anno,mese,g);
   const isSp = (g:number) => isD(g)||isH(g);
   const isWk = (g:number) => dw(g)>=5||isH(g);
+  // Notte "festiva" ai fini dell'equità weekend: sabato/domenica/festivo, oppure
+  // la notte PREFESTIVA (il giorno dopo è domenica o festivo infrasettimanale).
+  const isNotteFest = (g:number) => isWk(g) || (g+1<=ndim && isSp(g+1));
   const isFer= (g:number) => !isWk(g);
   // Giorni di ambulatorio dal pannello Regole (era il martedì hardcoded).
   const AMB_DW = new Set(REG.giorniAmb ?? [1]);
@@ -384,6 +396,9 @@ export function makeCtx(
 
   const byL = (a:Medico[]) => [...a].sort((x,y)=>cnt(x.id)-cnt(y.id));
   const byN = (a:Medico[]) => [...a].sort((x,y)=>cntN(x.id)-cntN(y.id));
+  // EQUITÀ WEEKEND (v0.3.19): meno carico weekend prima; a parità, meno carico
+  // totale (byL). Soft, analogo a byN per le notti.
+  const byWk= (a:Medico[]) => [...a].sort((x,y)=>(cntWk(x.id)-cntWk(y.id))||(cnt(x.id)-cnt(y.id)));
 
   const att = medici.filter(m=>m.stato!=="MPS");
   const ml  = att.filter(m=>m.stato==="ML");
@@ -485,9 +500,9 @@ export function makeCtx(
   };
 
   return {
-    ndim, medici, T, gt, st, add, haX, haM, haP, haN, haQ, cnt, cntN,
-    dw, isS, isD, isH, isSp, isWk, isFer, isAmb, nmn, npn, SPEC, cf,
-    canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, needEff,
+    ndim, medici, T, gt, st, add, haX, haM, haP, haN, haQ, cnt, cntN, cntWk,
+    dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, nmn, npn, SPEC, cf,
+    canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,

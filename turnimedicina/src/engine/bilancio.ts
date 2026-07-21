@@ -1,4 +1,4 @@
-import type { Medico, TurniMese, Regole } from "./types";
+import type { Medico, Turno, TurniMese, Regole } from "./types";
 import { vt, isMatt, isPom, isNot } from "./turni";
 import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 
@@ -52,29 +52,48 @@ export function psMedico(T: TurniMese, id: number, nd: number, contaSott = false
 }
 
 /** Riepilogo generale dei turni di un medico (solo conteggio, nessun effetto sul
- *  bilancio). m/p/n sono conteggi grezzi dei turni di reparto per tipo. `wk` è
- *  il carico dei "weekend" (sabato, domenica E festivi infrasettimanali):
- *  mattina/pomeriggio 1, notte 2, indifferente se PS o reparto; assenze escluse. */
+ *  bilancio). m/p/n contano i turni per fascia INCLUSI i sottolineati; in n rientra
+ *  anche il "3" (PS notte) e la sua variante. `wk` è il carico weekend (pesoWeekend). */
 export interface RiepilogoMedico { m: number; p: number; n: number; wk: number; }
+
+/** Peso "weekend lavorato" di una CELLA nel giorno g (v0.3.19). Metrica UNICA
+ *  condivisa dal contatore riassuntivo (riepilogoMedico.wk) e dall'equità soft
+ *  in generazione (byWk in ctx). Regole:
+ *   · SABATO feriale → pomeriggio (P/2)=1, notte (N/3)=2; la MATTINA NON conta.
+ *   · DOMENICA e FESTIVI infrasettimanali → mattina (M/1)=1, pomeriggio=1, notte=2.
+ *   · NOTTE PREFESTIVA → la notte del giorno che precede un festivo vale 2 anche
+ *     se quel giorno è feriale (es. lunedì notte prima di un martedì festivo).
+ *  Conta ANCHE i sottolineati e i codici PS 1/2/3. La notte prefestiva a cavallo
+ *  del mese (ultimo giorno) non è valutata: il conteggio è per-mese. */
+export function pesoWeekend(anno: number, mese: number, nd: number, g: number, cella: Turno[]): number {
+  const fest = isFestivo(anno, mese, g);                  // domenica + festivo infrasettimanale
+  const sab  = isSabN(dowOf(anno, mese, g)) && !fest;     // sabato feriale
+  const preFest = g < nd && isFestivo(anno, mese, g + 1); // giorno prefestivo → notte festiva
+  if (!sab && !fest && !preFest) return 0;
+  let v = 0;
+  for (const s of cella) {
+    if (isNot(s.tipo)) { if (sab || fest || preFest) v += 2; }
+    else if (isPom(s.tipo)) { if (sab || fest) v += 1; }
+    else if (isMatt(s.tipo) && fest) v += 1;              // mattina: solo domenica/festivo
+  }
+  return v;
+}
 
 export function riepilogoMedico(
   T: TurniMese, id: number, nd: number, anno: number, mese: number,
 ): RiepilogoMedico {
   let m = 0, p = 0, n = 0, wk = 0;
   for (let g = 1; g <= nd; g++) {
-    // isFestivo copre domeniche + festivi; aggiungo il sabato.
-    const we = isSabN(dowOf(anno, mese, g)) || isFestivo(anno, mese, g);
-    for (const s of gt(T, id, g)) {
-      if (!s.sott) {
-        if (s.tipo === "M") m++;
-        else if (s.tipo === "P") p++;
-        else if (s.tipo === "N") n++;
-      }
-      if (we && !s.sott) {
-        if (isNot(s.tipo)) wk += 2;
-        else if (isMatt(s.tipo) || isPom(s.tipo)) wk += 1;
-      }
+    const cella = gt(T, id, g);
+    for (const s of cella) {
+      // m/p/n di reparto (v0.3.20): includono ANCHE i sottolineati. In n rientra
+      // anche il "3" (PS notte) e la sua variante sottolineata. La mattina PS "1"
+      // e il pomeriggio PS "2" NON entrano in m/p (restano nel conteggio PS).
+      if (s.tipo === "M") m++;
+      else if (s.tipo === "P") p++;
+      else if (isNot(s.tipo)) n++;          // "N", "3" e varianti sottolineate
     }
+    wk += pesoWeekend(anno, mese, nd, g, cella);
   }
   return { m, p, n, wk };
 }

@@ -304,10 +304,13 @@ export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number, evita?: Record<number
 }
 
 export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
-  const { giorniArr, isWk, isSp, isS, haAss, medici, mrMdc, ml, byL, add,
+  const { giorniArr, isWk, isSp, isS, haAss, medici, mrMdc, ml, byWk, add,
           canR, mdcOk, canAssDist, cf, nmn, npn, haM, haP, haQ, cntWkLiberi } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has(g) ?? false;
-  const poolWk = (g:number,f:string,base:Medico[]) => byL(base.filter(m=>!haQ(m.id,g)&&canR(m,g,f)&&mdcOk(m,g,f)));
+  // EQUITÀ (v0.3.19): i candidati sono ordinati per MINOR carico weekend (byWk)
+  // invece che per carico totale, così i turni di weekend si distribuiscono più
+  // equamente. Il rispetto dei weekend riservati resta prioritario (pick).
+  const poolWk = (g:number,f:string,base:Medico[]) => byWk(base.filter(m=>!haQ(m.id,g)&&canR(m,g,f)&&mdcOk(m,g,f)));
   // Se TUTTI i candidati hanno il weekend riservato, una prenotazione va
   // bruciata comunque: si sceglie chi ha PIÙ weekend liberi (può cederne uno).
   const pick   = (pool:Medico[],g:number) => pool.filter(m=>!isBloc(m.id,g))[0]
@@ -519,7 +522,7 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false, notti
 // accumula e li passa alla fase Weekend al retry (feedback mirato, invece del
 // rimescolamento cieco che sperava di risolvere il conflitto per fortuna).
 export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean; nottiScoperte:number[] } {
-  const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff } = ctx;
+  const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff, cntWk, isNotteFest } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has?.(g) ?? false;
   const m0 = mark();
   const nottiCoperte = () => giorniArr.reduce((n,g)=>n+(cf(g,"N")>=1?1:0),0);
@@ -533,11 +536,14 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean;
     for(const {g} of ordin){
       if(cf(g,"N")>=1) continue;
       const pool = byN(eleggibili(g,"N",mrMdc));
-      // Sui weekend: prima chi NON ha il weekend riservato; a parità, chi ha
-      // PIÙ weekend liberi (può "spenderne" uno restando sopra l'obiettivo).
-      const ch = isWk(g)
+      // Notti di weekend/prefestive (v0.3.19): 1) rispetta i weekend riservati;
+      // 2) EQUITÀ — meno carico weekend prima (la notte pesa 2); 3) a parità,
+      // chi ha più weekend liberi (può spenderne uno); 4) meno notti (byN, via
+      // ordine stabile del pool). Notti feriali "pure": solo byN.
+      const ch = isNotteFest(g)
         ? pool.slice().sort((a,b)=>
             ((isBloc(a.id,g)?1:0)-(isBloc(b.id,g)?1:0)) ||
+            (cntWk(a.id)-cntWk(b.id)) ||
             (cntWkLiberi(b.id)-cntWkLiberi(a.id)))[0]
         : pool[0];
       if(ch) add(ch.id,g,"N");
@@ -577,7 +583,7 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean;
 // la catena vi si ADATTA adottando come portatore il medico che ha già la M
 // del weekend, così da ottenere ven–sab–dom–lun continui quando possibile.
 export function catenaContinuita(ctx: Ctx){
-  const { ndim, ml, mrMdc, isFer, gt, haM, haQ, canR, mdcOk, cf, nmn, byL, add, BLOCCO_M } = ctx;
+  const { ndim, ml, mrMdc, isFer, gt, haM, haQ, canR, mdcOk, cf, nmn, byL, add, BLOCCO_M, feriali } = ctx;
   const K = BLOCCO_M;
   if(K<=0 || mrMdc.length===0) return;
 
@@ -591,69 +597,118 @@ export function catenaContinuita(ctx: Ctx){
   const metti  = (m:Medico,g:number) => { add(m.id,g,"M"); return haM(m.id,g); };
   const spazio = (g:number) => nmn(g).mn - cf(g,"M");   // slot residui nel MINIMO
 
-  let g=1;
-  while(g<=ndim){
-    if(mlM(g)){ g++; continue; }
-    let fine=g; while(fine+1<=ndim && !mlM(fine+1)) fine++;
+  // ── CORSIE SFALSATE (v2) ───────────────────────────────────────────────────
+  // La v1 gestiva UNA sola linea di catena: l'altra metà del fabbisogno minimo
+  // la riempiva la 5B senza alcuna struttura, e metà delle mattine risultava
+  // rumore. Ora le linee sono tante quanti gli slot del minimo feriale (di
+  // norma 2), SFALSATE: la corsia c parte con un primo blocco accorciato
+  // (~K·c/2), così i cambi delle corsie cadono in giorni DIVERSI e chi inizia
+  // un blocco ha sempre accanto il portatore dell'altra corsia a metà del suo.
+  // È lo sfalsamento stesso a garantire il passaggio di consegne: quando le
+  // corsie saturano il minimo non resta spazio per la doppia M di testimone
+  // nella stessa corsia (il ramo resta per i giorni in cui l'altra corsia è
+  // ferma), ma la continuità clinica è coperta dal portatore già in corsa.
+  const mnFer   = feriali.length ? nmn(feriali[0]).mn : 1;
+  const nCorsie = Math.max(1, Math.min(3, mnFer));
 
-    // ── copertura del tratto [g, fine] ────────────────────────────────────
-    let carrier: Medico|null = null, blocco = 0;
-    let primo:   Medico|null = null;      // primo portatore (per il bordo iniziale)
-    for(let d=g; d<=fine; d++){
-      if(!isFer(d)){
-        // Weekend/festivo: le M sono già state decise dalla fase weekend.
-        // La catena SI ADATTA: chi lavora la M del weekend diventa (o resta)
-        // il portatore, per proseguire senza stacchi sul lunedì.
-        const wCar = mrMdc.filter(m=>gt(m.id,d).some(s=>s.tipo==="M"));
-        if(wCar.length){
-          if(carrier && wCar.some(m=>m.id===carrier!.id)) blocco++;
-          else { carrier = byL(wCar)[0]; blocco = 1; if(!primo) primo = carrier; }
+  const corsia = (sfaso:number) => {
+    let g=1;
+    while(g<=ndim){
+      if(mlM(g)){ g++; continue; }
+      let fine=g; while(fine+1<=ndim && !mlM(fine+1)) fine++;
+
+      // ── copertura del tratto [g, fine] per QUESTA corsia ──────────────────
+      let carrier: Medico|null = null, blocco = 0;
+      let primo:   Medico|null = null;      // primo portatore (per il bordo iniziale)
+      // Primo blocco del tratto accorciato dallo sfalsamento; i successivi = K.
+      let target = Math.max(1, K - sfaso);
+      // ORIZZONTE: le notti (già assegnate: la fase Notti precede i diurni),
+      // i riposi post-notte e le assenze manuali sono GIÀ nel tabellone. Un
+      // candidato "più scarico" ma con una N fra due giorni ucciderebbe il
+      // blocco sul nascere: si preferisce chi può SOSTENERE il blocco, cioè
+      // chi ha più feriali consecutivi liberi davanti (fino a `cap`).
+      const orizzonte = (m:Medico, da:number, cap:number) => {
+        let n=0;
+        for(let x=da; x<=fine && n<cap; x++){
+          if(!isFer(x)) continue;            // il weekend non conta né blocca qui
+          if(!valido(m,x)) break;
+          n++;
         }
-        continue;                          // nessuna M di weekend → il blocco resta sospeso
-      }
-      if(spazio(d)<=0) continue;           // minimo già pieno (manuali): nulla da decidere
-      // Il portatore prosegue il suo blocco?
-      if(carrier && blocco<K && valido(carrier,d) && metti(carrier,d)){
-        blocco++; if(!primo) primo = carrier; continue;
-      }
-      // PAUSA (non cambio): un impedimento di UN solo giorno del portatore a
-      // metà blocco — ambulatorio (la fase A gira prima dei diurni), turno PS
-      // manuale, permesso isolato, giorno post-notte — NON spezza il blocco:
-      // se al prossimo feriale del tratto il portatore torna valido, oggi
-      // copre un SUPPLENTE di giornata e il blocco riprende domani. Il
-      // testimone NON passa qui: passa solo ai cambi veri di fine blocco.
-      if(carrier && blocco<K && !valido(carrier,d)){
-        let nf=0; for(let x=d+1;x<=fine;x++) if(isFer(x)){ nf=x; break; }
-        if(nf && valido(carrier,nf)){
-          for(const m of byL(mrMdc.filter(x=>valido(x,d) && x.id!==carrier!.id))) if(metti(m,d)) break;
-          continue;
+        return n;
+      };
+      const prossimoFer = (dd:number) => { for(let x=dd+1;x<=fine;x++) if(isFer(x)) return x; return 0; };
+      for(let d=g; d<=fine; d++){
+        if(!isFer(d)){
+          // Weekend/festivo: le M sono già state decise dalla fase weekend.
+          // Ogni corsia adotta "il suo" medico di weekend (byL: 1ª corsia il
+          // più scarico, 2ª il successivo) per proseguire senza stacchi.
+          const wCar = byL(mrMdc.filter(m=>gt(m.id,d).some(s=>s.tipo==="M")));
+          if(wCar.length){
+            if(carrier && wCar.some(m=>m.id===carrier!.id)) blocco++;
+            else {
+              // Si adotta il medico del weekend solo se può REGGERE il lunedì
+              // e oltre (orizzonte ≥2 sui feriali successivi): un\'adozione che
+              // muore subito produce solo mattine orfane, meglio un cambio
+              // pulito al lunedì con lookahead pieno.
+              const nf = prossimoFer(d);
+              const sost = wCar.filter(m=>!nf || orizzonte(m,nf,2)>=2);
+              if(sost.length){ carrier = sost[Math.min(sfaso?1:0, sost.length-1)]; blocco = 1; if(!primo) primo = carrier; }
+            }
+          }
+          continue;                          // nessuna M di weekend → il blocco resta sospeso
         }
+        if(spazio(d)<=0) continue;           // minimo già pieno: nulla da decidere qui
+        // Il portatore prosegue il suo blocco?
+        if(carrier && blocco<target && valido(carrier,d) && metti(carrier,d)){
+          blocco++; if(!primo) primo = carrier; continue;
+        }
+        // PAUSA (non cambio): un impedimento di UN solo giorno del portatore a
+        // metà blocco — ambulatorio (la fase A gira prima dei diurni), turno PS
+        // manuale, permesso isolato, giorno post-notte — NON spezza il blocco:
+        // se al prossimo feriale del tratto il portatore torna valido, oggi
+        // copre un SUPPLENTE di giornata e il blocco riprende domani. Il
+        // testimone NON passa qui: passa solo ai cambi veri di fine blocco.
+        if(carrier && blocco<target && !valido(carrier,d)){
+          const nf = prossimoFer(d);
+          if(nf && valido(carrier,nf)){
+            for(const m of byL(mrMdc.filter(x=>valido(x,d) && x.id!==carrier!.id))) if(metti(m,d)) break;
+            continue;
+          }
+        }
+        // Cambio (fine blocco, portatore fermo a lungo, o primo anello del tratto).
+        const uscente = (carrier && blocco>=target && valido(carrier,d)) ? carrier : null;
+        let nuovo: Medico|null = null;
+        const cand = byL(mrMdc.filter(x=>valido(x,d) && (!carrier || x.id!==carrier!.id)))
+          .map(m=>({ m, o: orizzonte(m, d, target) }))
+          .sort((a,b)=> b.o - a.o);          // byL è stabile: a parità di orizzonte resta il più scarico
+        for(const { m } of cand){
+          if(metti(m,d)){ nuovo = m; break; }
+        }
+        if(nuovo){
+          // PASSAGGIO DI CONSEGNE nella stessa corsia: possibile solo se il
+          // minimo ha ancora un secondo slot (tipicamente quando l\'altra
+          // corsia è ferma quel giorno); con le corsie piene lo sfalsamento
+          // fa da testimone.
+          if(uscente && spazio(d)>=1) metti(uscente,d);
+          carrier = nuovo; blocco = 1; target = K; if(!primo) primo = nuovo;
+        } else if(carrier && blocco<target+2 && valido(carrier,d) && metti(carrier,d)){
+          blocco++;                          // nessun sostituto: prosegue, ma al più fino a target+2
+        } else { carrier = null; blocco = 0; target = K; }  // corsia ferma: riparte più avanti
       }
-      // Cambio (fine blocco, portatore fermo a lungo, o primo anello del tratto).
-      const uscente = (carrier && blocco>=K && valido(carrier,d)) ? carrier : null;
-      let nuovo: Medico|null = null;
-      for(const m of byL(mrMdc.filter(x=>valido(x,d) && (!carrier || x.id!==carrier!.id)))){
-        if(metti(m,d)){ nuovo = m; break; }
-      }
-      if(nuovo){
-        // PASSAGGIO DI CONSEGNE: se il minimo ha un secondo slot, l'uscente fa
-        // qui la sua ultima mattina accanto alla prima dell'entrante.
-        if(uscente && spazio(d)>=1) metti(uscente,d);
-        carrier = nuovo; blocco = 1; if(!primo) primo = nuovo;
-      } else if(carrier && valido(carrier,d) && metti(carrier,d)){
-        blocco++;                          // nessun sostituto: l'attuale prosegue oltre K
-      } else { carrier = null; blocco = 0; }  // anello impossibile: si riparte più avanti
+
+      // ── AFFIANCAMENTO AI BORDI COL ML (entro il minimo, best-effort) ──────
+      // Per costruzione g-1 (se ≥1) e fine+1 (se ≤ndim) hanno una M del ML.
+      // Bordo iniziale: il primo portatore entra già nell\'ultima M del ML.
+      if(primo && g-1>=1 && spazio(g-1)>=1 && valido(primo,g-1)) metti(primo,g-1);
+      // Bordo finale: l\'ultimo portatore accompagna la prima M del ML al rientro.
+      if(carrier && blocco>0 && fine+1<=ndim && spazio(fine+1)>=1 && valido(carrier,fine+1)) metti(carrier,fine+1);
+
+      g = fine+1;
     }
+  };
 
-    // ── AFFIANCAMENTO AI BORDI COL ML (entro il minimo, best-effort) ──────
-    // Per costruzione g-1 (se ≥1) e fine+1 (se ≤ndim) hanno una M del ML.
-    // Bordo iniziale: il primo portatore entra già nell'ultima M del ML.
-    if(primo && g-1>=1 && spazio(g-1)>=1 && valido(primo,g-1)) metti(primo,g-1);
-    // Bordo finale: l'ultimo portatore accompagna la prima M del ML al rientro.
-    if(carrier && blocco>0 && fine+1<=ndim && spazio(fine+1)>=1 && valido(carrier,fine+1)) metti(carrier,fine+1);
-
-    g = fine+1;
-  }
+  // Corsia 0 a blocchi pieni, corsia 1 sfalsata di ~K/2, eventuale corsia 2 di ~K.
+  for(let c=0; c<nCorsie; c++) corsia(Math.floor(c*K/2));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -690,9 +745,15 @@ export function faseDiurni(ctx: Ctx, seed: number){
     // quindi rieseguita a ogni tentativo, dentro il rollback.
     catenaContinuita(ctx);
 
-    // 5B — completa mattine al minimo, preferendo consecutive per lo stesso medico.
-    // "Consecutiva" = M VERA adiacente (tipo "M"): A e 1 sono mattinieri per
-    // isMatt ma NON sono continuità di reparto — contarli creava pseudo-blocchi.
+    // 5B — completa le mattine residue al minimo (le corsie della catena ne
+    // coprono la gran parte; qui restano i buchi dove una corsia era ferma).
+    // PRIORITÀ ALLA CONTINUITÀ, in quest'ordine:
+    //  1. un medico che ha una M VERA sia a g-1 sia a g+1 → riempiendo g
+    //     salda DUE frammenti in un blocco unico (massimo guadagno);
+    //  2. un medico con M vera adiacente (g-1 o g+1) → estende il suo blocco;
+    //  3. altrimenti il più scarico (byL) — un nuovo anello.
+    // Le opzioni 1/2 evitano di introdurre un medico estraneo che creerebbe
+    // una mattina orfana, che era la causa principale della frammentazione.
     const haMR = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="M");
     for(const g of feriali){
       let at=0;
@@ -700,8 +761,9 @@ export function faseDiurni(ctx: Ctx, seed: number){
         at++;
         const base=[...ml,...mrMdc].filter(m=>!haM(m.id,g)&&canR(m,g,"M")&&mdcOk(m,g,"M")&&!haQ(m.id,g));
         if(base.length===0) break;
-        const consec = base.filter(m=>haMR(m.id,g-1)||haMR(m.id,g+1));
-        const scelta = (consec.length?byL(consec):byL(base))[0];
+        const salda  = base.filter(m=>haMR(m.id,g-1)&&haMR(m.id,g+1));
+        const estende= base.filter(m=>haMR(m.id,g-1)||haMR(m.id,g+1));
+        const scelta = (salda.length?byL(salda):estende.length?byL(estende):byL(base))[0];
         if(!scelta) break;
         add(scelta.id,g,"M");
       }
