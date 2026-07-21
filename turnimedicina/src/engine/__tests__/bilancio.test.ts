@@ -74,12 +74,31 @@ describe("riepilogoMedico", () => {
   };
   const r = riepilogoMedico(T, 1, 31, 2026, 6);
 
-  it("conta le M di reparto, escluse le sottolineate", () => expect(r.m).toBe(2));
+  it("conta le M di reparto, INCLUSE le sottolineate", () => expect(r.m).toBe(3));
   it("conta le P di reparto", () => expect(r.p).toBe(1));
-  it("conta le N di reparto (anche infrasettimanali)", () => expect(r.n).toBe(1));
-  it("PS non entra in M/P/N", () => expect(r).toMatchObject({ m:2, p:1, n:1 }));
-  it("weekend: M+P(2) + notte PS(2) + PS m/p(2) = 6; la N di lunedì e la L non contano", () =>
-    expect(r.wk).toBe(6));
+  it("conta le N di reparto, incluse sottolineate e il 3 (PS notte)", () => expect(r.n).toBe(2));
+  it("il 3 entra in N; 1 e 2 restano fuori da M/P", () => expect(r).toMatchObject({ m:3, p:1, n:2 }));
+  it("weekend v0.3.19: sab pom(1) + dom notte PS(2) + sab PS-pom(1) = 4; sabato mattina, N feriale e L escluse", () =>
+    expect(r.wk).toBe(4));
+  it("il sabato mattina NON conta nel weekend", () => {
+    const T2: TurniMese = { 1:{ 4:{t:[{tipo:"M"}]} } };            // 4 luglio = sabato
+    expect(riepilogoMedico(T2,1,31,2026,6).wk).toBe(0);
+  });
+  it("il sabato pomeriggio conta 1, la notte del sabato 2", () => {
+    const T2: TurniMese = { 1:{ 4:{t:[{tipo:"P"}]}, 11:{t:[{tipo:"N"}]} } };
+    expect(riepilogoMedico(T2,1,31,2026,6).wk).toBe(3);           // P(1) + N(2)
+  });
+  it("un sottolineato ora conta sia in reparto sia nel weekend (v0.3.20)", () => {
+    const T2: TurniMese = { 1:{ 5:{t:[{tipo:"N",sott:true}]} } };  // 5 luglio = domenica
+    const r2 = riepilogoMedico(T2,1,31,2026,6);
+    expect(r2.n).toBe(1);                                          // reparto: sott inclusi
+    expect(r2.wk).toBe(2);                                         // weekend: notte domenica = 2
+  });
+  it("la notte PREFESTIVA vale 2 anche se il giorno è feriale (v0.3.19)", () => {
+    // 1 giugno 2026 = lunedì (feriale); 2 giugno = martedì festivo → la N del giorno 1 conta.
+    const T2: TurniMese = { 1:{ 1:{t:[{tipo:"N"}]} } };
+    expect(riepilogoMedico(T2,1,30,2026,5).wk).toBe(2);
+  });
   it("la notte pesa 2 nel weekend, indifferente se PS o reparto", () => {
     const T2: TurniMese = { 1:{ 4:{t:[{tipo:"N"}]}, 5:{t:[{tipo:"3"}]} } };
     expect(riepilogoMedico(T2,1,31,2026,6).wk).toBe(4);
