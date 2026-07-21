@@ -386,7 +386,8 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
 // Valuta un tabellone con la validazione STRETTA. Punteggio GERARCHICO:
 // buchi di copertura (1000) > violazioni di regola (500) > deficit weekend
 // liberi (10) > avvisi minori (1). A parità di duro decide il SOFT (equità:
-// varianza notti ×100, carichi ×10, wk liberi ×5, −2 per wk libero extra).
+// varianza notti ×100, carico weekend ×20, carichi ×10, wk liberi ×5, −2 per
+// wk libero extra).
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
   const c = makeCtx(anno, mese, ndim, medici, turni);
   const probs = validazioneGlobale(c);
@@ -410,9 +411,33 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const varOf = (a:number[]) => { if(a.length<2) return 0; const mu=a.reduce((x,y)=>x+y,0)/a.length; return a.reduce((q,v)=>q+(v-mu)*(v-mu),0)/a.length; };
   const notti   = c.mrMdc.map(m2=>c.cntN(m2.id));
   const carichi = c.att.map(m2=>c.cnt(m2.id));
+  // EQUITÀ CARICO WEEKEND (v0.3.21): varianza del carico weekend ONEROSO pesato
+  // (cntWk = somma di pesoWeekend: notte festiva 2, pom sab/festivo 1, mattina
+  // domenica/festivo 1, sabato mattina 0). byWk equilibra DENTRO ogni tentativo,
+  // ma il selettore globale era cieco a questa dimensione: a s pari (tipico dei
+  // mesi senza manuali) adottava board equi su notti/carico/wk-liberi ma casuali
+  // sui weekend. Stessa platea mrMdc di notti/wkLib. Overlap VOLUTO con notti (le
+  // notti festive pesano in entrambi). Peso da tarare sugli snapshot reali.
+  const wkCarico= c.mrMdc.map(m2=>c.cntWk(m2.id));
   const wkLib   = c.mrMdc.map(m2=>c.cntWkLiberi(m2.id));
   const wkExtra = c.mrMdc.reduce((q,m2)=>q+Math.max(0,c.cntWkLiberi(m2.id)-c.wkTargetMed(m2.id)),0);
-  const soft = varOf(notti)*100 + varOf(carichi)*10 + varOf(wkLib)*5 - wkExtra*2;
+  // CONTINUITÀ (v0.3.17): a parità di copertura ed equità si preferisce il
+  // tabellone con MENO strisce di M nei feriali (= blocchi più lunghi), così
+  // la selezione fra tentativi e le riparazioni non premiano tabelloni
+  // frammentati. Attivo solo con la catena accesa (BLOCCO_M>0): con
+  // blocchiMattina=0 il punteggio resta byte per byte quello storico.
+  let strisceM = 0;
+  if(c.BLOCCO_M>0){
+    for(const m2 of c.att){
+      let inRun=false;
+      for(const g of c.feriali){
+        const has = c.gt(m2.id,g).some(sh=>sh.tipo==="M");
+        if(has && !inRun) strisceM++;
+        inRun = has;
+      }
+    }
+  }
+  const soft = varOf(notti)*100 + varOf(wkCarico)*20 + varOf(carichi)*10 + varOf(wkLib)*5 - wkExtra*2 + strisceM*8;
   return { s, soft, probs, buchi, wkDef, celle };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
