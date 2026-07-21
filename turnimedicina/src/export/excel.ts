@@ -34,22 +34,25 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
     },
   });
 
-  // ---------- righe (stesso impianto del modello, 1-based in ExcelJS) ----------
-  // r1: margine alto · r2-r4: intestazione testuale · r5: fascia banner ·
-  // r6: MEDICINA · r7: anno + numeri giorno · r8: mese + lettere giorno · r9+: medici
-  // v0.3.12: il banner stava in r1 sopra i testi, che gli finivano attaccati
-  // (sovrapposizione visiva). Nel modello ospedaliero l'ordine è testi → banner:
-  // ora il banner vive in r5, con margine sopra e sotto.
+  // ---------- righe (1-based in ExcelJS) ----------
+  // r1: fascia banner (a tutta larghezza tabella) · r2-r4: intestazione testuale
+  // centrata · r5: margine · r6: MEDICINA · r7: anno + numeri · r8: mese + lettere
+  // · r9+: medici
+  // v0.3.18: banner riportato IN CIMA, largo quanto la tabella del mese (ancoraggio
+  // a due celle, più sotto), con i tre righi di testo CENTRATI sotto. Nessuna
+  // sovrapposizione: il banner è confinato a r1, i testi vivono da r2 in giù.
   const hdr = [
-    "Azienda Ospedaliero-Universitaria  ",
+    "Azienda Ospedaliero-Universitaria",
     "San Giovanni di Dio e Ruggi d\u2019Aragona  -  Salerno",
     "Presidio Ospedaliero \u201cSanta Maria Incoronata dell\u2019Olmo\u201d",
   ];
   hdr.forEach((t, i) => {
-    const cell = ws.getCell(2 + i, 17);           // colonna Q, come nel modello
+    const r = 2 + i;
+    ws.mergeCells(r, 1, r, nd + 1);               // centra su tutta la larghezza
+    const cell = ws.getCell(r, 1);
     cell.value = t;
     cell.font = { name: "Arial", size: 12 };
-    cell.alignment = { horizontal: "left" };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
   });
   const med = ws.getCell(6, 1);
   med.value = "MEDICINA";
@@ -115,17 +118,20 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   // ---------- dimensioni ----------
   ws.getColumn(1).width = 26;
   for (let c = 2; c <= nd + 1; c++) ws.getColumn(c).width = 6.3;
-  ws.getRow(1).height = 10;                      // margine alto
-  ws.getRow(5).height = 46;                      // fascia banner (56 px + aria)
+  ws.getRow(1).height = 42;                       // fascia banner in cima (~56 px)
+  ws.getRow(5).height = 8;                        // margine fra testo e MEDICINA
   for (let r = R_NUM - 1; r <= lastRow; r++) ws.getRow(r).height = 23;
 
-  // ---------- logo (fascia r5, sotto l'intestazione testuale) ----------
-  // Dimensioni del template ufficiale: ~13.154.025 × 533.400 EMU (≈ 1381 × 56
-  // px). tl usa coordinate frazionarie 0-based di ExcelJS: row 4.05 = riga 5
-  // con un piccolo offset, così il banner resta dentro la fascia (46 pt ≈ 61
-  // px) senza toccare né i testi sopra né MEDICINA sotto.
+  // ---------- logo (fascia r1, in cima, a tutta larghezza tabella) ----------
+  // v0.3.18: ancoraggio a DUE celle tramite range "A1:<ultima-colonna>1". Copre
+  // da A1 (bordo sinistro tabella, cima di r1) fino allo spigolo destro-basso
+  // dell'ultima colonna-giorno in r1. Così il banner combacia SEMPRE con la
+  // larghezza della tabella, qualunque sia il numero di giorni del mese, e resta
+  // basso quanto prima (r1 è alta ~56 px: stesso "schiacciamento" dell'export
+  // precedente). Nota: la forma stringa evita la firma tl/br che i tipi di
+  // ExcelJS pretendono come Anchor completo (native*), che non compilerebbe.
   const imgId = wb.addImage({ base64: LOGO_PNG_BASE64, extension: "png" });
-  ws.addImage(imgId, { tl: { col: 0.2, row: 4.05 }, ext: { width: 1381, height: 56 } });
+  ws.addImage(imgId, `A1:${colLetter(nd + 1)}1`);
 
   // ---------- area di stampa ----------
   const lastColL = colLetter(nd + 1);
