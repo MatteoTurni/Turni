@@ -235,6 +235,34 @@ export default function App(){
   // Riepilogo generale del medico: M/P/N di reparto + carico weekend.
   const rieM  = (id:number) => riepilogoMedico(turni, id, nd, anno, mese);
 
+  // Riepilogo testuale della squadra (Formato B, copiabile): rispecchia le card.
+  const riepilogoTesto = () => {
+    const out: string[] = [`Riepilogo turni — U.O.C. Medicina Interna — ${MESI[mese]} ${anno}`, ""];
+    for(const m of medici){
+      const tot=cntM(m.id), r=rieM(m.id), wkLib=cntWkLiberi(m.id);
+      const ambN=cntAmb(m.id), psN=cntPS(m.id), pm=cntPerm(m.id);
+      const permTxt=PERM.filter(k=>pm.det[k]).map(k=>`${k}${pm.det[k]}`).join("·");
+      const mps=m.stato==="MPS";
+      out.push(`${m.nome} [${m.stato}]${m.ambulatorio?" · AMB":""}  matr. ${m.codice||"—"}`);
+      out.push(`  Turni: ${mps?`${tot}`:`${tot} / ${m.obiettivo}`}`);
+      out.push(`  Reparto: M ${r.m} · P ${r.p} · N ${r.n}`);
+      out.push(`  Weekend lavorati: ${r.wk}${mps?"":` · liberi: ${wkLib}`}`);
+      if(m.ambulatorio) out.push(`  Ambulatorio: ${ambN}`);
+      out.push(`  PS: ${psN}`);
+      out.push(`  Permessi: ${pm.tot>0?`${pm.tot} (${permTxt})`:"0"}`);
+      out.push("");
+    }
+    return out.join("\n").trimEnd();
+  };
+  const copiaRiepilogo = async () => {
+    const txt = riepilogoTesto();
+    try {
+      if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(txt);
+      else { const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+      showMsg("Riepilogo copiato negli appunti");
+    } catch { showMsg("Copia non riuscita", "err"); }
+  };
+
   // Bilancio del mese + dettaglio del fabbisogno (per il pannello su "F").
   const bil = calcolaBilancio(anno,mese,nd,medici,turni,regole);
   const fab = dettaglioFabbisogno(anno,mese,nd,regole);
@@ -653,10 +681,16 @@ export default function App(){
         <div className="np" style={{padding:"16px",maxWidth:"700px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
             <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Gestione Medici</span>
-            <button onClick={()=>setEditDoc({nome:"",codice:"",stato:"MR",obiettivo:25,ambulatorio:false})}
-              style={{background:"#052e16",color:"#4ade80",border:"1px solid #16a34a",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
-              ➕ Aggiungi
-            </button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={copiaRiepilogo}
+                style={{background:"#0d1930",color:"#a78bfa",border:"1px solid #4c1d95",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
+                📋 Copia riepilogo
+              </button>
+              <button onClick={()=>setEditDoc({nome:"",codice:"",stato:"MR",obiettivo:25,ambulatorio:false})}
+                style={{background:"#052e16",color:"#4ade80",border:"1px solid #16a34a",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
+                ➕ Aggiungi
+              </button>
+            </div>
           </div>
           {/* Card medici (stile D): un'unica griglia sostituisce riepilogo + righe */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:"8px"}}>
