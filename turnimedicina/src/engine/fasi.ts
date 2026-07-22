@@ -461,6 +461,77 @@ export function riequilibraWeekendLiberi(ctx: Ctx){
   return false;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RIEQUILIBRIO DEL CARICO WEEKEND (v0.3.21)
+// Sul tabellone VINCENTE, minimizza la varianza del carico weekend oneroso
+// (cntWk). Primitivo: RIASSEGNAZIONE STESSO-SLOT — un turno weekend automatico
+// passa da A a un B eleggibile sullo stesso (giorno,fascia). La copertura per
+// slot resta INVARIANTE (nessun turno creato/distrutto): impossibile creare
+// buchi o sforare il fabbisogno. pesoWeekend dipende da (giorno,tipo) e non dal
+// medico → il TOTALE di cntWk è invariante, quindi minimizzare Σ cntWk²
+// equivale ESATTAMENTE a minimizzare la varianza.
+// GUARDIE: quelle di add() (distanza associati, riposo post-notte, notti/giorni
+// consecutivi), validaWeekend, il PAVIMENTO dei weekend liberi (nessuno sotto
+// wkTargetMed: A cedendo può solo salire, la guardia protegge B) e — cruciale —
+// mdcOkGiorno: né add() né validazioneGlobale verificano l'affiancamento MDC,
+// e senza questo controllo la fase assegnava all'MDC turni in cui restava solo.
+// Discesa monotona → termina. Gira UNA volta sul best (costo nullo per la
+// ricerca); l'adozione resta gated dal confronto (s, soft) in rifinituraFinale.
+export function riequilibraCaricoWeekend(ctx: Ctx): boolean {
+  const { giorniArr, isWk, mrMdc, gt, st, add, cntWk, cntWkLiberi, wkTargetMed,
+          SPEC, mdcOk, mark, rollback } = ctx;
+  const fasciaDi = (t:string) => isMatt(t)?"M":isPom(t)?"P":isNot(t)?"N":null;
+  const haFascia = (id:number,g:number,f:string) => gt(id,g).some(s=>fasciaDi(s.tipo)===f);
+  const mdcOkGiorno = (g:number) => mrMdc.every(m=>m.stato!=="MDC" ||
+    (["M","P","N"] as const).every(f=>!haFascia(m.id,g,f) || mdcOk(m,g,f)));
+  const sumSq = () => mrMdc.reduce((q,m)=>q+cntWk(m.id)*cntWk(m.id),0);
+  // PAVIMENTO WEEKEND LIBERI — doppia condizione, per medico:
+  //  (a) non sotto wkTargetMed (= min(wkTarget=2, maxWkLiberi): vale 2 per chiunque
+  //      possa strutturalmente averne 2; scende solo se i MANUALI glielo impediscono);
+  //  (b) mai PEGGIO di com'era all'ingresso della fase (libBase).
+  // (a) garantisce il "mai sotto 2"; (b) rende la fase non-peggiorativa anche nei
+  // mesi degeneri in cui qualcuno parte già sotto target, dove (a) da sola
+  // bloccherebbe tutto. A cede un turno → i suoi liberi possono solo salire:
+  // la guardia protegge di fatto il ricevente B.
+  const libBase = new Map(mrMdc.map(m=>[m.id, cntWkLiberi(m.id)]));
+  const floorOk = () => mrMdc.every(m=>{
+    const v = cntWkLiberi(m.id);
+    return v >= wkTargetMed(m.id) && v >= Math.min(libBase.get(m.id) ?? 0, wkTargetMed(m.id));
+  });
+  const rimuovi = (id:number,g:number,tipo:string) => st(id,g, gt(id,g).filter(s=>!(s.tipo===tipo&&!s.man)));
+  const wkDays = giorniArr.filter(g=>isWk(g));
+  const m00 = mark(); const base0 = sumSq();
+  let mosse = 0, nodi = 0; const LIMITE = ENG.REBAL_NODES;
+  let migliorato = true;
+  while(migliorato && nodi < LIMITE){
+    migliorato = false; const base = sumSq();
+    let best: { g:number; tipo:string; A:number; B:number; val:number } | null = null;
+    for(const g of wkDays){
+      for(const A of mrMdc){
+        for(const s of gt(A.id,g)){
+          if(s.man || SPEC.includes(s.tipo)) continue;
+          const f = fasciaDi(s.tipo); if(!f) continue;
+          for(const B of mrMdc){
+            if(B.id===A.id || haFascia(B.id,g,f)) continue;
+            if(++nodi > LIMITE) break;
+            const m0 = mark();
+            rimuovi(A.id,g,s.tipo); add(B.id,g,s.tipo);
+            const landed = gt(B.id,g).some(x=>x.tipo===s.tipo);
+            if(landed && floorOk() && mdcOkGiorno(g) && validaWeekend(ctx)){
+              const val = sumSq();
+              if(val < base - 1e-9 && (best===null || val < best.val)) best = { g, tipo:s.tipo, A:A.id, B:B.id, val };
+            }
+            rollback(m0);
+          }
+        }
+      }
+    }
+    if(best){ rimuovi(best.A,best.g,best.tipo); add(best.B,best.g,best.tipo); mosse++; migliorato = true; }
+  }
+  if(mosse>0 && sumSq() < base0 - 1e-9) return true;
+  rollback(m00); return false;
+}
+
 // `accettaMigliore`: modalità di ripiego. Quando true, se nessun tentativo
 // garantisce i weekend liberi a TUTTI, la fase conserva e applica il miglior
 // tentativo a copertura valida (quello che soddisfa l'obiettivo di weekend

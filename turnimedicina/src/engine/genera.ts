@@ -5,7 +5,8 @@ import { cloneT, pulisciT, SPEC } from "./turni";
 import { ENG } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
-         riequilibraWeekendLiberi, riparaBuchi, validazioneGlobale, type Blocco } from "./fasi";
+         riequilibraWeekendLiberi, riequilibraCaricoWeekend, riparaBuchi,
+         validazioneGlobale, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -593,6 +594,16 @@ export function rifinituraFinale(
       if(riequilibraWeekendLiberi(c)) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
+
+  // ── RIEQUILIBRIO CARICO WEEKEND (v0.3.21) ───────────────────────────────
+  // Sul vincente: riduce la varianza di cntWk via riassegnazione stesso-slot.
+  // Adottato solo se prova() lo giudica migliore su (s, soft) → non può
+  // peggiorare copertura, regole o gli altri assi di equità.
+  try{
+    const copia = cloneT(bestT);
+    const c = makeCtx(anno, mese, ndim, medici, copia);
+    if(riequilibraCaricoWeekend(c)) prova(copia);
+  }catch(_){ /* si tiene il best già trovato */ }
 
   // ── ULTIMA CHANCE COME ALTERNATIVA (non adottata d'ufficio) ─────────────
   // La generazione rilascia SEMPRE il primario "sicuro". L'ultima chance —
