@@ -411,6 +411,47 @@ export function makeCtx(
   const feriali = giorniArr.filter(g=>isFer(g));
   const weekend = giorniArr.filter(g=>isWk(g));
   const wkPairs: [number,number][] = []; for(let g=1;g<=ndim;g++) if(isS(g)&&g+1<=ndim&&isD(g+1)) wkPairs.push([g,g+1]);
+  // ── PORTATORI DI CARICO WEEKEND (v0.3.22) ─────────────────────────────────
+  // Popolazione su cui ha senso misurare l'EQUITÀ del carico weekend: i medici
+  // che possono davvero riceverne. Includere chi è strutturalmente a zero
+  // (l'ML, e l'MDC quando i minimi festivi valgono 1) aggiunge alla varianza
+  // una costante enorme e SMORZA i delta fra tabelloni — era uno dei motivi per
+  // cui il selettore non distingueva un weekend equo da uno sbilanciato.
+  //
+  //  · ML  → niente P, niente N, niente M festiva ⇒ solo mattine di sabato,
+  //          che pesano 0 ⇒ mai portatore.
+  //  · MDC → il Decreto Calabria gli vieta di restare solo: può prendere uno
+  //          slot weekend di peso > 0 solo se su quella fascia c'è posto per un
+  //          collega (max ≥ 2). La notte è 1/giorno ⇒ per lui è sempre esclusa.
+  //  · MR  → sempre portatore.
+  /** Peso "weekend" di UNO slot (stessa metrica di pesoWeekend, per fascia). */
+  const pesoSlot = (g:number, f:"M"|"P"|"N") => {
+    const fest = isSp(g);                                  // domenica o festivo
+    const sab  = isS(g) && !fest;
+    const pre  = g<ndim && isSp(g+1);                       // notte prefestiva
+    if(f==="N") return (sab||fest||pre) ? 2 : 0;
+    if(f==="P") return (sab||fest) ? 1 : 0;
+    return fest ? 1 : 0;                                    // mattina: solo festivo
+  };
+  // Indisponibilità IMMOVIBILE nel giorno g: X o un'assenza inserita a mano.
+  // Solo turni manuali → la popolazione dei portatori è la STESSA per tutti i
+  // tabelloni a confronto, che è ciò che rende la forchetta un metro comparabile.
+  const bloccatoMan = (id:number,g:number) =>
+    gt(id,g).some(s=>s.tipo==="X" || (s.man && ["L","ANA","per11","104"].includes(s.tipo)));
+  const puoPortareWk = (m:Medico) => {
+    if(m.stato==="ML")    return false;
+    if(m.obiettivo<=0)    return false;
+    const mdcOnly = m.stato==="MDC";
+    for(let g=1;g<=ndim;g++){
+      if(bloccatoMan(m.id,g)) continue;                     // ferie/104: non può portare nulla
+      if(!mdcOnly && (pesoSlot(g,"M")>0 || pesoSlot(g,"P")>0 || pesoSlot(g,"N")>0)) return true;
+      // MDC: solo dove c'è posto per un collega sulla stessa fascia (mai la notte)
+      if(mdcOnly && pesoSlot(g,"M")>0 && nmn(g).mx>=2) return true;
+      if(mdcOnly && pesoSlot(g,"P")>0 && npn(g).mx>=2) return true;
+    }
+    return false;
+  };
+
   // Obiettivo di weekend liberi per medico. Normalmente ADATTIVO al mese:
   // 2 con ≥4 coppie sab-dom, 1 con 3, 0 con ≤2. Un override NUMERICO (vecchio
   // passo A dell'ultima chance) sostituisce l'adattivo per tutti; un override
@@ -505,6 +546,7 @@ export function makeCtx(
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
+    pesoSlot, wkPortatori: mrMdc.filter(puoPortareWk),
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,
     relaxN: !!relaxN,
   };
