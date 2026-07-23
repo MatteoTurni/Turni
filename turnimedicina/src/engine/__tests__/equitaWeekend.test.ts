@@ -39,14 +39,42 @@ const medici: Medico[] = [
 describe("equità carico weekend: popolazione dei portatori", () => {
   beforeEach(() => setRegole(REG_MIN1));
 
-  it("esclude ML e MDC quando i minimi festivi valgono 1", () => {
+  it("esclude sempre l'ML (niente P, niente N, niente M festiva)", () => {
     const c = makeCtx(anno, mese, nd, medici, {});
+    expect(c.wkPortatori.map(m => m.id)).not.toContain(4);
+  });
+
+  // REGRESSIONE: l'affiancamento dell'MDC può venire da un MPS, che lavora i
+  // codici PS 1/2/3 — compatibili con M/P/N per mdcOk. Con un MPS in organico
+  // l'MDC può fare ANCHE la notte di weekend, benché la notte di reparto sia
+  // 1/giorno. Escluderlo toglieva dall'equità un medico che porta quota piena
+  // (ad agosto 2026 l'MDC porta 6 punti su 51).
+  it("include l'MDC se un MPS lavora DAVVERO un weekend (codice PS manuale)", () => {
+    const T: TurniMese = {};
+    (T[6] ||= {})[3] = { t:[{ tipo:"3", man:true }] };      // MPS in notte domenicale
+    const c = makeCtx(anno, mese, nd, medici, T);
+    expect(c.wkPortatori.map(m => m.id)).toContain(5);
+  });
+
+  // REGRESSIONE: non basta che un MPS ESISTA in organico — deve avere un turno
+  // manuale compatibile su uno slot di weekend. Ad agosto 2025 gli MPS non
+  // lavoravano mai nei weekend: includere l'MDC gonfiava lo scarto di 5 punti
+  // costanti su ogni tabellone, rendendo illeggibile la metrica.
+  it("esclude l'MDC se l'MPS non lavora mai nei weekend", () => {
+    const c = makeCtx(anno, mese, nd, medici, {});
+    expect(c.wkPortatori.map(m => m.id)).not.toContain(5);
+  });
+
+  it("esclude l'MDC senza MPS e con i minimi festivi a 1", () => {
+    const senzaMps = medici.filter(m => m.stato !== "MPS");
+    const c = makeCtx(anno, mese, nd, senzaMps, {});
     expect(c.wkPortatori.map(m => m.id)).toEqual([1, 2, 3]);
   });
 
-  it("include l'MDC se sulla fascia festiva c'è posto per un collega", () => {
+  it("include l'MDC senza MPS se sulla fascia festiva c'è posto per un collega", () => {
     setRegole({ ...REG_MIN1, fabb: { ...REG_MIN1.fabb, fest: { mMin:1, mMax:2, pMin:1, pMax:1 } } });
-    const c = makeCtx(anno, mese, nd, medici, {});
+    const senzaMps = medici.filter(m => m.stato !== "MPS");
+    const c = makeCtx(anno, mese, nd, senzaMps, {});
     expect(c.wkPortatori.map(m => m.id)).toContain(5);
   });
 
@@ -55,7 +83,7 @@ describe("equità carico weekend: popolazione dei portatori", () => {
     const c0 = makeCtx(anno, mese, nd, medici, {});
     for(const g of c0.giorniArr) (T[3] ||= {})[g] = { t:[{ tipo:"L", man:true }] };
     const c = makeCtx(anno, mese, nd, medici, T);
-    expect(c.wkPortatori.map(m => m.id)).toEqual([1, 2]);
+    expect(c.wkPortatori.map(m => m.id)).not.toContain(3);
   });
 
   it("pesoSlot: sabato mattina 0, notte festiva e prefestiva 2", () => {
@@ -82,9 +110,11 @@ describe("wkScarto: 0 solo sulla ripartizione aritmeticamente equa", () => {
 
   const domeniche = [3, 10, 17, 24, 31];
 
-  // 3 notti domenicali = 6 punti su 3 portatori → forchetta [2,2]
-  const EQUO   = { 1:[3], 2:[10], 3:[17] };          // 2 / 2 / 2 ⇒ dentro
-  const INIQUO = { 1:[3, 10, 17] };                  // 6 / 0 / 0 ⇒ 4+2+2 = 8 fuori
+  // Le notti qui sono generate (man:false) ⇒ nessun affiancamento MANUALE ⇒
+  // l'MDC non è portatore. Portatori: MR 1,2,3 = 3.
+  // 3 notti domenicali = 6 punti su 3 portatori → forchetta [2,2].
+  const EQUO   = { 1:[3], 2:[10], 3:[17] };          // 2/2/2 ⇒ dentro
+  const INIQUO = { 1:[3, 10, 17] };                  // 6/0/0 ⇒ 4+2+2 = 8 fuori
 
   it("scarto 0 quando i pesi stanno nella forchetta", () => {
     const m = misuraTabellone(anno, mese, nd, medici, conNotti(EQUO));
@@ -103,7 +133,7 @@ describe("wkScarto: 0 solo sulla ripartizione aritmeticamente equa", () => {
   });
 
   it("con un solo portatore il termine è neutro (nessuna equità da misurare)", () => {
-    const soli: Medico[] = [medici[0], medici[3], medici[5]];   // 1 MR + ML + MPS
+    const soli: Medico[] = [medici[0], medici[3]];              // 1 MR + ML
     const T = conNotti({ 1: domeniche });
     const m = misuraTabellone(anno, mese, nd, soli, T);
     expect(m.wkScarto).toBe(0);
