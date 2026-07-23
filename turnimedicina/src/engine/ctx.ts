@@ -442,14 +442,71 @@ export function makeCtx(
     if(m.stato==="ML")    return false;
     if(m.obiettivo<=0)    return false;
     const mdcOnly = m.stato==="MDC";
+    // L'affiancamento dell'MDC può arrivare anche da un MPS: gli MPS lavorano i
+    // codici PS 1/2/3, che mdcOk accetta come compatibili con M/P/N. Quindi con
+    // un MPS in organico l'MDC può fare ANCHE la notte di weekend (peso 2), pur
+    // essendo la notte di reparto 1/giorno. Ignorarlo escludeva dall'equità un
+    // medico che porta una quota piena — ad agosto 2026 l'MDC ne porta 6 su 51.
+    // Affiancamento MANUALE disponibile a g sulla fascia f: un collega che ha
+    // GIÀ un turno compatibile inserito a mano. Solo turni MANUALI: così la
+    // capacità è IDENTICA per tutti i tabelloni a confronto, che è ciò che
+    // rende la forchetta un metro comparabile.
+    const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2"], N:["N","3"] };
+    const affMan = (id:number, g:number, f:"M"|"P"|"N") =>
+      medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMP[f].includes(s.tipo)));
     for(let g=1;g<=ndim;g++){
-      if(bloccatoMan(m.id,g)) continue;                     // ferie/104: non può portare nulla
+      if(bloccatoMan(m.id,g)) continue;
       if(!mdcOnly && (pesoSlot(g,"M")>0 || pesoSlot(g,"P")>0 || pesoSlot(g,"N")>0)) return true;
-      // MDC: solo dove c'è posto per un collega sulla stessa fascia (mai la notte)
-      if(mdcOnly && pesoSlot(g,"M")>0 && nmn(g).mx>=2) return true;
-      if(mdcOnly && pesoSlot(g,"P")>0 && npn(g).mx>=2) return true;
+      if(!mdcOnly) continue;
+      if(pesoSlot(g,"N")>0 && affMan(m.id,g,"N")) return true;
+      if(pesoSlot(g,"M")>0 && (nmn(g).mx>=2 || affMan(m.id,g,"M"))) return true;
+      if(pesoSlot(g,"P")>0 && (npn(g).mx>=2 || affMan(m.id,g,"P"))) return true;
     }
     return false;
+  };
+
+  // ── CAPACITÀ E PAVIMENTO DI CARICO WEEKEND (v0.3.22) ──────────────────────
+  // Sapere SE un medico può lavorare nei weekend non basta: conta QUANTO può
+  // portarne. Un MDC affiancabile in un solo weekend è "portatore", ma la sua
+  // capacità è 2 punti, non la quota intera — contarlo per una quota piena
+  // abbassa la forchetta di tutti gli altri e gli affibbia una penalità fissa
+  // che nessun tabellone può togliere.
+  //
+  //  · wkCapacita(id) = TETTO: quanti punti weekend potrebbe al massimo
+  //    prendere. Stima OTTIMISTICA (ignora riposi, tetto notti, conflitti fra
+  //    giorni): si sbaglia dalla parte prudente, mai vincolando troppo.
+  //  · wkPavimento(id) = PAVIMENTO: i punti che ha già per TURNI MANUALI e che
+  //    nessuna generazione può togliergli.
+  const COMPF:Record<string,string[]> = { M:["M","A","1"], P:["P","2"], N:["N","3"] };
+  const affManC = (id:number, g:number, f:"M"|"P"|"N") =>
+    medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMPF[f].includes(s.tipo)));
+  const wkCapacita = (m:Medico) => {
+    if(m.stato==="ML" || m.obiettivo<=0) return 0;
+    const mdcOnly = m.stato==="MDC";
+    let cap = 0;
+    for(let g=1;g<=ndim;g++){
+      if(bloccatoMan(m.id,g)) continue;
+      // notte (esclusiva col resto della giornata) …
+      const pN = pesoSlot(g,"N");
+      const viaN = (pN>0 && (!mdcOnly || affManC(m.id,g,"N"))) ? pN : 0;
+      // … oppure mattina+pomeriggio (forma ad associato)
+      let viaMP = 0;
+      for(const f of ["M","P"] as const){
+        const p = pesoSlot(g,f); if(p<=0) continue;
+        const cap2 = f==="M" ? nmn(g).mx>=2 : npn(g).mx>=2;
+        if(!mdcOnly || cap2 || affManC(m.id,g,f)) viaMP += p;
+      }
+      cap += Math.max(viaN, viaMP);
+    }
+    return cap;
+  };
+  const wkPavimento = (id:number) => {
+    let n = 0;
+    for(let g=1;g<=ndim;g++){
+      const man = gt(id,g).filter(s=>s.man);
+      if(man.length) n += cellWkVal(g, man);
+    }
+    return n;
   };
 
   // Obiettivo di weekend liberi per medico. Normalmente ADATTIVO al mese:
@@ -546,7 +603,7 @@ export function makeCtx(
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
-    pesoSlot, wkPortatori: mrMdc.filter(puoPortareWk),
+    pesoSlot, wkPortatori: mrMdc.filter(puoPortareWk), wkCapacita, wkPavimento,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,
     relaxN: !!relaxN,
   };

@@ -522,7 +522,7 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false, notti
 // accumula e li passa alla fase Weekend al retry (feedback mirato, invece del
 // rimescolamento cieco che sperava di risolvere il conflitto per fortuna).
 export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean; nottiScoperte:number[] } {
-  const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff, cntWk, isNotteFest } = ctx;
+  const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff, cntWk, cntN, isNotteFest } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has?.(g) ?? false;
   const m0 = mark();
   const nottiCoperte = () => giorniArr.reduce((n,g)=>n+(cf(g,"N")>=1?1:0),0);
@@ -531,21 +531,39 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean;
     rollback(m0);
     const rng = mkRng(seed + att*104729);
     const scoperti = giorniArr.filter(g=>cf(g,"N")<1);
+    // elegN(g): insieme degli id eleggibili alla notte di g, calcolato on-demand
+    // dallo stato CORRENTE (l'eleggibilità cambia man mano che si assegna).
+    const elegN = (g:number) => new Set(eleggibili(g,"N",mrMdc).map(m=>m.id));
     const ordin = scoperti.map(g=>({g,e:eleggibili(g,"N",mrMdc).length}))
                           .sort((a,b)=>a.e-b.e || rng()-0.5);
     for(const {g} of ordin){
       if(cf(g,"N")>=1) continue;
-      const pool = byN(eleggibili(g,"N",mrMdc));
+      const elig = eleggibili(g,"N",mrMdc);
+      const pool = byN(elig);
+      // ── VALORE MENO VINCOLANTE (v0.3.22) ────────────────────────────────────
+      // La domanda futura di un candidato = in quanti ALTRI giorni-notte ancora
+      // scoperti è eleggibile. Assegnare oggi il medico con domanda futura MINIMA
+      // (chi serve a pochi altri giorni: sta per andare in Licenza, o è già
+      // carico) LIBERA i "specialisti" per i giorni che dipendono solo da loro —
+      // è ciò che apre le notti-cruna dell'ultima settimana (26-N in agosto).
+      // Ricalcolato ad ogni assegnazione: O(giorni·medici), trascurabile.
+      const futDemand = (id:number) => {
+        let d=0;
+        for(const g2 of scoperti){ if(g2===g || cf(g2,"N")>=1) continue; if(elegN(g2).has(id)) d++; }
+        return d;
+      };
       // Notti di weekend/prefestive (v0.3.19): 1) rispetta i weekend riservati;
-      // 2) EQUITÀ — meno carico weekend prima (la notte pesa 2); 3) a parità,
-      // chi ha più weekend liberi (può spenderne uno); 4) meno notti (byN, via
-      // ordine stabile del pool). Notti feriali "pure": solo byN.
+      // 2) EQUITÀ — meno carico weekend prima (la notte pesa 2); 3) valore meno
+      // vincolante; 4) a parità, più weekend liberi; 5) meno notti (ordine byN).
+      // Notti feriali: prima il valore meno vincolante, poi byN.
       const ch = isNotteFest(g)
         ? pool.slice().sort((a,b)=>
             ((isBloc(a.id,g)?1:0)-(isBloc(b.id,g)?1:0)) ||
             (cntWk(a.id)-cntWk(b.id)) ||
+            (futDemand(a.id)-futDemand(b.id)) ||
             (cntWkLiberi(b.id)-cntWkLiberi(a.id)))[0]
-        : pool[0];
+        : pool.slice().sort((a,b)=>
+            (futDemand(a.id)-futDemand(b.id)) || (cntN(a.id)-cntN(b.id)))[0];
       if(ch) add(ch.id,g,"N");
     }
     const cop = nottiCoperte();

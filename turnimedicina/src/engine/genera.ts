@@ -388,6 +388,9 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
 // liberi (10) > avvisi minori (1). A parità di duro decide il SOFT (equità:
 // scarto carico weekend ×200, varianza notti ×100, carichi ×10, wk liberi ×5,
 // −2 per wk libero extra, strisce di mattine ×8).
+/** Pesi del punteggio SOFT — tarabili senza ricompilare la logica. */
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8 };
+
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
   const c = makeCtx(anno, mese, ndim, medici, turni);
   const probs = validazioneGlobale(c);
@@ -429,12 +432,37 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // Il peso 200 è tarabile: 1 punto fuori forchetta deve valere più di qualsiasi
   // differenza plausibile di strisce/carichi, ma resta un termine SOFT (dentro
   // s pari, cioè a copertura e regole identiche).
-  const wkPort = c.wkPortatori.map(m2=>c.cntWk(m2.id));
+  // FORCHETTA A RIEMPIMENTO (v0.3.22): la quota equa NON è W/n per tutti, perché
+  // ogni medico ha un TETTO (capacità: quanto può davvero portare) e un
+  // PAVIMENTO (i punti bloccati dai suoi turni manuali). Si cerca il livello x
+  // tale che, dando a ciascuno clamp(x, pavimento, tetto), la somma faccia W:
+  // chi è limitato riceve il suo limite, il resto si redistribuisce sugli altri.
+  //  · senza limiti attivi degenera in W/n — il comportamento semplice;
+  //  · un MDC affiancabile un solo weekend riceve una quota di 2, e gli altri
+  //    si dividono il resto su una forchetta più alta, invece di inseguirne una
+  //    troppo bassa;
+  //  · un medico inchiodato a 10 da turni manuali ha pavimento 10: non genera
+  //    scarto (il motore non può spostarlo) e gli altri si bilanciano attorno.
+  const wkP    = c.wkPortatori;
+  const wkVal  = wkP.map(m2=>c.cntWk(m2.id));
+  const wkTet  = wkP.map(m2=>c.wkCapacita(m2));
+  const wkPav  = wkP.map((m2,i)=>Math.min(c.wkPavimento(m2.id), wkTet[i]));
   let wkScarto = 0;
-  if(wkPort.length>1){
-    const W = wkPort.reduce((x,y)=>x+y,0), n = wkPort.length;
-    const hi = Math.ceil(W/n), lo = Math.floor(W/n);
-    for(const v of wkPort) wkScarto += Math.max(0, v-hi) + Math.max(0, lo-v);
+  if(wkP.length>1){
+    const W = wkVal.reduce((x,y)=>x+y,0);
+    const somma = (x:number) => wkPav.reduce((q,pav,i)=>q+Math.min(wkTet[i], Math.max(pav, x)), 0);
+    let x = 0;                                   // livello massimo con somma ≤ W
+    const xMax = Math.max(0, ...wkTet);
+    while(x < xMax && somma(x+1) <= W) x++;
+    // Se al livello x la somma fa ESATTAMENTE W la ripartizione è esatta e la
+    // forchetta è un solo valore; altrimenti si allarga di uno per assorbire il
+    // resto della divisione (com'era [floor, ceil] nel caso senza limiti).
+    const xHi = somma(x)===W ? x : x+1;
+    for(let i=0;i<wkP.length;i++){
+      const lo = Math.min(wkTet[i], Math.max(wkPav[i], x));
+      const hi = Math.min(wkTet[i], Math.max(wkPav[i], xHi));
+      wkScarto += Math.max(0, wkVal[i]-hi) + Math.max(0, lo-wkVal[i]);
+    }
   }
   const wkLib   = c.mrMdc.map(m2=>c.cntWkLiberi(m2.id));
   const wkExtra = c.mrMdc.reduce((q,m2)=>q+Math.max(0,c.cntWkLiberi(m2.id)-c.wkTargetMed(m2.id)),0);
@@ -454,7 +482,9 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
       }
     }
   }
-  const soft = varOf(notti)*100 + wkScarto*200 + varOf(carichi)*10 + varOf(wkLib)*5 - wkExtra*2 + strisceM*8;
+  const P = PESI;
+  const soft = varOf(notti)*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
+             + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce;
   return { s, soft, probs, buchi, wkDef, celle, wkScarto };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
@@ -522,10 +552,24 @@ export function cercaMigliorTentativo(
 
   // ── RICERCA A DUE STADI ─────────────────────────────────────────────────
   // STADIO 1 (≈55% del tempo): molti random restart ECONOMICI.
-  // STADIO 2 (tempo restante): restart PROFONDI per i mesi difficili.
+  // STADIO 2 (tempo restante): breadth-first con SONDE profonde interlacciate.
+  //   Prima lo stadio 2 rendeva TUTTI i restart profondi. Su mesi la cui
+  //   difficoltà è di FATTIBILITÀ — non di profondità — (es. agosto con ferie
+  //   concentrate: una notte "cruna" copribile solo in poche combinazioni) i
+  //   restart profondi sono controproducenti: costano 3-4× e riducono il numero
+  //   di tentativi diversi, cioè proprio la varietà che serve per pescare la
+  //   combinazione giusta. A tempo pari il profondo puro dava più buchi del
+  //   solo economico. Ora lo stadio 2 resta ECONOMICO (breadth) e spende una
+  //   frazione DEEP_FRAZ dei restart in modalità profonda, così i mesi che
+  //   hanno davvero bisogno di più backtracking continuano a riceverne, senza
+  //   sacrificare la varietà su quelli che hanno bisogno di più tentativi.
+  const ECON = { BT:6,  TRIES:3, CLUSTER_NODES:8000,  REBAL_NODES:15000  };
+  const DEEP = { BT:15, TRIES:8, CLUSTER_NODES:40000, REBAL_NODES:80000 };
+  const setBudget = (b:typeof ECON) => { ENG.BT=b.BT; ENG.TRIES=b.TRIES; ENG.CLUSTER_NODES=b.CLUSTER_NODES; ENG.REBAL_NODES=b.REBAL_NODES; };
+  const DEEP_OGNI = 4;                              // 1 sonda profonda ogni 4 restart in stadio 2
   const t0 = Date.now();
-  let t = 0, perfetto = false, tPerfetto = 0, deep = false, stallo = 0;
-  ENG.BT=6; ENG.TRIES=3; ENG.CLUSTER_NODES=8000; ENG.REBAL_NODES=15000;
+  let t = 0, perfetto = false, tPerfetto = 0, stadio2 = false, stallo = 0;
+  setBudget(ECON);
   const fineStadio1 = t0 + maxMs*0.55;
   // ── OTTIMIZZAZIONE POST-PERFETTO ─────────────────────────────────────────
   // Il primo perfetto non chiude la ricerca: si continua a campionare e
@@ -541,11 +585,13 @@ export function cercaMigliorTentativo(
     if(perfetto){
       if(now - tPerfetto >= OTTIM_MS) break;
       if(stallo >= STALLO_MAX) break;
-    } else if(!deep && now >= fineStadio1){
-      // STADIO 2: restart profondi (solo finché non c'è un perfetto)
-      ENG.BT=15; ENG.TRIES=8; ENG.CLUSTER_NODES=40000; ENG.REBAL_NODES=80000;
-      deep = true;
+    } else if(!stadio2 && now >= fineStadio1){
+      stadio2 = true;                              // da qui: breadth + sonde profonde
     }
+    // Budget del restart: economico di default; in stadio 2 una sonda profonda
+    // ogni DEEP_OGNI. Dopo il primo perfetto si resta economici (si ottimizza
+    // solo il soft, che non richiede backtracking profondo).
+    if(!perfetto && stadio2 && (t % DEEP_OGNI === 0)) setBudget(DEEP); else setBudget(ECON);
     ENG.SALT = (((((Math.random()*0x100000000)>>>0) ^ Math.imul(++t,2654435761))>>>0) ^ SEED)>>>0;
     let r: Risultato; try{ r = generaCoperturaMinima(anno, mese, ndim, medici, ex, undefined, undefined, nottiAcc); }catch(_){ continue; }
     const softPrima = best.m ? best.m.soft : Infinity;

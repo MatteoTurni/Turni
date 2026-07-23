@@ -13,7 +13,7 @@ export { diagnosiStatica, type DiagnosiStatica, type CertCella, type CertGiorno,
 export { diagnosiCausale } from "./diagnosiCausale";
 export {
   generaCoperturaMinima, generaConUltimaChance, generaMigliorTentativo,
-  cercaMigliorTentativo, rifinituraFinale, misuraTabellone, type MisuraTab, type OpzioniCerca,
+  cercaMigliorTentativo, rifinituraFinale, misuraTabellone, PESI, type MisuraTab, type OpzioniCerca,
   completaObiettivi, riempimentoEmergenza, problemiResidui, buchiCopertura,
   scoreCopertura, scegliMigliore, calcAmbRotNext,
 } from "./genera";
