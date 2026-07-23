@@ -509,6 +509,47 @@ export function makeCtx(
     return n;
   };
 
+  // ── QUOTA EQUA DI CARICO WEEKEND (v0.3.23) ────────────────────────────────
+  // Stessa aritmetica del `wkScarto` di misuraTabellone, ma calcolabile DURANTE
+  // la generazione: il carico weekend ancora da assegnare è noto (slot weekend
+  // scoperti × peso), quindi W = già assegnato + residuo. Verificato esatto su
+  // agosto 2026 (W=51 a ogni fase). Il livello x di riempimento dà la forchetta
+  // [lo,hi] per medico; le fasi ordinano i candidati per RESIDUO hi−carico.
+  const wkPortatoriL = mrMdc.filter(puoPortareWk);
+  let _tet: number[]|null = null, _pav: number[]|null = null;
+  const wkQuota = () => {
+    const ids = wkPortatoriL.map(m=>m.id);
+    const val = wkPortatoriL.map(m=>cntWk(m.id));
+    // tetto e pavimento dipendono SOLO dai manuali ⇒ calcolati una volta sola.
+    if(!_tet){ _tet = wkPortatoriL.map(m=>wkCapacita(m)); _pav = wkPortatoriL.map((m,i)=>Math.min(wkPavimento(m.id), _tet![i])); }
+    const tet = _tet, pav = _pav!;
+    let resto = 0;
+    for(let g=1; g<=ndim; g++) for(const f of ["M","P","N"] as const){
+      const p = pesoSlot(g,f); if(p<=0) continue;
+      resto += p * Math.max(0, needEff(g,f) - cf(g,f));
+    }
+    const W = val.reduce((a,b)=>a+b,0) + resto;
+    const out: Record<number,{lo:number;hi:number}> = {};
+    if(ids.length<2){ ids.forEach((id,i)=>out[id]={lo:val[i],hi:val[i]}); return out; }
+    const somma = (x:number) => pav.reduce((q,pv,i)=>q+Math.min(tet[i], Math.max(pv, x)), 0);
+    let x = 0; const xMax = Math.max(0, ...tet);
+    while(x < xMax && somma(x+1) <= W) x++;
+    const xHi = somma(x)===W ? x : x+1;
+    ids.forEach((id,i)=>{
+      out[id] = { lo: Math.min(tet[i], Math.max(pav[i], x)), hi: Math.min(tet[i], Math.max(pav[i], xHi)) };
+    });
+    return out;
+  };
+  /** Ordina i candidati per MAGGIOR residuo rispetto alla propria quota alta.
+   *  Chi non è portatore finisce in fondo. Un medico inchiodato dai manuali ha
+   *  quota = pavimento ⇒ residuo 0 ⇒ esce dalla competizione senza spostare la
+   *  forchetta degli altri. */
+  const byWkQuota = (a:Medico[], q?:Record<number,{lo:number;hi:number}>) => {
+    const Q = q ?? wkQuota();
+    const res = (id:number) => (Q[id] ? Q[id].hi - cntWk(id) : -99);
+    return [...a].sort((x,y)=>(res(y.id)-res(x.id)) || (cntWk(x.id)-cntWk(y.id)) || (cnt(x.id)-cnt(y.id)));
+  };
+
   // Obiettivo di weekend liberi per medico. Normalmente ADATTIVO al mese:
   // 2 con ≥4 coppie sab-dom, 1 con 3, 0 con ≤2. Un override NUMERICO (vecchio
   // passo A dell'ultima chance) sostituisce l'adattivo per tutti; un override
@@ -603,7 +644,7 @@ export function makeCtx(
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
-    pesoSlot, wkPortatori: mrMdc.filter(puoPortareWk), wkCapacita, wkPavimento,
+    pesoSlot, wkPortatori: wkPortatoriL, wkCapacita, wkPavimento, wkQuota, byWkQuota,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,
     relaxN: !!relaxN,
   };

@@ -18,7 +18,7 @@ export type Blocco = Record<number, Set<number>> | null;
 
 // Backtracking su un singolo cluster di caselle critiche.
 export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[], rng: ()=>number, limiteNodi: number){
-  const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk } = ctx;
+  const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk, pesoSlot, byWkQuota } = ctx;
   const basePer = (f:string) => f==="M" ? [...ml,...mrMdc] : mrMdc;
   const remaining = (c:{g:number;f:string;need:number}) => c.need - cf(c.g,c.f);
   // candidati attuali per (g,f). NON si usa `eleggibili`: il suo filtro !haQ
@@ -46,7 +46,15 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
     }
     if(!target) return true;             // tutte le caselle del cluster coperte
     if(bestCand!.length===0) return false; // vicolo cieco → backtrack
-    for(const m of shuf(bestCand!,rng)){
+    // EQUITÀ WEEKEND NEI CRITICI (v0.3.23): sulle celle che PESANO (sabato,
+    // festivo, notte prefestiva) i candidati non si esplorano in ordine casuale
+    // ma per RESIDUO rispetto alla propria quota. La randomizzazione resta come
+    // tie-break (shuf a monte + sort stabile), quindi il multi-tentativo
+    // continua a esplorare. Sulle celle di peso 0 nulla cambia: shuf puro.
+    const ordine = pesoSlot(target.g, target.f as "M"|"P"|"N") > 0
+      ? byWkQuota(shuf(bestCand!,rng))
+      : shuf(bestCand!,rng);
+    for(const m of ordine){
       add(m.id,target.g,target.f);
       // Le guardie interne di add() possono rifiutare l'inserimento in silenzio:
       // se il turno non risulta davvero inserito si passa al candidato successivo
@@ -61,7 +69,8 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
 }
 
 export function faseCritici(ctx: Ctx, seed: number){
-  const { giorniArr, cf, eleggibili, mrMdc, ml, byL, add, haM, haP, haQ, canR, mdcOk, needEff } = ctx;
+  const { giorniArr, cf, eleggibili, mrMdc, ml, byL, add, haM, haP, haQ, canR, mdcOk, needEff,
+          pesoSlot, byWkQuota } = ctx;
 
   // 1) elenco delle caselle con margine eleggibili-fabbisogno ≤ 2.
   //    Il fabbisogno usato è needEff: una cella STRUTTURALMENTE impossibile
@@ -102,7 +111,8 @@ export function faseCritici(ctx: Ctx, seed: number){
     // 4) FALLBACK best-effort (vecchio greedy). Le NOTTI prima di M/P.
     const candFallback = (c:{g:number;f:string}) => {
       const base = c.f==="M" ? [...ml,...mrMdc] : mrMdc;
-      return byL(base.filter(m=>{
+      const ord = pesoSlot(c.g, c.f as "M"|"P"|"N") > 0 ? byWkQuota : byL;
+      return ord(base.filter(m=>{
         if(!canR(m,c.g,c.f) || !mdcOk(m,c.g,c.f)) return false;
         if(c.f==="N") return !haQ(m.id,c.g);
         if(c.f==="M") return !haM(m.id,c.g) && (!haP(m.id,c.g) || canR(m,c.g,"ASS"));
