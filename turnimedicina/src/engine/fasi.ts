@@ -95,6 +95,21 @@ export function faseCritici(ctx: Ctx, seed: number){
     if(i>0 && giorniCritici[i]-giorniCritici[i-1] <= 2) compDi[giorniCritici[i]] = compDi[giorniCritici[i-1]];
     else compDi[giorniCritici[i]] = nc++;
   }
+  // CHIUSURA DELLO SPAN (v0.3.24): i giorni NON critici incastrati fra due
+  // giorni critici della stessa componente entrano comunque nel cluster.
+  // Senza questo il solver risolveva 25, 27 e 28 senza sapere che anche il 26
+  // vuole una notte, e sceglieva liberamente una combinazione che — via
+  // riposoEsteso/notteLiberoNotte — la rendeva impossibile: su agosto 2026 la
+  // notte del 26 arrivava a faseNotti con ZERO eleggibili nell'82% dei run.
+  // Il giorno incastrato non è "critico" per elig-need, ma è comunque una
+  // VARIABILE del sottoproblema che il cluster sta risolvendo: escluderlo
+  // significa risolvere il cluster sbagliato. Nessuna componente nuova viene
+  // creata e la soglia di criticità resta invariata: cambia solo QUALI celle
+  // il backtracking vede insieme.
+  for(let comp=0; comp<nc; comp++){
+    const gg = giorniCritici.filter(g=>compDi[g]===comp);
+    for(let g=gg[0]; g<=gg[gg.length-1]; g++) if(compDi[g]===undefined) compDi[g]=comp;
+  }
   const clusters: {g:number;f:string;need:number;elig:number}[][] = Array.from({length:nc},()=>[]);
   // ESPANSIONE A GIORNATA INTERA: se un giorno ha anche una sola casella
   // critica, TUTTE le sue caselle (M, P, N) entrano nel cluster.
