@@ -18,7 +18,27 @@ export type Blocco = Record<number, Set<number>> | null;
 
 // Backtracking su un singolo cluster di caselle critiche.
 export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[], rng: ()=>number, limiteNodi: number){
-  const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk, pesoSlot, byWkQuota } = ctx;
+  const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk, pesoSlot, byWkQuota,
+          wkPairs, isLibWk, cntWkLiberi, wkTargetMed } = ctx;
+  // ── COSTO IN WEEKEND LIBERI (v0.3.25) ──────────────────────────────────────
+  // Il cluster assegna anche sabati, domeniche/festivi e notti prefestive, ma
+  // lo faceva SENZA sapere quanto costano in weekend liberi: la fase Weekend
+  // gira dopo e trova il conto già pagato. byWkQuota bilancia il CARICO di
+  // weekend (quante ore pesanti porta ciascuno), che è un'altra cosa: due
+  // tabelloni con lo stesso carico possono avere zero o tre medici sotto
+  // obiettivo, a seconda di COME i turni si spalmano sulle coppie sab-dom.
+  //
+  // Qui si aggiunge il criterio mancante, lo stesso già usato da
+  // riempimentoEmergenza (costoWk/azzeraWk):
+  //   1. prima chi in quella coppia LAVORA GIÀ — assegnarglielo costa zero
+  //      weekend liberi, perché il suo è comunque perso;
+  //   2. poi chi ha più margine rispetto al proprio obiettivo (slack), così a
+  //      pagare è chi può permetterselo.
+  // Vale solo per i giorni che appartengono a una coppia sab-dom: sui festivi
+  // isolati e sui feriali partnerWk è null e l'ordine resta quello di prima.
+  const partnerWk = (g:number): number|null => { for(const [s,d] of wkPairs){ if(s===g) return d; if(d===g) return s; } return null; };
+  const costoWk = (id:number,g:number) => { const p=partnerWk(g); if(p===null) return 0; return (isLibWk(id,g)&&isLibWk(id,p))?1:0; };
+  const slackWk = (id:number) => cntWkLiberi(id) - wkTargetMed(id);
   const basePer = (f:string) => f==="M" ? [...ml,...mrMdc] : mrMdc;
   const remaining = (c:{g:number;f:string;need:number}) => c.need - cf(c.g,c.f);
   // candidati attuali per (g,f). NON si usa `eleggibili`: il suo filtro !haQ
@@ -51,9 +71,16 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
     // ma per RESIDUO rispetto alla propria quota. La randomizzazione resta come
     // tie-break (shuf a monte + sort stabile), quindi il multi-tentativo
     // continua a esplorare. Sulle celle di peso 0 nulla cambia: shuf puro.
-    const ordine = pesoSlot(target.g, target.f as "M"|"P"|"N") > 0
+    let ordine = pesoSlot(target.g, target.f as "M"|"P"|"N") > 0
       ? byWkQuota(shuf(bestCand!,rng))
       : shuf(bestCand!,rng);
+    // Costo in weekend liberi (v0.3.25): raffina l'ordine sulle celle che
+    // cadono in una coppia sab-dom. Resta un ORDINE di esplorazione, non un
+    // filtro: nessun candidato viene escluso, quindi il backtracking conserva
+    // la stessa capacità di trovare soluzioni di prima.
+    if(partnerWk(target.g)!==null)
+      ordine = ordine.slice().sort((a,b)=>
+        (costoWk(a.id,target!.g)-costoWk(b.id,target!.g)) || (slackWk(b.id)-slackWk(a.id)));
     for(const m of ordine){
       add(m.id,target.g,target.f);
       // Le guardie interne di add() possono rifiutare l'inserimento in silenzio:
@@ -69,7 +96,7 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
 }
 
 export function faseCritici(ctx: Ctx, seed: number){
-  const { giorniArr, cf, eleggibili, mrMdc, ml, byL, add, haM, haP, haQ, canR, mdcOk, needEff,
+  const { giorniArr, ndim, cf, eleggibili, mrMdc, ml, byL, add, haM, haP, haQ, canR, mdcOk, needEff,
           pesoSlot, byWkQuota } = ctx;
 
   // 1) elenco delle caselle con margine eleggibili-fabbisogno ≤ 2.
@@ -84,7 +111,34 @@ export function faseCritici(ctx: Ctx, seed: number){
     celle.push({g,f:"P",need:needEff(g,"P"),elig:eleggibili(g,"P",mrMdc).length});
     celle.push({g,f:"N",need:needEff(g,"N"),elig:eleggibili(g,"N",mrMdc).length});
   }
-  const critici = celle.filter(c=>c.elig - c.need <= 2);
+  // ── DOMANDA CONCORRENTE SULLA NOTTE (v0.3.25) ─────────────────────────────
+  // Per M e P il margine "eleggibili − fabbisogno" misura davvero la strettezza
+  // della cella: i medici che coprono la mattina del 20 non sono gli stessi che
+  // servono per la mattina del 21, e coprire l'una non impedisce di coprire
+  // l'altra. Per la NOTTE non è così: è una sola al giorno, prende il medico per
+  // l'intera giornata e il riposo post-notte lo toglie anche da g+1 e (di norma)
+  // g+2. Le notti dei giorni vicini pescano quindi dallo STESSO pool e si
+  // escludono a vicenda: "4 eleggibili per 1 notte" sembra comodo, ma se nella
+  // finestra ±2 ci sono 5 notti ancora scoperte quei 4 medici devono bastare
+  // per cinque celle che si escludono, e la cella è strettissima.
+  //
+  // La criticità della notte si misura perciò sulla DOMANDA CONCORRENTE domN =
+  // notti ancora scoperte (e colmabili) in [g−2, g+2], non sul fabbisogno 1.
+  // La soglia è più severa (≤1 invece di ≤2) perché domN vale fino a 5: con la
+  // soglia ≤2 anche un mese comodo (7 eleggibili, 5 notti in finestra ⇒ 2)
+  // sarebbe finito tutto dentro un unico cluster, e il tetto ai nodi avrebbe
+  // fatto ripiegare sul greedy proprio dove prima il motore era perfetto.
+  //
+  // La regola storica su elig−need resta in OR: una notte stretta di suo entra
+  // nei cluster come sempre. Cambia solo QUALI celle il backtracking vede
+  // insieme, mai quali turni sono ammissibili.
+  const domN = (g:number) => {
+    let n=0;
+    for(let k=Math.max(1,g-2); k<=Math.min(ndim,g+2); k++)
+      if(needEff(k,"N")>=1 && cf(k,"N")<1) n++;
+    return n;
+  };
+  const critici = celle.filter(c=>c.elig - c.need <= 2 || (c.f==="N" && c.elig - domN(c.g) <= 1));
   if(critici.length===0) return true;
 
   // 2) raggruppa in CLUSTER (componenti connesse 1D: giorni a distanza ≤2)
