@@ -389,7 +389,7 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
 // scarto carico weekend ×200, varianza notti ×100, carichi ×10, wk liberi ×5,
 // −2 per wk libero extra, strisce di mattine ×8).
 /** Pesi del punteggio SOFT — tarabili senza ricompilare la logica. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8 };
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40 };
 
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
   const c = makeCtx(anno, mese, ndim, medici, turni);
@@ -482,9 +482,21 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
       }
     }
   }
+  // ── SFORO OBIETTIVO (v0.3.26) ─────────────────────────────────────────────
+  // Una notte vale 2 punti e canR blocca solo a cnt>=obiettivo: un medico a
+  // obiettivo-1 che riceve una notte finisce a obiettivo+1. È legale (nessuna
+  // regola dura lo vieta), ma NON compariva in alcun termine del punteggio, così
+  // la ricerca non poteva preferire un tabellone senza sforo pur avendone di
+  // disponibili. Qui si contano i punti oltre obiettivo (solo turni
+  // conteggiabili) come termine SOFT: fra tabelloni a copertura, regole e
+  // weekend pari, vince quello che non sfora. Peso 40: sopra strisce(8) e
+  // carichi(10), sotto wkScarto(60), così non scavalca l'equità di carico
+  // weekend. Con nessuno sforo il termine è 0 e il punteggio resta invariato.
+  let sforo = 0;
+  for(const m2 of c.att) sforo += Math.max(0, c.cnt(m2.id) - m2.obiettivo);
   const P = PESI;
   const soft = varOf(notti)*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
-             + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce;
+             + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo;
   return { s, soft, probs, buchi, wkDef, celle, wkScarto };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;

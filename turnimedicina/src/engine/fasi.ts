@@ -19,7 +19,7 @@ export type Blocco = Record<number, Set<number>> | null;
 // Backtracking su un singolo cluster di caselle critiche.
 export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[], rng: ()=>number, limiteNodi: number){
   const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk, pesoSlot, byWkQuota,
-          wkPairs, isLibWk, cntWkLiberi, wkTargetMed } = ctx;
+          wkPairs, isLibWk, cntWkLiberi, wkTargetMed, cnt } = ctx;
   // ── COSTO IN WEEKEND LIBERI (v0.3.25) ──────────────────────────────────────
   // Il cluster assegna anche sabati, domeniche/festivi e notti prefestive, ma
   // lo faceva SENZA sapere quanto costano in weekend liberi: la fase Weekend
@@ -81,6 +81,14 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
     if(partnerWk(target.g)!==null)
       ordine = ordine.slice().sort((a,b)=>
         (costoWk(a.id,target!.g)-costoWk(b.id,target!.g)) || (slackWk(b.id)-slackWk(a.id)));
+    // Sforo obiettivo sulla NOTTE (v0.3.26): la notte vale 2 punti, così un
+    // medico a obiettivo-1 finirebbe a obiettivo+1. A parità di tutto il resto
+    // si prova PRIMA chi non sfora. È solo ordine di esplorazione: chi sforerebbe
+    // resta candidato e il backtracking lo userà se necessario, quindi la
+    // probabilità di copertura non cala.
+    if(target.f==="N")
+      ordine = ordine.slice().sort((a,b)=>
+        ((cnt(a.id)+2>a.obiettivo?1:0)-(cnt(b.id)+2>b.obiettivo?1:0)));
     for(const m of ordine){
       add(m.id,target.g,target.f);
       // Le guardie interne di add() possono rifiutare l'inserimento in silenzio:
@@ -365,6 +373,24 @@ export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number, evita?: Record<number
   // chi ha meno candidati va servito prima (meno flessibilità); shuffle per varietà
   const ordine = shuf([...mrMdc],rng).sort((a,b)=>candCount(a)-candCount(b));
   const carico: Record<string,number>={}; for(const [s,d] of wkPairs) carico[`${s}-${d}`]=0;
+  // ── CAPACITÀ DI LIBERI PER WEEKEND (v0.3.26) ──────────────────────────────
+  // Ogni weekend va comunque COPERTO: sabato ~2M+1P+1N, domenica ~1M+1P+1N,
+  // cioè un numero minimo di medici DEVE lavorarlo. Riservare come "libero" a
+  // più medici di quanti il weekend può cederne era la causa reale del deficit
+  // (misurata: 81 run su 150 con un weekend riservato poi bruciato da
+  // coperturaWeekend): le prenotazioni si accumulavano su weekend che poi non
+  // potevano restare liberi. Qui si stima quanti medici il weekend può cedere e
+  // si CAPPA il numero di prenotazioni per coppia, così i liberi si posano solo
+  // dove è davvero possibile tenerli.
+  const capLiberi = (sab:number, dom:number): number => {
+    // platea = medici NON già vincolati da turni manuali su quel weekend
+    const platea = mrMdc.filter(m=>!isManocc(m,[sab,dom]));
+    // lavoratori minimi stimati sul weekend: sabato 3 (M+P assoc, M, N),
+    // domenica 2 (M+P, N), con ~1 sovrapposizione ⇒ ~4 distinti.
+    const minLav = 4;
+    return Math.max(0, platea.length - minLav);
+  };
+  const cap: Record<string,number>={}; for(const [s,d] of wkPairs) cap[`${s}-${d}`]=capLiberi(s,d);
   let tuttiOk=true;
   for(const m of ordine){
     const tgt = wkTargetMed(m.id);   // obiettivo per-medico (ridotto dai manuali)
@@ -374,8 +400,10 @@ export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number, evita?: Record<number
     let n=0;
     for(const [s,d] of cand){
       if(n>=tgt) break;
+      const k=`${s}-${d}`;
+      if(carico[k]>=cap[k]) continue;   // weekend già saturo di liberi: non riservare qui
       blocco[m.id].add(s); blocco[m.id].add(d);
-      carico[`${s}-${d}`]++; n++;
+      carico[k]++; n++;
     }
     if(n<tgt) tuttiOk=false; // impossibile riservare i weekend richiesti a questo medico
   }
