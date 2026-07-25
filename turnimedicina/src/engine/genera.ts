@@ -41,6 +41,52 @@ export function generaCoperturaMinima(
   // sabato/domenica hanno tutti quel weekend prenotato come libero.
   const nottiCritiche = nottiCriticheAcc ?? new Set<number>();
 
+  // ── PRE-PRENOTAZIONE AMBULATORIO NEI GIORNI STRETTI (v0.3.27) ──────────────
+  // faseAmbulatorio gira DOPO faseCritici e può usare solo gli abilitati rimasti
+  // liberi. Quando su un giorno d'ambulatorio i candidati abilitati sono pochi
+  // (tipico dei mesi di ferie: gli altri abilitati sono in L/ANA), faseCritici
+  // — che ignora l'ambulatorio — consuma gli ultimi candidati per notti/diurni,
+  // e la A resta scoperta facendo fallire l'intero mese (agosto 2026: martedì 25
+  // con soli Renis/Lezzi liberi → ambulatorio mancante nel ~100% dei tentativi).
+  // Qui, PRIMA di ogni fase, si prenota la A sui SOLI giorni "stretti" (≤ SOGLIA
+  // abilitati ancora eleggibili sui soli manuali), lasciando Critici libero di
+  // lavorare attorno alla A congelata. I giorni comodi (abbondanza di abilitati)
+  // NON vengono toccati: restano a faseAmbulatorio, così la ricerca conserva
+  // intatta la sua libertà di ottimizzazione del soft sui mesi non critici.
+  // Vincoli DURI identici a faseAmbulatorio (canMatt/canConsec/haN/…): una A
+  // prenotata è sempre valida quanto una assegnata dalla fase. La rotazione
+  // resta corretta: calcAmbRotNext la ricalcola dal tabellone accettato contando
+  // le A automatiche (una A prenotata è man=false), indipendentemente da chi
+  // l'ha piazzata.
+  {
+    const SOGLIA_STRETTO = 2;
+    const amb = ctx.ambilitati;
+    const nA = amb.length;
+    let idx = nA>0 ? ((ENG.AMB_ROT_START % nA) + nA) % nA : 0;
+    const ambEleggibile = (m:Medico, g:number) => {
+      if(m.stato==="MPS") return false;
+      if(ctx.haX(m.id,g)) return false;
+      if(ctx.gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
+      if(ctx.haN(m.id,g)) return false;
+      if(!ctx.canMatt(m.id,g)) return false;          // A = mattina → Regola N
+      if(!ctx.canConsec(m.id,g)) return false;
+      const tt=ctx.gt(m.id,g).filter(s=>s.tipo!=="X"&&!["L","ANA","per11","104"].includes(s.tipo));
+      return tt.length===0;
+    };
+    for(const g of ctx.giorniArr){
+      if(!ctx.isAmb(g)||ctx.isH(g)) continue;
+      if(medici.some(m=>ctx.gt(m.id,g).some(s=>s.tipo==="A"))) continue;  // A (anche manuale) già presente
+      const liberi = amb.filter(m=>ambEleggibile(m,g));
+      if(liberi.length===0 || liberi.length>SOGLIA_STRETTO) continue;     // impossibile o non stretto: si lascia alla fase
+      for(let off=0; off<nA; off++){                                      // round-robin come faseAmbulatorio
+        const m=amb[(idx+off)%nA];
+        if(!ambEleggibile(m,g)) continue;
+        ctx.add(m.id,g,"A");
+        if(ctx.gt(m.id,g).some(s=>s.tipo==="A")){ idx=((idx+off)%nA+1)%nA; break; }
+      }
+    }
+  }
+
   const fasi = [
     { nome:"Critici",     run:(seed:number)=>faseCritici(ctx,seed) },
     { nome:"Ambulatorio", run:(_seed:number)=>faseAmbulatorio(ctx) },
