@@ -36,7 +36,7 @@ export function generaParallelo(
 
   return new Promise<Risultato>((resolve) => {
     let bestT: TurniMese | null = null;
-    let bestS = Infinity, bestSoft = Infinity;
+    let bestS = Infinity, bestSoft = Infinity, bestWkSc = Infinity;
     const tentPerW = new Array<number>(nW).fill(0);
     // DIAGNOSI EMPIRICA (v0.3.10): somma dei conteggi "cella scoperta" di tutti
     // i worker. I tentativi totali sono la somma dei tentativi per worker.
@@ -44,10 +44,14 @@ export function generaParallelo(
     const workers: Worker[] = [];
     let chiusi = 0, risolto = false;
 
-    // Rivaluta sul main thread e adotta se migliore (stesso metro di registra).
+    // Rivaluta sul main thread e adotta se migliore (stesso metro GERARCHICO di
+    // registra, v0.3.28: duro, poi scarto weekend, poi soft).
     const considera = (turni: TurniMese) => {
       const m = misuraTabellone(anno, mese, ndim, medici, turni);
-      if(m.s < bestS || (m.s === bestS && m.soft < bestSoft)){ bestS=m.s; bestSoft=m.soft; bestT=turni; }
+      if(m.s < bestS || (m.s === bestS && (m.wkScarto < bestWkSc
+         || (m.wkScarto === bestWkSc && m.soft < bestSoft)))){
+        bestS=m.s; bestSoft=m.soft; bestWkSc=m.wkScarto; bestT=turni;
+      }
     };
 
     const concludi = () => {
