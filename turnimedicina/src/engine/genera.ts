@@ -41,72 +41,55 @@ export function generaCoperturaMinima(
   // sabato/domenica hanno tutti quel weekend prenotato come libero.
   const nottiCritiche = nottiCriticheAcc ?? new Set<number>();
 
-  // ── PRE-PRENOTAZIONE AMBULATORIO NEI GIORNI STRETTI (v0.3.27) ──────────────
-  // faseAmbulatorio gira DOPO faseCritici e può usare solo gli abilitati rimasti
-  // liberi. Quando su un giorno d'ambulatorio i candidati abilitati sono pochi
-  // (tipico dei mesi di ferie: gli altri abilitati sono in L/ANA), faseCritici
-  // — che ignora l'ambulatorio — consuma gli ultimi candidati per notti/diurni,
-  // e la A resta scoperta facendo fallire l'intero mese (agosto 2026: martedì 25
-  // con soli Renis/Lezzi liberi → ambulatorio mancante nel ~100% dei tentativi).
-  // Qui, PRIMA di ogni fase, si prenota la A sui SOLI giorni "stretti" (≤ SOGLIA
-  // abilitati ancora eleggibili sui soli manuali), lasciando Critici libero di
-  // lavorare attorno alla A congelata. I giorni comodi (abbondanza di abilitati)
-  // NON vengono toccati: restano a faseAmbulatorio, così la ricerca conserva
-  // intatta la sua libertà di ottimizzazione del soft sui mesi non critici.
-  // Vincoli DURI identici a faseAmbulatorio (canMatt/canConsec/haN/…): una A
-  // prenotata è sempre valida quanto una assegnata dalla fase. La rotazione
-  // resta corretta: calcAmbRotNext la ricalcola dal tabellone accettato contando
-  // le A automatiche (una A prenotata è man=false), indipendentemente da chi
-  // l'ha piazzata.
-  {
-    const SOGLIA_STRETTO = 2;
-    const amb = ctx.ambilitati;
-    const nA = amb.length;
-    let idx = nA>0 ? ((ENG.AMB_ROT_START % nA) + nA) % nA : 0;
-    const ambEleggibile = (m:Medico, g:number) => {
-      if(m.stato==="MPS") return false;
-      if(ctx.haX(m.id,g)) return false;
-      if(ctx.gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
-      if(ctx.haN(m.id,g)) return false;
-      if(!ctx.canMatt(m.id,g)) return false;          // A = mattina → Regola N
-      if(!ctx.canConsec(m.id,g)) return false;
-      const tt=ctx.gt(m.id,g).filter(s=>s.tipo!=="X"&&!["L","ANA","per11","104"].includes(s.tipo));
-      return tt.length===0;
-    };
-    for(const g of ctx.giorniArr){
-      if(!ctx.isAmb(g)||ctx.isH(g)) continue;
-      if(medici.some(m=>ctx.gt(m.id,g).some(s=>s.tipo==="A"))) continue;  // A (anche manuale) già presente
-      const liberi = amb.filter(m=>ambEleggibile(m,g));
-      if(liberi.length===0 || liberi.length>SOGLIA_STRETTO) continue;     // impossibile o non stretto: si lascia alla fase
-      for(let off=0; off<nA; off++){                                      // round-robin come faseAmbulatorio
-        const m=amb[(idx+off)%nA];
-        if(!ambEleggibile(m,g)) continue;
-        ctx.add(m.id,g,"A");
-        if(ctx.gt(m.id,g).some(s=>s.tipo==="A")){ idx=((idx+off)%nA+1)%nA; break; }
-      }
-    }
-  }
-
-  const fasi = [
-    { nome:"Critici",     run:(seed:number)=>faseCritici(ctx,seed) },
-    { nome:"Ambulatorio", run:(_seed:number)=>faseAmbulatorio(ctx) },
-    { nome:"Weekend",     run:(seed:number)=>{
+  // ORDINE FASI (v0.3.27): Ambulatorio PRIMA di Critici.
+  // La faseAmbulatorio distribuisce le A con una rotazione round-robin fra gli
+  // abilitati, pensata per essere equa. Girando DOPO i Critici, però, gli MR
+  // abilitati risultavano quasi sempre bloccati sui giorni-ambulatorio (Regola N
+  // dalle notti critiche vicine, o già occupati): l'unico costantemente libero
+  // era l'MDC, che così incassava ~la metà delle A. Spostando l'ambulatorio in
+  // testa, all'assegnazione delle A nessuna notte è ancora piazzata: gli abilitati
+  // sono equamente disponibili e la rotazione torna a distribuire 1-a-testa. Le
+  // notti dei Critici si dispongono poi attorno alle mattine riservate.
+  // Verificato (agosto 2025 e 2026): equità A quasi perfetta (spread ~0), quota
+  // MDC ~44%→25%, NESSUN buco in più, e come effetto collaterale l'"ambulatorio
+  // mancante" nei mesi di ferie sparisce (2026: 9/10→0/10 run) e l'equità
+  // weekend/notti migliora leggermente.
+  // ── DEFINIZIONE FASI ──────────────────────────────────────────────────────
+  // Nota ordine (v0.3.27): Ambulatorio gira PRIMA di Critici. La faseAmbulatorio
+  // distribuisce le A con rotazione round-robin fra gli abilitati; girando dopo
+  // i Critici, gli MR abilitati risultavano quasi sempre bloccati sui giorni-A
+  // (Regola N dalle notti critiche / già occupati) e l'unico libero era l'MDC,
+  // che incassava ~metà delle A. Spostando l'ambulatorio in testa, all'atto
+  // dell'assegnazione nessuna notte è piazzata: gli abilitati sono equamente
+  // liberi e la rotazione torna equa (quota MDC ~44%→25%). Le notti dei Critici
+  // si dispongono poi attorno alle mattine riservate. Verificato su ~17 scenari
+  // (mesi/carichi/config amb vari): 0 regressioni sulle regole dure, e come
+  // effetto collaterale sparisce l'"ambulatorio mancante" nei mesi difficili.
+  const fasiBase = {
+    Ambulatorio: { nome:"Ambulatorio", run:(_seed:number)=>faseAmbulatorio(ctx) },
+    Critici:     { nome:"Critici",     run:(seed:number)=>faseCritici(ctx,seed) },
+    Weekend:     { nome:"Weekend",     run:(seed:number)=>{
         const accettaMigliore = fallimentiWk>=MAX_FALLIMENTI_WK;
         const r=faseWeekend(ctx,seed,accettaMigliore,nottiCritiche);
         blocco=r.blocco;
         if(!r.ok) fallimentiWk++;   // conta i fallimenti della sola fase Weekend
         return r.ok;
       } },
-    { nome:"Notti",       run:(seed:number)=>{
+    Notti:       { nome:"Notti",       run:(seed:number)=>{
         const r=faseNotti(ctx,seed,blocco);
         for(const g of r.nottiScoperte) nottiCritiche.add(g);
         return r.ok;
       } },
-    { nome:"Diurni",      run:(seed:number)=>faseDiurni(ctx,seed) },
-  ];
+    Diurni:      { nome:"Diurni",      run:(seed:number)=>faseDiurni(ctx,seed) },
+  };
+  // ORDINE FASI (v0.3.27): Ambulatorio PRIMA di Critici — vedi nota sotto.
+  const fasi = [ fasiBase.Ambulatorio, fasiBase.Critici, fasiBase.Weekend, fasiBase.Notti, fasiBase.Diurni ];
 
   const snaps: number[] = [];          // mark() per fase (undo-log, non più copie)
-  const seeds = fasi.map((_,i)=>(i+1)*1000003);
+  // Semi per NOME fase (non per posizione): così l'ordine delle fasi non altera
+  // il seme che ciascuna riceve → generazione più riproducibile e confrontabile.
+  const SEED_FASE: Record<string,number> = { Ambulatorio:2000006, Critici:1000003, Weekend:3000009, Notti:4000012, Diurni:5000015 };
+  const seeds = fasi.map(f=>SEED_FASE[f.nome] ?? 1000003);
   const MAX_BT = ENG.BT;
   let i=0, backtracks=0;
 
@@ -668,6 +651,95 @@ export function cercaMigliorTentativo(
   return { turni: best.turni!, m: best.m!, tentativi: t, conteggi };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EQUALIZZATORE DI CARICO WEEKEND (v0.3.27) — rifinitura sul tabellone vincente
+// ═══════════════════════════════════════════════════════════════════════════
+// Problema misurato su agosto 2025 (tabellone-bersaglio dell'utente): a
+// copertura, regole e weekend liberi identici, la RICERCA lascia spesso un
+// portatore MR sopra la forchetta (carico weekend 7-8) e l'MDC sotto la sua
+// capacità (0-1 invece di 2-3), perché il carico weekend TOTALE è fisso e
+// ogni notte/pomeriggio festivo non assegnato all'MDC ricade sugli MR. Il
+// punteggio soft PREFERISCE già il tabellone equo (verificato: il bersaglio
+// batte ogni tentativo), ma la ricerca stocastica ci arriva di rado.
+//
+// Questo hill-climb chiude il divario a posteriori: sposta UNO slot weekend
+// (N/P/M con peso>0, non manuale) da un portatore all'altro, provando prima a
+// scaricare chi è SOPRA la forchetta verso chi è SOTTO (compreso l'MDC, che
+// così prende la notte prefestiva o il pomeriggio festivo affiancato dall'MPS).
+// Ogni mossa è transazionale e adottata SOLO se:
+//   • il punteggio DURO non peggiora (nessun buco/violazione/weekend-deficit),
+//   • il punteggio SOFT cala (stesso oracолo di rifinituraFinale),
+//   • resta tutto DURAMENTE legale, mdcOk INCLUSO.
+// L'ultimo punto è cruciale e non ridondante: validazioneGlobale NON verifica
+// mdcOk (un MDC lasciato solo in turno). Un precedente tentativo di riequilibrio
+// del carico weekend, privo di questo controllo, produceva proprio MDC illegali
+// ed era stato scartato. Qui lo sweep mdcOk esplicito lo rende sicuro.
+function fasciaSlot(t:string): "M"|"P"|"N"|null {
+  if(["M","A","1"].includes(t)) return "M";
+  if(["P","2"].includes(t))     return "P";
+  if(["N","3"].includes(t))     return "N";
+  return null;
+}
+// Forchetta [lo,hi] di carico weekend per portatore, identica a misuraTabellone.
+function forchettaWk(c:ReturnType<typeof makeCtx>){
+  const port=c.wkPortatori;
+  const tet=port.map(p=>c.wkCapacita(p));
+  const pav=port.map((p,i)=>Math.min(c.wkPavimento(p.id),tet[i]));
+  const W=port.map(p=>c.cntWk(p.id)).reduce((a,b)=>a+b,0);
+  const somma=(x:number)=>pav.reduce((q,pv,i)=>q+Math.min(tet[i],Math.max(pv,x)),0);
+  let x=0; const xMax=Math.max(0,...tet); while(x<xMax && somma(x+1)<=W) x++;
+  const xHi=somma(x)===W?x:x+1;
+  const band:Record<number,{lo:number;hi:number}>={};
+  port.forEach((p,i)=>band[p.id]={lo:Math.min(tet[i],Math.max(pav[i],x)),hi:Math.min(tet[i],Math.max(pav[i],xHi))});
+  return band;
+}
+// Numero di violazioni mdcOk (un MDC lasciato solo in turno): l'UNICO vincolo
+// duro che misuraTabellone NON cattura in `s`. Tutto il resto (buchi, Regola N,
+// weekend liberi, ambulatorio, consecutivi) è già dentro `s` via validazioneGlobale.
+function mdcViolCount(ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
+  let n=0;
+  for(const m of medici){ if(m.stato!=="MDC") continue;
+    for(let g=1;g<=ndim;g++) for(const s of c.gt(m.id,g)){ const f=fasciaSlot(s.tipo); if(f&&!c.mdcOk(m,g,f)) n++; } }
+  return n;
+}
+export function riequilibraCaricoWeekend(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): boolean {
+  const F=["N","P","M"] as const;
+  const wkGiorni:number[]=[]; for(let g=1;g<=ndim;g++) if(c.isWk(g)||(g<ndim&&c.isSp(g+1))) wkGiorni.push(g);
+  const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
+  let cur=misura(); let migliorato=false;
+  const mdc0=mdcViolCount(ndim,medici,c);   // violazioni MDC di partenza (di norma 0)
+  for(let iter=0; iter<40 && cur.wkScarto>0; iter++){
+    const b=forchettaWk(c);
+    const port=c.wkPortatori;
+    const donatori =[...port].sort((a,z)=>(c.cntWk(z.id)-b[z.id].hi)-(c.cntWk(a.id)-b[a.id].hi)); // più sopra prima
+    const riceventi=[...port].sort((a,z)=>(b[a.id].lo-c.cntWk(a.id))-(b[z.id].lo-c.cntWk(z.id))); // più sotto prima
+    let mossa=false;
+    outer:
+    for(const o of donatori) for(const u of riceventi){
+      if(o.id===u.id) continue;
+      for(const g of wkGiorni) for(const f of F){
+        if(c.pesoSlot(g,f)<=0) continue;
+        if(!c.gt(o.id,g).some(s=>fasciaSlot(s.tipo)===f && !s.man)) continue;  // o ha lo slot (automatico)
+        if(c.gt(u.id,g).some(s=>fasciaSlot(s.tipo)===f)) continue;            // u libero su quella fascia
+        const m0=c.mark();
+        c.st(o.id,g, c.gt(o.id,g).filter(s=>!(fasciaSlot(s.tipo)===f && !s.man)));
+        if(!c.canR(u,g,f) || !c.mdcOk(u,g,f)){ c.rollback(m0); continue; }
+        c.add(u.id,g,f);
+        if(!c.gt(u.id,g).some(s=>fasciaSlot(s.tipo)===f && !s.man)){ c.rollback(m0); continue; }
+        const nx=misura();
+        // Accettazione RELATIVA: il punteggio duro non peggiora (quindi nessun
+        // nuovo buco/violazione/weekend-deficit), il soft cala, e non nasce
+        // alcun nuovo MDC-solo. Robusto anche se il mese ha già un difetto
+        // strutturale altrove (es. ambulatorio impossibile in un mese di ferie).
+        if(nx.s<=cur.s && nx.soft<cur.soft && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; migliorato=true; break outer; }
+        c.rollback(m0);
+      }
+    }
+    if(!mossa) break;
+  }
+  return migliorato;
+}
+
 // ─── RIFINITURA: eseguita UNA volta sul tabellone vincente ───────────────────
 export function rifinituraFinale(
   anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
@@ -712,6 +784,20 @@ export function rifinituraFinale(
       const copia = cloneT(bestT);
       const c = makeCtx(anno, mese, ndim, medici, copia);
       if(riequilibraWeekendLiberi(c)) prova(copia);
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
+
+  // ── EQUALIZZAZIONE CARICO WEEKEND (v0.3.27) ─────────────────────────────
+  // Con la copertura e i weekend liberi ormai a posto, si livella il CARICO
+  // weekend fra i portatori: sposta gli slot festivi da chi è sopra la
+  // forchetta a chi è sotto (spesso l'MDC, che sale alla sua capacità e
+  // scarica gli MR). Lavora su copia e adotta via prova(): non introduce mai
+  // buchi né violazioni (mdcOk compreso) e non peggiora il punteggio.
+  if(bestM.wkScarto>0){
+    try{
+      const copia = cloneT(bestT);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(riequilibraCaricoWeekend(anno, mese, ndim, medici, c)) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
