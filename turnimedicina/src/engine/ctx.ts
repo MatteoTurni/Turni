@@ -102,6 +102,7 @@ export function makeCtx(
   const st = (id:number,g:number,a:Turno[]) => {
     const prev = T[id]?.[g]?.t;
     log.push({ id, g, prev });
+    _quotaCache = null;                  // v0.3.29: invalida la cache di wkQuota
     cntMap.set(id,(cntMap.get(id)||0) + cellVal(a) - (prev?cellVal(prev):0));
     cntNMap.set(id,(cntNMap.get(id)||0) + cellNot(a) - (prev?cellNot(prev):0));
     cntWkMap.set(id,(cntWkMap.get(id)||0) + cellWkVal(g,a) - (prev?cellWkVal(g,prev):0));
@@ -113,6 +114,7 @@ export function makeCtx(
 
   const mark = () => log.length;
   const rollback = (m:number) => {
+    if(log.length>m) _quotaCache = null; // v0.3.29: invalida la cache di wkQuota
     while(log.length>m){
       const e=log.pop()!;
       const cur = T[e.id]?.[e.g]?.t;
@@ -454,13 +456,29 @@ export function makeCtx(
     const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2"], N:["N","3"] };
     const affMan = (id:number, g:number, f:"M"|"P"|"N") =>
       medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMP[f].includes(s.tipo)));
+    // FIX CAPACITÀ FANTASMA M/P (v0.3.29) — stessa classe del fix Notte 0.3.27:
+    // il "compagno" manuale che rende ammissibile lo slot per l'MDC può
+    // SATURARE lui stesso il fabbisogno massimo della fascia (festivi 1/1):
+    // in quel caso non resta alcuno slot da prendere e la disponibilità è
+    // fantasma. postoMP: nella fascia f resta posto oltre ai turni di REPARTO
+    // manuali dei COLLEGHI (i codici PS 1/2 non contano nel fabbisogno: non
+    // bloccano; il proprio manuale non blocca sé stessi).
+    const postoMP = (id:number, g:number, f:"M"|"P") => {
+      const mx = f==="M" ? nmn(g).mx : npn(g).mx;
+      let occ = 0;
+      for(const a of medici){ if(a.id===id) continue;
+        for(const s of gt(a.id,g)) if(s.man && s.tipo===f) occ++; }
+      return occ < mx;
+    };
     for(let g=1;g<=ndim;g++){
       if(bloccatoMan(m.id,g)) continue;
-      if(!mdcOnly && (pesoSlot(g,"M")>0 || pesoSlot(g,"P")>0 || pesoSlot(g,"N")>0)) return true;
+      const okM = pesoSlot(g,"M")>0 && postoMP(m.id,g,"M");
+      const okP = pesoSlot(g,"P")>0 && postoMP(m.id,g,"P");
+      if(!mdcOnly && (okM || okP || pesoSlot(g,"N")>0)) return true;
       if(!mdcOnly) continue;
       if(pesoSlot(g,"N")>0 && affMan(m.id,g,"N")) return true;
-      if(pesoSlot(g,"M")>0 && (nmn(g).mx>=2 || affMan(m.id,g,"M"))) return true;
-      if(pesoSlot(g,"P")>0 && (npn(g).mx>=2 || affMan(m.id,g,"P"))) return true;
+      if(okM && (nmn(g).mx>=2 || affMan(m.id,g,"M"))) return true;
+      if(okP && (npn(g).mx>=2 || affMan(m.id,g,"P"))) return true;
     }
     return false;
   };
@@ -488,25 +506,55 @@ export function makeCtx(
       if(bloccatoMan(m.id,g)) continue;
       // notte (esclusiva col resto della giornata) …
       const pN = pesoSlot(g,"N");
-      const viaN = (pN>0 && (!mdcOnly || affManC(m.id,g,"N"))) ? pN : 0;
+      // FIX CAPACITÀ NOTTE (v0.3.27): la notte DI REPARTO è 1/giorno. Se è GIÀ
+      // occupata da una notte manuale di REPARTO ("N") di un collega, nessun
+      // altro medico può prenderla — quello slot non aggiunge capacità a
+      // nessuno. Per l'MDC in particolare il "compagno" che rende ammissibile
+      // la sua notte (affManC) poteva essere proprio quella notte manuale:
+      // contarla gli attribuiva una capacità FANTASMA (agosto 2025: 3 domeniche
+      // con la N manuale di un MPS, 2 punti l'una = +6 mai realizzabili), che
+      // gonfiava la forchetta d'equità e rendeva il punteggio soft cieco allo
+      // squilibrio dei weekend. Le notti PS ("3") NON contano nel fabbisogno di
+      // reparto (cf), quindi NON bloccano: lì una N vera serve ancora e l'MDC
+      // può farla affiancato dall'MPS (com'è nel tabellone-bersaglio: g14).
+      const nottePresa = medici.some(a => gt(a.id,g).some(s => s.man && s.tipo==="N"));
+      const viaN = (pN>0 && !nottePresa && (!mdcOnly || affManC(m.id,g,"N"))) ? pN : 0;
       // … oppure mattina+pomeriggio (forma ad associato)
+      // FIX CAPACITÀ FANTASMA M/P (v0.3.29, stessa classe del fix Notte sopra):
+      // se i turni di REPARTO manuali dei COLLEGHI saturano già il fabbisogno
+      // massimo della fascia (festivi 1/1), lo slot non è prendibile da questo
+      // medico e non aggiunge capacità: senza questo controllo il "compagno"
+      // manuale rendeva l'MDC ammissibile (affManC) proprio sullo slot che quel
+      // manuale aveva esaurito — capacità mai realizzabile che gonfiava la sua
+      // quota, falsava la forchetta di tutti e mandava a vuoto l'equalizzatore.
+      // Il PROPRIO manuale non blocca sé stessi (quel punto è già suo, e sta
+      // nel pavimento); i codici PS 1/2 non contano nel fabbisogno di reparto.
       let viaMP = 0;
       for(const f of ["M","P"] as const){
         const p = pesoSlot(g,f); if(p<=0) continue;
-        const cap2 = f==="M" ? nmn(g).mx>=2 : npn(g).mx>=2;
+        const mx = f==="M" ? nmn(g).mx : npn(g).mx;
+        let occ = 0;
+        for(const a of medici){ if(a.id===m.id) continue;
+          for(const s of gt(a.id,g)) if(s.man && s.tipo===f) occ++; }
+        if(occ >= mx) continue;                       // fascia già satura dai manuali altrui
+        const cap2 = mx>=2;
         if(!mdcOnly || cap2 || affManC(m.id,g,f)) viaMP += p;
       }
       cap += Math.max(viaN, viaMP);
     }
     return cap;
   };
+  // Memoizzata (v0.3.29): dipende SOLO dai turni manuali, che durante una
+  // generazione non cambiano mai — e ora viene interrogata dagli ordinamenti.
+  const _pavMemo = new Map<number,number>();
   const wkPavimento = (id:number) => {
+    const hit = _pavMemo.get(id); if(hit!==undefined) return hit;
     let n = 0;
     for(let g=1;g<=ndim;g++){
       const man = gt(id,g).filter(s=>s.man);
       if(man.length) n += cellWkVal(g, man);
     }
-    return n;
+    _pavMemo.set(id,n); return n;
   };
 
   // ── QUOTA EQUA DI CARICO WEEKEND (v0.3.23) ────────────────────────────────
@@ -517,7 +565,13 @@ export function makeCtx(
   // [lo,hi] per medico; le fasi ordinano i candidati per RESIDUO hi−carico.
   const wkPortatoriL = mrMdc.filter(puoPortareWk);
   let _tet: number[]|null = null, _pav: number[]|null = null;
-  const wkQuota = () => {
+  // CACHE (v0.3.29): wkQuota è O(ndim·portatori) e con la "quota senior al
+  // costo" viene interrogata dentro gli ordinamenti caldi (cluster, copertura
+  // weekend, notti festive). Il risultato dipende solo da T: la cache viene
+  // invalidata dall'unico scrittore (st) e dal rollback, quindi resta ESATTA.
+  // Misurato: senza cache il fix costava ~+1.6 s/run (meno tentativi nel
+  // budget → qualità peggiore); con la cache il costo torna trascurabile.
+  const wkQuotaCalc = () => {
     const ids = wkPortatoriL.map(m=>m.id);
     const val = wkPortatoriL.map(m=>cntWk(m.id));
     // tetto e pavimento dipendono SOLO dai manuali ⇒ calcolati una volta sola.
@@ -540,6 +594,8 @@ export function makeCtx(
     });
     return out;
   };
+  let _quotaCache: Record<number,{lo:number;hi:number}> | null = null;
+  const wkQuota = () => _quotaCache ?? (_quotaCache = wkQuotaCalc());
   /** Ordina i candidati per MAGGIOR residuo rispetto alla propria quota alta.
    *  Chi non è portatore finisce in fondo. Un medico inchiodato dai manuali ha
    *  quota = pavimento ⇒ residuo 0 ⇒ esce dalla competizione senza spostare la

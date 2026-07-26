@@ -201,7 +201,8 @@ export function scegliMigliore(anno:number, mese:number, ndim:number, medici:Med
 export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese, relaxN?:boolean){
   const c = makeCtx(anno, mese, ndim, medici, turni, null, relaxN);
   const { giorniArr, isWk, cf, nmn, npn, canR, mdcOk, add, haQ, haM, haP,
-          cntWkLiberi, mrMdc, isAmb, isH, gt, cnt, canAssDist, wkPairs, isLibWk } = c;
+          cntWkLiberi, mrMdc, isAmb, isH, gt, cnt, canAssDist, wkPairs, isLibWk,
+          cntWk, wkQuota } = c;
   const cand = (g:number,f:string) => mrMdc.filter(m=>!haQ(m.id,g)&&canR(m,g,f)&&mdcOk(m,g,f));
 
   // ── COSTO IN WEEKEND LIBERI DI UN'ASSEGNAZIONE (Fix 1+2) ────────────────────
@@ -223,13 +224,22 @@ export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medi
   const azzeraWk = (id:number,g:number): boolean => costoWk(id,g)===1 && cntWkLiberi(id)===1;
 
   // Ordinamento candidati:
-  //  • WEEKEND: prima chi NON paga weekend (coppia già spesa) [Fix 1]; poi, tra
-  //    chi paga, prima chi NON si azzera [Fix 2, soft — nessun blocco duro]; poi
-  //    chi ha più weekend liberi da spendere; infine il meno carico.
+  //  • WEEKEND: prima chi NON paga weekend (coppia già spesa) [Fix 1]; a parità
+  //    di costo, chi NON verrebbe portato sopra la propria quota di carico
+  //    weekend [v0.3.29, spareggio — vedi risolviCluster]; poi chi NON si
+  //    azzera [Fix 2, soft — nessun blocco duro]; poi chi ha più weekend liberi
+  //    da spendere; infine il meno carico.
   //  • FERIALI: prima i meno carichi (invariato).
-  const ordina = (arr:Medico[],g:number) => arr.slice().sort((a,b)=>
+  const sopraQE = (id:number,g:number,f:"M"|"P"|"N") => {
+    const p = c.pesoSlot(g,f); if(p<=0) return 0;
+    if(c.wkPavimento(id)<=0) return 0;      // solo chi ha carico weekend MANUALE (v0.3.29)
+    const Q = wkQuota();
+    return Q[id] && cntWk(id)+p > Q[id].hi ? 1 : 0;
+  };
+  const ordina = (arr:Medico[],g:number,f:"M"|"P"|"N"="M") => arr.slice().sort((a,b)=>
     isWk(g)
-      ? ( (costoWk(a.id,g)-costoWk(b.id,g))
+      ? ( (sopraQE(a.id,g,f)-sopraQE(b.id,g,f))
+          || (costoWk(a.id,g)-costoWk(b.id,g))
           || ((azzeraWk(a.id,g)?1:0)-(azzeraWk(b.id,g)?1:0))
           || (cntWkLiberi(b.id)-cntWkLiberi(a.id))
           || (cnt(a.id)-cnt(b.id)) )
@@ -242,25 +252,25 @@ export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medi
                             .sort((a,b)=>cnt(a.id)-cnt(b.id));
       if(ambPool.length) add(ambPool[0].id,g,"A");
     }
-    guard=0; while(cf(g,"N")<1        && guard++<15){ const p=ordina(cand(g,"N"),g); if(!p.length) break; add(p[0].id,g,"N"); }
+    guard=0; while(cf(g,"N")<1        && guard++<15){ const p=ordina(cand(g,"N"),g,"N"); if(!p.length) break; add(p[0].id,g,"N"); }
     // Sui giorni di WEEKEND, se mancano sia M sia P, prova PRIMA il turno
     // ASSOCIATO (M+P allo stesso medico).
     if(isWk(g)){
       guard=0;
       while(cf(g,"M")<nmn(g).mn && cf(g,"P")<npn(g).mn && guard++<5){
-        const p = ordina(cand(g,"M").filter(m=>!haM(m.id,g)&&!haP(m.id,g)&&canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g)),g);
+        const p = ordina(cand(g,"M").filter(m=>!haM(m.id,g)&&!haP(m.id,g)&&canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g)),g,"N");
         if(!p.length) break;
         add(p[0].id,g,"M"); add(p[0].id,g,"P");
         if(!haM(p[0].id,g)) break;   // guardie di add() hanno rifiutato: evita loop sterile
       }
     }
-    guard=0; while(cf(g,"M")<nmn(g).mn && guard++<15){ const p=ordina(cand(g,"M"),g); if(!p.length) break; add(p[0].id,g,"M"); }
-    guard=0; while(cf(g,"P")<npn(g).mn && guard++<15){ const p=ordina(cand(g,"P"),g); if(!p.length) break; add(p[0].id,g,"P"); }
+    guard=0; while(cf(g,"M")<nmn(g).mn && guard++<15){ const p=ordina(cand(g,"M"),g,"M"); if(!p.length) break; add(p[0].id,g,"M"); }
+    guard=0; while(cf(g,"P")<npn(g).mn && guard++<15){ const p=ordina(cand(g,"P"),g,"P"); if(!p.length) break; add(p[0].id,g,"P"); }
     // fallback P: chi ha già la M oggi può fare anche il P (associato),
     // ma solo se non viola la distanza minima tra associati.
     if(cf(g,"P")<npn(g).mn){
       const assoc = mrMdc.filter(m=>haM(m.id,g)&&!haP(m.id,g)&&canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g));
-      const p=ordina(assoc,g); if(p.length) add(p[0].id,g,"P");
+      const p=ordina(assoc,g,"P"); if(p.length) add(p[0].id,g,"P");
     }
   }
   return pulisciT(turni);
@@ -789,9 +799,43 @@ export function riequilibraCaricoWeekend(anno:number, mese:number, ndim:number, 
         if(c.gt(u.id,g).some(s=>fasciaSlot(s.tipo)===f)) continue;            // u libero su quella fascia
         const m0=c.mark();
         c.st(o.id,g, c.gt(o.id,g).filter(s=>!(fasciaSlot(s.tipo)===f && !s.man)));
-        if(!c.canR(u,g,f) || !c.mdcOk(u,g,f)){ c.rollback(m0); continue; }
-        c.add(u.id,g,f);
-        if(!c.gt(u.id,g).some(s=>fasciaSlot(s.tipo)===f && !s.man)){ c.rollback(m0); continue; }
+        // ── SCAMBIO COMPENSATO (v0.3.29) ────────────────────────────────────
+        // Il ricevente è spesso bloccato dal TETTO DELL'OBIETTIVO (cnt ≥
+        // obiettivo → canR false): a fine generazione quasi tutti sono a
+        // obiettivo e la mossa semplice non ha mai un ricevente legale — era
+        // il motivo per cui il medico coi weekend manuali restava sopra quota
+        // (misurato: 3/10 run). In quel caso u CEDE a o un suo slot FERIALE
+        // automatico (M/P puro, peso weekend 0): i carichi totali restano
+        // circa invariati, canR può accettare, e il carico WEEKEND passa
+        // davvero da o a u. La copertura del feriale ceduto è protetta due
+        // volte: o deve riuscire a prenderlo, e misura() (nx.s<=cur.s)
+        // boccerebbe comunque ogni buco nuovo.
+        const provaInserimento = (): boolean => {
+          if(c.canR(u,g,f) && c.mdcOk(u,g,f)){
+            c.add(u.id,g,f);
+            if(c.gt(u.id,g).some(s=>fasciaSlot(s.tipo)===f && !s.man)) return true;
+          }
+          let tentativi=0;
+          for(let g2=1; g2<=ndim && tentativi<10; g2++){
+            if(c.isWk(g2) || g2===g) continue;
+            const shU=c.gt(u.id,g2);
+            const slot=shU.find(s=>["M","P"].includes(s.tipo) && !s.man && !s.sott);
+            if(!slot) continue;
+            tentativi++;
+            const m1=c.mark();
+            c.st(u.id,g2, shU.filter(s=>s!==slot));
+            if(!c.canR(u,g,f) || !c.mdcOk(u,g,f)){ c.rollback(m1); continue; }
+            c.add(u.id,g,f);
+            if(!c.gt(u.id,g).some(s=>fasciaSlot(s.tipo)===f && !s.man)){ c.rollback(m1); continue; }
+            const f2=slot.tipo as "M"|"P";
+            if(!c.canR(o,g2,f2) || !c.mdcOk(o,g2,f2)){ c.rollback(m1); continue; }
+            c.add(o.id,g2,f2);
+            if(!c.gt(o.id,g2).some(s=>s.tipo===f2 && !s.man)){ c.rollback(m1); continue; }
+            return true;
+          }
+          return false;
+        };
+        if(!provaInserimento()){ c.rollback(m0); continue; }
         const nx=misura();
         // Accettazione RELATIVA: il punteggio duro non peggiora (quindi nessun
         // nuovo buco/violazione/weekend-deficit), il soft cala, e non nasce

@@ -19,7 +19,7 @@ export type Blocco = Record<number, Set<number>> | null;
 // Backtracking su un singolo cluster di caselle critiche.
 export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[], rng: ()=>number, limiteNodi: number){
   const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk, pesoSlot, byWkQuota,
-          wkPairs, isLibWk, cntWkLiberi, wkTargetMed, cnt } = ctx;
+          wkPairs, isLibWk, cntWkLiberi, wkTargetMed, cnt, cntWk, wkQuota, wkPavimento } = ctx;
   // ── COSTO IN WEEKEND LIBERI (v0.3.25) ──────────────────────────────────────
   // Il cluster assegna anche sabati, domeniche/festivi e notti prefestive, ma
   // lo faceva SENZA sapere quanto costano in weekend liberi: la fase Weekend
@@ -82,9 +82,28 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
     // cadono in una coppia sab-dom. Resta un ORDINE di esplorazione, non un
     // filtro: nessun candidato viene escluso, quindi il backtracking conserva
     // la stessa capacità di trovare soluzioni di prima.
-    if(partnerWk(target.g)!==null)
+    // PROTEZIONE DI CHI HA GIÀ CARICO WEEKEND MANUALE (v0.3.29). Il criterio
+    // costoWk metteva PRIMO chi ha la coppia "già spesa" — cioè proprio il
+    // medico coi turni weekend inseriti A MANO, i cui weekend non sono
+    // riservabili come liberi (misurato: 10/10 run gli davano un altro slot,
+    // 3-5/10 oltre la sua quota equa). Ora un candidato con PAVIMENTO manuale
+    // (wkPavimento>0) che con questo slot supererebbe la propria quota alta
+    // scivola in fondo alla fila: resta candidato (nessun filtro, la
+    // copertura non cala), ma si usa solo se nessun altro può. La condizione
+    // sul pavimento è essenziale: applicata a TUTTI, la regola riordinava i
+    // mesi senza manuali weekend e bruciava coppie libere (wkDef +0.6
+    // misurato su set26); così ristretta, quei mesi restano byte per byte
+    // identici e cambia solo il caso segnalato.
+    if(partnerWk(target.g)!==null){
+      const Q = wkQuota();
+      const peso = pesoSlot(target.g, target.f as "M"|"P"|"N");
+      const sopraQ = peso>0
+        ? (id:number) => (wkPavimento(id)>0 && Q[id] && cntWk(id)+peso > Q[id].hi ? 1 : 0)
+        : (_id:number) => 0;
       ordine = ordine.slice().sort((a,b)=>
+        (sopraQ(a.id)-sopraQ(b.id)) ||
         (costoWk(a.id,target!.g)-costoWk(b.id,target!.g)) || (slackWk(b.id)-slackWk(a.id)));
+    }
     // Sforo obiettivo sulla NOTTE (v0.3.26): la notte vale 2 punti, così un
     // medico a obiettivo-1 finirebbe a obiettivo+1. A parità di tutto il resto
     // si prova PRIMA chi non sfora. È solo ordine di esplorazione: chi sforerebbe
@@ -417,8 +436,8 @@ export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number, evita?: Record<number
 }
 
 export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
-  const { giorniArr, isWk, isSp, isS, haAss, medici, mrMdc, ml, byWk, add,
-          canR, mdcOk, canAssDist, cf, nmn, npn, haM, haP, haQ, cntWkLiberi } = ctx;
+  const { giorniArr, isWk, isSp, isS, haAss, medici, mrMdc, ml, byWk, add, pesoSlot,
+          canR, mdcOk, canAssDist, cf, nmn, npn, haM, haP, haQ, cntWkLiberi, cntWk, wkQuota } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has(g) ?? false;
   // EQUITÀ (v0.3.19): i candidati sono ordinati per MINOR carico weekend (byWk)
   // invece che per carico totale, così i turni di weekend si distribuiscono più
@@ -637,7 +656,7 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false, notti
 // accumula e li passa alla fase Weekend al retry (feedback mirato, invece del
 // rimescolamento cieco che sperava di risolvere il conflitto per fortuna).
 export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean; nottiScoperte:number[] } {
-  const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff, cntWk, cntN, isNotteFest } = ctx;
+  const { mark, rollback, snapshot, restore, giorniArr, cf, eleggibili, mrMdc, byN, add, isWk, cntWkLiberi, wkTargetMed, needEff, cntWk, cntN, isNotteFest, pesoSlot, wkQuota } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has?.(g) ?? false;
   const m0 = mark();
   const nottiCoperte = () => giorniArr.reduce((n,g)=>n+(cf(g,"N")>=1?1:0),0);
