@@ -25,6 +25,17 @@ export const ENG = {
   CLUSTER_NODES: 50000, // tetto nodi backtracking cluster critici
   REBAL_NODES: 200000,  // tetto nodi riequilibrio weekend
 
+  // DEADLINE assoluta (epoch ms) della ricerca corrente. 0 = nessuna.
+  // I loop costosi (backtracking dei cluster, retry delle fasi, riequilibri)
+  // la controllano periodicamente e ABORTONO in best-effort quando è superata:
+  // il tempo promesso al chiamante (maxMs) diventa così un tetto REALE anche
+  // sui mesi difficili, dove un singolo run a budget pieno poteva durare
+  // minuti. Con DEADLINE=0 (default) il comportamento è byte per byte quello
+  // storico: solo gli entry-point a tempo (cercaMigliorTentativo,
+  // generaConUltimaChance, rifinituraFinale) la impostano, e sempre dentro
+  // un try/finally che la ripristina.
+  DEADLINE: 0,
+
   // Indice di partenza della rotazione round-robin dell'ambulatorio. Prima
   // faseAmbulatorio leggeva/scriveva localStorage AD OGNI assegnazione: la
   // rotazione avanzava anche nei tentativi poi SCARTATI dal multi-tentativo
@@ -44,6 +55,17 @@ export function setPrevContext(turniAll: TurniAll | null | undefined, anno: numb
 
 export function setAmbRotStart(idx: number){ ENG.AMB_ROT_START = Number.isFinite(idx) ? idx : 0; }
 export function setSalt(s: number){ ENG.SALT = s>>>0; }
+
+// ── DEADLINE ─────────────────────────────────────────────────────────────────
+/** true se la deadline corrente è impostata ed è stata superata. */
+export const scaduto = () => ENG.DEADLINE>0 && Date.now() > ENG.DEADLINE;
+/** Esegue f con una deadline assoluta `t`; una deadline esterna PIÙ stretta
+ *  resta prioritaria (min). Ripristina sempre il valore precedente. */
+export function conDeadline<T>(t: number, f: ()=>T): T {
+  const prev = ENG.DEADLINE;
+  ENG.DEADLINE = prev>0 ? Math.min(prev, t) : t;
+  try { return f(); } finally { ENG.DEADLINE = prev; }
+}
 
 // ─── RNG deterministico (per retry/backtracking variati) ─────────────────────
 export function mkRng(seed: number){

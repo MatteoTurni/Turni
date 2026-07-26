@@ -2,7 +2,7 @@ import type { Medico, Risultato, TurniMese, AlternativaUC, CellaScoperta, Weeken
 import { dowOf, isHol } from "./date";
 import { getRegole } from "./regole";
 import { cloneT, pulisciT, SPEC } from "./turni";
-import { ENG } from "./state";
+import { ENG, scaduto, conDeadline } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
          riequilibraWeekendLiberi, riparaBuchi, validazioneGlobale, type Blocco } from "./fasi";
@@ -115,6 +115,7 @@ export function generaCoperturaMinima(
   const considera = () => { const sc=scoreOf(); if(sc>bestScore){ bestScore=sc; bestSnap=ctx.snapshot(); } };
 
   while(i<fasi.length){
+    if(scaduto()) break;               // DEADLINE: si esce col miglior parziale
     snaps[i] = ctx.mark();
     const ok = fasi[i].run(seeds[i]);
     considera();                       // registra eventuali miglioramenti parziali
@@ -142,9 +143,13 @@ export function generaCoperturaMinima(
     // Modalità di ripiego: si parte dal miglior parziale e si esegue una passata
     // in avanti di tutte le fasi (senza backtracking) così che ciascuna riempia
     // il riempibile; poi si ripristina la configurazione complessivamente migliore.
+    // DEADLINE: a tempo scaduto la passata extra si salta — si rilascia subito
+    // il miglior parziale già trovato.
     ctx.restore(bestSnap);
-    for(let k=0;k<fasi.length;k++){ try{ fasi[k].run(seeds[k]+777); }catch(_){} considera(); }
-    ctx.restore(bestSnap);
+    if(!scaduto()){
+      for(let k=0;k<fasi.length;k++){ try{ fasi[k].run(seeds[k]+777); }catch(_){} considera(); }
+      ctx.restore(bestSnap);
+    }
   }
 
   const problemi = validazioneGlobale(ctx);
@@ -294,7 +299,19 @@ export function buchiCopertura(problemi: string[]){
 }
 
 export function generaConUltimaChance(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, maxMs=2000): Risultato {
-  const tFine = Date.now() + maxMs;
+  // BUDGET DI TEMPO REALE (fix v0.3.28): prima `maxMs` era controllato solo FRA
+  // le iterazioni del passo A, e il passo B girava comunque a budget pieno
+  // (BT=60, TRIES=20, 200k nodi): su un mese infeasible una singola
+  // generaCoperturaMinima durava MINUTI e l'ultima chance sforava di ordini di
+  // grandezza (misurato: >4 min su scenari con organico ridotto). Ora il tempo
+  // è ripartito (≈60% passo A, il resto al passo B) e viene fatto rispettare
+  // DENTRO i loop tramite la deadline del motore (ENG.DEADLINE, best-effort).
+  const t0 = Date.now();
+  const tFine = t0 + maxMs;
+  const tA    = t0 + Math.max(600, maxMs*0.6);   // quota del passo A
+  return conDeadline(tFine, () => generaConUltimaChanceImpl(anno, mese, ndim, medici, ex, tA, tFine));
+}
+function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, tA:number, tFine:number): Risultato {
   // Dopo l'emergenza (che spende weekend liberi di proposito) si tenta di
   // RECUPERARE l'equità: riequilibrio dei weekend con obiettivo ADATTIVO.
   // NB: qui relaxN resta quello della generazione — su un tabellone generato
@@ -357,7 +374,7 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
       rA.problemi = problemiResidui(anno, mese, ndim, medici, rA.turni, false);
       rA.ok = rA.problemi.length===0; rA.parziale = !rA.ok;
       rUlt = (k===0) ? rA : scegliMigliore(anno, mese, ndim, medici, rUlt, rA);
-      if(rUlt.ok || buchiCopertura(rUlt.problemi)===0 || Date.now()>=tFine) break;
+      if(rUlt.ok || buchiCopertura(rUlt.problemi)===0 || Date.now()>=tA) break;
     }
   }finally{ ENG.SALT = saltPrec; }
   let problemi = rUlt.problemi;
@@ -365,7 +382,7 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
   // 3) Passo B (SOLO SE resta un buco di copertura reale): si rilassa la Regola N
   //    — a g+2 dopo una notte è ammessa anche una Notte — e si riprova da capo.
   //    Si tiene la versione rilassata solo se copre DAVVERO di più.
-  if(buchiCopertura(problemi) > 0){
+  if(buchiCopertura(problemi) > 0 && Date.now() < tFine - 100){
     const rRel = generaCoperturaMinima(anno, mese, ndim, medici, ex, targetGraduato ?? 1, true);
     // Fix 3: solver prima, greedy come scopa (come nel ramo A).
     riparaResidui(rRel.turni, true, 7451);
@@ -417,8 +434,14 @@ export function generaConUltimaChance(anno:number, mese:number, ndim:number, med
 // liberi (10) > avvisi minori (1). A parità di duro decide il SOFT (equità:
 // scarto carico weekend ×200, varianza notti ×100, carichi ×10, wk liberi ×5,
 // −2 per wk libero extra, strisce di mattine ×8).
-/** Pesi del punteggio SOFT — tarabili senza ricompilare la logica. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40 };
+/** Pesi del punteggio SOFT — tarabili senza ricompilare la logica.
+ *  iso (v0.3.28): giorni di lavoro ISOLATI (libero-lavoro-libero, notte
+ *  esclusa) — il frammento che più spezza il ritmo di un tabellone.
+ *  quickPM (v0.3.28): "rientri rapidi" P→M (pomeriggio e mattina il giorno
+ *  dopo): legali ma faticosi; a parità di tutto il resto meglio pochi.
+ *  Entrambi pesano MENO di sforo(40) e wkScarto(60): l'organicità non deve
+ *  mai comprare frammentazione in cambio di equità weekend o sfori. */
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:4 };
 
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
   const c = makeCtx(anno, mese, ndim, medici, turni);
@@ -523,10 +546,35 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // weekend. Con nessuno sforo il termine è 0 e il punteggio resta invariato.
   let sforo = 0;
   for(const m2 of c.att) sforo += Math.max(0, c.cnt(m2.id) - m2.obiettivo);
+  // ── ORGANICITÀ (v0.3.28) ──────────────────────────────────────────────────
+  // lavIso: giorni lavorati isolati (né il giorno prima né quello dopo sono
+  // lavorati), Notti escluse — la notte "isolata" è fisiologica (il riposo
+  // post-notte la circonda per regola). quickPM: P seguito da M l'indomani.
+  // Entrambi sono conteggi FISICI sul tabellone: la ricerca e le rifiniture
+  // possono così preferire, a parità di copertura/regole/equità, il tabellone
+  // più compatto e meno faticoso. Il bordo iniziale legge la coda del mese
+  // precedente (lavoraGiorno usa la continuità), quindi un lunedì 1 non è
+  // "isolato" se il medico ha lavorato il 31 del mese prima.
+  let lavIso = 0, quickPM = 0;
+  for(const m2 of c.att){
+    for(let g=1; g<=ndim; g++){
+      const sh = c.gt(m2.id,g);
+      if(sh.length===0) continue;
+      const haNot = sh.some(x=>["N","3"].includes(x.tipo));
+      const lavOggi = sh.some(x=>!SPEC.includes(x.tipo));
+      if(lavOggi && !haNot && g+1<=ndim
+         && !c.lavoraGiorno(m2.id,g-1)
+         && !c.lavoraGiorno(m2.id,g+1)) lavIso++;   // l'ultimo giorno del mese non si giudica (il seguito è ignoto)
+      if(lavOggi && g+1<=ndim && !haNot
+         && sh.some(x=>["P","2"].includes(x.tipo))
+         && c.gt(m2.id,g+1).some(x=>["M","A","1"].includes(x.tipo))) quickPM++;
+    }
+  }
   const P = PESI;
   const soft = varOf(notti)*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
-             + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo;
-  return { s, soft, probs, buchi, wkDef, celle, wkScarto };
+             + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
+             + lavIso*P.iso + quickPM*P.quickPM;
+  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -579,7 +627,15 @@ export function cercaMigliorTentativo(
   const registra = (turni:TurniMese) => {
     const m = misura(turni);
     for(const c of m.celle){ const k=`${c.g}-${c.f}`; conteggi[k]=(conteggi[k]||0)+1; }
-    const adotta = best.m===null || m.s < best.m.s || (m.s === best.m.s && m.soft < best.m.soft);
+    // ADOZIONE GERARCHICA (v0.3.28): a punteggio duro pari decide PRIMA lo
+    // scarto di carico weekend, POI il soft. Con l'organicità (iso/quickPM)
+    // dentro il soft, senza questo strato un tabellone più compatto poteva
+    // comprare un punto di iniquità weekend (60 < 10×lavIsoΔ): misurato
+    // +0.12 wkScarto medio sull'harness. Così l'equità weekend resta
+    // inviolabile e l'organicità decide solo a parità di essa.
+    const adotta = best.m===null || m.s < best.m.s
+      || (m.s === best.m.s && (m.wkScarto < best.m.wkScarto
+          || (m.wkScarto === best.m.wkScarto && m.soft < best.m.soft)));
     if(adotta){ best.m=m; best.turni=turni; opz?.onMiglioramento?.(turni, m); }
     return best.m!.s===0;
   };
@@ -620,6 +676,14 @@ export function cercaMigliorTentativo(
   const OTTIM_MS   = Math.min(4000, maxMs*0.4);
   const STALLO_MAX = 60;
   const SEED = (opz?.saltSeed ?? 0)>>>0;
+  // DEADLINE (fix v0.3.28): maxMs era controllato solo FRA i restart, ma un
+  // singolo restart — anche a budget ECON — sui mesi molto vincolati può
+  // costare secondi (misurato: 2.5-4× il budget totale). La deadline viene
+  // fatta rispettare DENTRO le fasi: il restart in corso abortisce in
+  // best-effort e registra comunque il suo parziale.
+  const DL_PREC = ENG.DEADLINE;
+  ENG.DEADLINE = DL_PREC>0 ? Math.min(DL_PREC, t0+maxMs) : t0+maxMs;
+  try{
   while(true){
     const now = Date.now();
     if(t>0 && now - t0 >= maxMs) break;          // almeno UN tentativo, sempre
@@ -641,6 +705,7 @@ export function cercaMigliorTentativo(
     else if(perfetto){ stallo = (best.m!.soft < softPrima) ? 0 : stallo+1; }
     if(t%25===0) opz?.onProgresso?.(t, best.m ? best.m.s : Infinity);
   }
+  }finally{ ENG.DEADLINE = DL_PREC; }
 
   ENG.BT=BT; ENG.TRIES=TR; ENG.CLUSTER_NODES=CN; ENG.REBAL_NODES=RN; ENG.SALT=0;
 
@@ -709,6 +774,7 @@ export function riequilibraCaricoWeekend(anno:number, mese:number, ndim:number, 
   let cur=misura(); let migliorato=false;
   const mdc0=mdcViolCount(ndim,medici,c);   // violazioni MDC di partenza (di norma 0)
   for(let iter=0; iter<40 && cur.wkScarto>0; iter++){
+    if(scaduto()) break;               // DEADLINE: hill-climb interrompibile
     const b=forchettaWk(c);
     const port=c.wkPortatori;
     const donatori =[...port].sort((a,z)=>(c.cntWk(z.id)-b[z.id].hi)-(c.cntWk(a.id)-b[a.id].hi)); // più sopra prima
@@ -731,8 +797,81 @@ export function riequilibraCaricoWeekend(anno:number, mese:number, ndim:number, 
         // nuovo buco/violazione/weekend-deficit), il soft cala, e non nasce
         // alcun nuovo MDC-solo. Robusto anche se il mese ha già un difetto
         // strutturale altrove (es. ambulatorio impossibile in un mese di ferie).
-        if(nx.s<=cur.s && nx.soft<cur.soft && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; migliorato=true; break outer; }
+        // Adozione gerarchica (v0.3.28): la mossa deve MIGLIORARE lo scarto
+        // weekend (è lo scopo di questo hill-climb) o, a scarto pari, il soft.
+        if(nx.s<=cur.s && (nx.wkScarto<cur.wkScarto || (nx.wkScarto===cur.wkScarto && nx.soft<cur.soft))
+           && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; migliorato=true; break outer; }
         c.rollback(m0);
+      }
+    }
+    if(!mossa) break;
+  }
+  return migliorato;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPATTATORE DEI DIURNI FERIALI (v0.3.28) — rifinitura di ORGANICITÀ
+// ═══════════════════════════════════════════════════════════════════════════
+// Problema misurato dall'harness multi-scenario: anche nei mesi facili il
+// tabellone rilasciato contiene ~10-12 giorni di lavoro ISOLATI (libero-
+// lavoro-libero) e altrettanti liberi "bucati" fra due giorni lavorati: turni
+// legali ma frammentati, poco vivibili. La catena delle mattine (v0.3.17)
+// struttura le M, ma i P e i riempimenti best-effort continuano a spargere
+// giornate singole.
+//
+// Questo hill-climb sposta UNO slot diurno automatico (M o P, mai A/N/manuali/
+// sottolineati, SOLO feriali) dal medico per cui quel giorno è un frammento a
+// un collega per cui è ADIACENTE a giorni già lavorati (estende un blocco o
+// salda un "libero bucato"). Ogni mossa è transazionale, stessa disciplina di
+// riequilibraCaricoWeekend:
+//   • punteggio DURO mai peggiorato (nessun buco/violazione/weekend);
+//   • punteggio SOFT in calo (che ora include lavIso/quickPM: è l'oracolo che
+//     giudica la mossa davvero più organica, non solo diversa);
+//   • nessun nuovo MDC lasciato solo (mdcOk sull'intero sweep).
+// Toccando solo i feriali non-festivi, il carico weekend (pesoSlot=0) e i
+// weekend liberi restano BYTE PER BYTE invariati: l'organicità non può
+// comprare frammentazione con l'equità.
+export function compattaTurni(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): boolean {
+  const misura = () => misuraTabellone(anno, mese, ndim, medici, c.T);
+  let cur = misura(); let migliorato = false;
+  const mdc0 = mdcViolCount(ndim, medici, c);
+  const lavora = (id:number,g:number) => c.lavoraGiorno(id,g);
+  for(let iter=0; iter<80 && (cur.lavIso>0 || cur.quickPM>0); iter++){
+    if(scaduto()) break;
+    let mossa = false;
+    outer:
+    for(const g of c.feriali){
+      for(const o of c.att){
+        const sh = c.gt(o.id,g);
+        // slot donabile: UNICO turno non-SPEC della giornata, M o P puro,
+        // automatico e non sottolineato (le varianti sott sono scelte utente).
+        const slot = sh.find(s=>["M","P"].includes(s.tipo) && !s.man && !s.sott);
+        if(!slot) continue;
+        if(sh.some(s=>!SPEC.includes(s.tipo) && s!==slot)) continue;
+        // il giorno è un frammento per o? (isolato, o coda di un rientro rapido)
+        const isolato = !lavora(o.id,g-1) && !(g+1<=ndim && lavora(o.id,g+1));
+        const rientro = slot.tipo==="P" && g+1<=ndim && c.gt(o.id,g+1).some(s=>["M","A"].includes(s.tipo));
+        if(!isolato && !rientro) continue;
+        const f = slot.tipo as "M"|"P";
+        // riceventi: giornata libera, con lavoro adiacente (estende/salda)
+        const ric = c.att.filter(u=>u.id!==o.id && !c.haQ(u.id,g)
+                                  && (lavora(u.id,g-1) || (g+1<=ndim && lavora(u.id,g+1))))
+                         .sort((a,b)=>c.cnt(a.id)-c.cnt(b.id));
+        for(const u of ric){
+          const m0 = c.mark();
+          c.st(o.id, g, sh.filter(s=>s!==slot));
+          if(!c.canR(u,g,f) || !c.mdcOk(u,g,f)){ c.rollback(m0); continue; }
+          c.add(u.id,g,f);
+          if(!c.gt(u.id,g).some(s=>s.tipo===f && !s.man)){ c.rollback(m0); continue; }
+          const nx = misura();
+          // wkScarto non può cambiare (mosse solo feriali) ma il guard resta
+          // come rete di sicurezza; l'oracolo della mossa è il soft.
+          if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.soft<cur.soft
+             && mdcViolCount(ndim,medici,c)<=mdc0){
+            cur=nx; mossa=true; migliorato=true; break outer;
+          }
+          c.rollback(m0);
+        }
       }
     }
     if(!mossa) break;
@@ -753,7 +892,9 @@ export function rifinituraFinale(
   // ramo non era più raggiungibile.)
   const prova = (turni:TurniMese) => {
     const m = misura(turni);
-    if(m.s < bestM.s || (m.s === bestM.s && m.soft < bestM.soft)){ bestT=turni; bestM=m; }
+    // Stessa adozione gerarchica di registra(): duro, poi wkScarto, poi soft.
+    if(m.s < bestM.s || (m.s === bestM.s && (m.wkScarto < bestM.wkScarto
+       || (m.wkScarto === bestM.wkScarto && m.soft < bestM.soft)))){ bestT=turni; bestM=m; }
   };
   // NB: s===0 ⇒ buchi=0 ∧ wkDef=0 ⇒ sui tabelloni perfetti non si esegue nulla
   // (equivale al vecchio guard `!perfetto &&`).
@@ -766,11 +907,15 @@ export function rifinituraFinale(
   // se prova() la giudica migliore (i buchi possono solo diminuire, il costo
   // massimo è qualche weekend libero — che il recupero sotto e il peso
   // 1000-contro-10 di misura rendono comunque un buon affare).
+  // DEADLINE (fix v0.3.28): ogni passo di rifinitura ha un tetto di tempo REALE
+  // (prima riparaBuchi a 200k nodi da solo poteva superare i 30 s), scalato
+  // sul budget msUC così una richiesta breve resta breve davvero.
+  const capMs = (ms:number) => Math.max(400, Math.min(ms, msUC));
   if(bestM.buchi>0){
     try{
       const copia = cloneT(bestT);
       const c = makeCtx(anno, mese, ndim, medici, copia);
-      if(riparaBuchi(c, 424243, ENG.REBAL_NODES)) prova(copia);
+      if(conDeadline(Date.now()+capMs(1500), ()=>riparaBuchi(c, 424243, ENG.REBAL_NODES))) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
@@ -783,7 +928,7 @@ export function rifinituraFinale(
     try{
       const copia = cloneT(bestT);
       const c = makeCtx(anno, mese, ndim, medici, copia);
-      if(riequilibraWeekendLiberi(c)) prova(copia);
+      if(conDeadline(Date.now()+capMs(1200), ()=>riequilibraWeekendLiberi(c))) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
@@ -797,7 +942,20 @@ export function rifinituraFinale(
     try{
       const copia = cloneT(bestT);
       const c = makeCtx(anno, mese, ndim, medici, copia);
-      if(riequilibraCaricoWeekend(anno, mese, ndim, medici, c)) prova(copia);
+      if(conDeadline(Date.now()+capMs(1200), ()=>riequilibraCaricoWeekend(anno, mese, ndim, medici, c))) prova(copia);
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
+
+  // ── COMPATTAZIONE DEI DIURNI (v0.3.28) ──────────────────────────────────
+  // A copertura, regole, weekend e carichi ormai stabilizzati, si riducono i
+  // frammenti: giorni di lavoro isolati e rientri rapidi P→M migrano verso i
+  // blocchi. Lavora su copia e adotta via prova(): mai un buco o una
+  // violazione in cambio, e i weekend non vengono toccati (solo feriali).
+  if(bestM.lavIso>0 || bestM.quickPM>0){
+    try{
+      const copia = cloneT(bestT);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(conDeadline(Date.now()+capMs(1200), ()=>compattaTurni(anno, mese, ndim, medici, c))) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
@@ -830,7 +988,7 @@ export function rifinituraFinale(
   // percettibile, mai un effetto sulla generazione. Un errore qui non deve
   // mai far perdere il tabellone: try/catch e si rilascia senza diagnosi.
   if(bestM.buchi>0 || bestM.probs.some(p=>p.includes("ambulatorio mancante"))){
-    try{ res.causale = diagnosiCausale(anno, mese, ndim, medici, bestT, { maxMs: 1500 }); }catch(_){}
+    try{ res.causale = conDeadline(Date.now()+2500, ()=>diagnosiCausale(anno, mese, ndim, medici, bestT, { maxMs: 1500 })); }catch(_){}
   }
   return res;
 }

@@ -1,7 +1,7 @@
 import type { Medico, TurniMese } from "./types";
 import { DF } from "./date";
 import { isMatt, isPom, isNot } from "./turni";
-import { ENG, mkRng, shuf } from "./state";
+import { ENG, mkRng, shuf, scaduto } from "./state";
 import type { Ctx } from "./ctx";
 
 export type Blocco = Record<number, Set<number>> | null;
@@ -57,6 +57,10 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
   let nodi = 0;
   const solve = (): boolean => {
     if(++nodi > limiteNodi) return false;
+    // DEADLINE: il tetto ai nodi limita la COMBINATORIA, non il TEMPO — su
+    // cluster grandi 200k nodi possono costare decine di secondi. Controllo
+    // periodico (ogni 256 nodi: costo irrilevante) e abort come per il tetto.
+    if((nodi & 255)===0 && scaduto()) return false;
     // scegli la casella ancora scoperta col minor numero di candidati (MRV)
     let target:{g:number;f:string;need:number}|null=null, best=Infinity, bestCand:Medico[]|null=null;
     for(const c of cells){
@@ -269,6 +273,7 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 
   let riparato=false;
   for(const [lo,hi] of finestre){
+    if(scaduto()) break;               // DEADLINE: le finestre restanti si saltano
     // Celle della finestra col fabbisogno EFFICACE (needEff è stabile rispetto
     // allo svuotamento: capCell guarda solo manuali/immovibili).
     const cells: {g:number;f:string;need:number}[]=[];
@@ -276,6 +281,7 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
     if(cells.length===0) continue;
     const soliPrima = soliMdc(lo,hi);
     for(let att=0; att<3; att++){
+      if(scaduto()) break;
       const m0=mark();
       // Svuota i turni AUTOMATICI M/P/N della finestra (manuali, ambulatorio e
       // codici speciali intatti). Liberare i vicini del buco è ciò che dà al
@@ -547,6 +553,7 @@ export function riequilibraWeekendLiberi(ctx: Ctx){
   const LIMITE = ENG.REBAL_NODES;
   const solve = (i:number): boolean => {
     if(++nodi > LIMITE) return false;
+    if((nodi & 1023)===0 && scaduto()) return false;   // DEADLINE (vedi risolviCluster)
     if(i>=cells.length) return obiettivoOk() && validaWeekend(ctx);
     const { g, f, tipo } = cells[i];
     const compl = f==="M" ? "P" : f==="P" ? "M" : null;
@@ -599,6 +606,7 @@ export function faseWeekend(ctx: Ctx, seed: number, accettaMigliore=false, notti
     mrMdc.reduce((acc,m)=>acc+(cntWkLiberi(m.id)>=wkTargetMed(m.id)?1:0),0);
   let migliore: { snap: TurniMese; blocco: Blocco; score: number } | null = null;
   for(let att=0; att<ENG.TRIES; att++){
+    if(att>0 && scaduto()) break;      // DEADLINE: almeno un tentativo, sempre
     rollback(m0);
     const rng = mkRng(seed + att*7919);
     const { blocco, tuttiOk } = assegnaWkLiberi(ctx, rng, evita);
@@ -635,6 +643,7 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean;
   const nottiCoperte = () => giorniArr.reduce((n,g)=>n+(cf(g,"N")>=1?1:0),0);
   let bestSnap: TurniMese | null = null, bestCop = nottiCoperte();   // best-effort: miglior parziale
   for(let att=0; att<ENG.TRIES; att++){
+    if(att>0 && scaduto()) break;      // DEADLINE: almeno un tentativo, sempre
     rollback(m0);
     const rng = mkRng(seed + att*104729);
     const scoperti = giorniArr.filter(g=>cf(g,"N")<1);
@@ -849,6 +858,7 @@ export function faseDiurni(ctx: Ctx, seed: number){
   let bestSnap: TurniMese | null = null, bestSc = scoreDiurni();   // best-effort: miglior parziale
 
   for(let att=0; att<ENG.TRIES; att++){
+    if(att>0 && scaduto()) break;      // DEADLINE: almeno un tentativo, sempre
     rollback(m0);
     const rng = mkRng(seed + att*1299709);
 
