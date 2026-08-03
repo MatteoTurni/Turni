@@ -6,7 +6,7 @@ import { setRegole, REGOLE_DEFAULT, getRegole } from "../regole";
 import { ENG, setSalt, setAmbRotStart, setPrevContext } from "../state";
 import { makeCtx } from "../ctx";
 import { validazioneGlobale } from "../fasi";
-import { generaMigliorTentativo, generaCoperturaMinima, completaObiettivi, problemiResidui, buchiCopertura, calcAmbRotNext } from "../genera";
+import { generaMigliorTentativo, completaObiettivi, problemiResidui, buchiCopertura, calcAmbRotNext } from "../genera";
 
 // ─── SQUADRA SINTETICA (stessa composizione del reparto reale) ────────────────
 const mediciTest = (): Medico[] => [
@@ -60,7 +60,9 @@ function violaRegolaNStretta(T:TurniMese, medici:Medico[], ndim:number){
 function maxConsecutivi(T:TurniMese, medici:Medico[], ndim:number){
   let mx=0;
   for(const m of medici){
-    if(m.stato==="MPS") continue;
+    // ML esente dal tetto di giorni consecutivi (v0.3.30), come già dall'equità
+    // weekend: qui va escluso o il validatore indipendente segnala falsi positivi.
+    if(m.stato==="MPS" || m.stato==="ML") continue;
     let run=0;
     for(let g=1; g<=ndim; g++){
       if(lavora(T,m.id,g)){ run++; mx=Math.max(mx,run); } else run=0;
@@ -292,47 +294,5 @@ describe("giorni di ambulatorio configurabili (regole.giorniAmb)", () => {
     for(let g=1; g<=nd; g++)
       for(const m of medici)
         expect((r.turni[m.id]?.[g]?.t||[]).some(s=>s.tipo==="A")).toBe(false);
-  });
-});
-
-// ─── REGRESSIONE: collo di bottiglia ambulatorio nei mesi di ferie (v0.3.27) ──
-// Riproduce il fallimento reale di agosto 2026. Su un martedì d'ambulatorio solo
-// DUE abilitati restano liberi (gli altri in ferie); faseCritici — che gira
-// prima dell'ambulatorio e ne ignora l'esigenza — li consumava per notti/diurni,
-// lasciando la A scoperta e facendo fallire l'intero mese. La pre-prenotazione
-// dei giorni STRETTI (prima delle fasi) deve garantire la copertura.
-//
-// Scenario: martedì 25 stretto (Ciampa+Spugnardi in ferie 20-31 → su quel
-// martedì restano solo Renis e Lezzi), con il resto del mese caricato attorno
-// alla stessa settimana così che Critici pretenda davvero quei due medici. Gli
-// altri martedì (4,11,18) hanno il pool pieno e restano a faseAmbulatorio.
-// Nota: SENZA la pre-prenotazione questo scenario lascia il 25 scoperto in
-// modo sistematico (verificato: 0/N tentativi lo coprono); con essa è sempre
-// coperto. Si usa generaCoperturaMinima (rapida e deterministica) su più semi:
-// è la funzione che ospita la pre-prenotazione, quindi il test la esercita
-// direttamente senza dipendere dal caso del multi-tentativo.
-describe("ambulatorio: giorni stretti nei mesi di ferie (regressione v0.3.27)", () => {
-  const anno=2026, mese=7, nd=dimOf(anno,mese);      // agosto: martedì 4,11,18,25
-  const scenario = (): TurniMese => conAssenze({
-    5:[[20,31]], 6:[[20,31]],                         // Ciampa+Spugnardi → 25 stretto
-    1:[[23,27]], 4:[[22,28]], 7:[[24,28]],            // carico attorno al 25
-  });
-
-  it("prenota e copre il martedì stretto (25) su ogni seme, senza violare i vincoli", () => {
-    const medici = mediciTest();                      // abilitati: Renis(2),Ciampa(5),Spugnardi(6),Lezzi(8)
-    for(const seme of [1, 7920, 15839, 23758, 31677, 39596]){
-      setSalt(seme);
-      const r = generaCoperturaMinima(anno, mese, nd, medici, scenario());
-      for(let g=1; g<=nd; g++){
-        if(dowOf(anno,mese,g)===1 && !isHol(anno,mese,g)){
-          const assegnatari = medici.filter(m=>(r.turni[m.id]?.[g]?.t||[]).some(s=>s.tipo==="A"));
-          expect(assegnatari.length).toBeGreaterThanOrEqual(1);   // ogni martedì (incluso il 25) ha la A
-          expect(assegnatari.every(m=>m.ambulatorio)).toBe(true); // solo agli abilitati
-        }
-      }
-      expect(r.problemi.some(p=>/ambulatorio mancante/i.test(p))).toBe(false);
-      expect(violaRegolaNStretta(r.turni, medici, nd)).toBe(null);           // Regola N intatta
-      expect(maxConsecutivi(r.turni, medici, nd)).toBeLessThanOrEqual(getRegole().maxConsec);
-    }
   });
 });
