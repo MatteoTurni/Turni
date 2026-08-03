@@ -22,8 +22,13 @@ export const KC: Record<string, { bg: string; t: string; b: string }> = {
   "104":{ bg:"#2a0e06", t:"#fca5a5", b:"#dc2626" },
   per11:{ bg:"#261602", t:"#fde68a", b:"#ca8a04" },
   X:    { bg:"#111",    t:"#4b5563", b:"#1f2937" },
+  // Esclusioni PARZIALI: tinta spenta della fascia che bloccano, così si
+  // riconoscono a colpo d'occhio senza confondersi con un turno vero.
+  Xm:   { bg:"#0f1722", t:"#7ea3cc", b:"#2c4a6e" },
+  Xp:   { bg:"#150f22", t:"#9d8ac9", b:"#4a3a6e" },
+  Xn:   { bg:"#0a1710", t:"#6fae86", b:"#2a5a3d" },
 };
 
 // Tipi selezionabili nel CellModal e tipi che ammettono la variante sottolineata.
-export const TM = ["M","P","N","L","A","1","2","3","104","ANA","per11","X"];
+export const TM = ["M","P","N","L","A","1","2","3","104","ANA","per11","X","Xm","Xp","Xn"];
 export const TS = ["M","P","1","2","3"];

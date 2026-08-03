@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Medico, Turno } from "../engine/types";
 import { MESI, DF, dowOf, isFestivo, isSabN, isDomN } from "../engine/date";
 import { KC, TM, TS } from "./costanti";
+import { ESCL_PARZ, isEscl, escludeFascia, fasciaDi } from "../engine/turni";
 import { Badge } from "./Badge";
 
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
@@ -23,7 +24,29 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, onSalva, onCl
   const h   = isFestivo(anno,mese,giorno);
   const sat = isSabN(d), dom = isDomN(d);
 
-  const tog  = (tipo:string) => setSel(p=>{ const i=p.findIndex(s=>s.tipo===tipo); return i>=0?p.filter((_,j)=>j!==i):[...p,{tipo,sott:false}]; });
+  // ── SELEZIONE COERENTE (v0.3.30) ────────────────────────────────────────────
+  // Le esclusioni non possono convivere né fra loro né col turno che negano:
+  //  · X esclude tutto ⇒ toglie Xm/Xp/Xn (e viceversa);
+  //  · Xm+Xp+Xn insieme ≡ X ⇒ la terna collassa in X;
+  //  · aggiungere Xm toglie gli eventuali M/A/1 già selezionati, e aggiungere
+  //    una M toglie l'Xm. Senza questo si potrebbe salvare "M + Xm", che il
+  //    motore risolverebbe in silenzio (il manuale vince) lasciando però in
+  //    tabellone una cella che dice una cosa e ne fa un'altra.
+  const tog  = (tipo:string) => setSel(p=>{
+    if(p.some(s=>s.tipo===tipo)) return p.filter(s=>s.tipo!==tipo);
+    let next = [...p,{tipo,sott:false}];
+    if(isEscl(tipo)){
+      if(tipo==="X") next = next.filter(s=>!ESCL_PARZ.includes(s.tipo));
+      else           next = next.filter(s=>s.tipo!=="X");
+      next = next.filter(s=>{ const f=fasciaDi(s.tipo); return !f || !escludeFascia(tipo,f); });
+      if(ESCL_PARZ.every(t=>next.some(s=>s.tipo===t)))
+        next = [...next.filter(s=>!ESCL_PARZ.includes(s.tipo)),{tipo:"X",sott:false}];
+    } else {
+      const f = fasciaDi(tipo);
+      if(f) next = next.filter(s=>!escludeFascia(s.tipo,f));
+    }
+    return next;
+  });
   const togS = (tipo:string) => setSel(p=>p.map(s=>s.tipo===tipo?{...s,sott:!s.sott}:s));
   const salva = () => { onSalva([...sel.map(s=>({tipo:s.tipo,sott:s.sott,man:true})),...esistenti.filter(s=>!s.man)]); onClose(); };
   const svuota = () => { onSalva([]); onClose(); };
