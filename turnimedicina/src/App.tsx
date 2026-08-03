@@ -666,7 +666,7 @@ export default function App(){
 
           <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #1e3a5f",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
             <span style={{color:"#3d5878",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
-            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"]].map(([tipo,desc])=>(
+            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
               <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
                 <Badge tipo={tipo} man/><span style={{color:"#4b7aad",fontSize:"8px"}}>{desc}</span>
               </div>
