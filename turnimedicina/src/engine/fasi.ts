@@ -1,6 +1,6 @@
 import type { Medico, TurniMese } from "./types";
 import { DF } from "./date";
-import { isMatt, isPom, isNot } from "./turni";
+import { isMatt, isPom, isNot, isEscl } from "./turni";
 import { ENG, mkRng, shuf, scaduto } from "./state";
 import type { Ctx } from "./ctx";
 
@@ -331,7 +331,7 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 // equità per cui la rotazione avanzava nei tentativi scartati dal multi-tentativo.
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseAmbulatorio(ctx: Ctx){
-  const { giorniArr, isAmb, isH, gt, add, medici, ambilitati, haX, haN, cnt, canConsec, canMatt } = ctx;
+  const { giorniArr, isAmb, isH, gt, add, medici, ambilitati, escluso, haN, cnt, canConsec, canMatt } = ctx;
   const n = ambilitati.length;
   let nextIdx = n>0 ? ((ENG.AMB_ROT_START % n) + n) % n : 0;
   let ok=true;
@@ -342,7 +342,7 @@ export function faseAmbulatorio(ctx: Ctx){
 
     const canAmb = (m: Medico, ignoraObiettivo=false) => {
       if(m.stato==="MPS") return false;
-      if(haX(m.id,g)) return false;
+      if(escluso(m.id,g,"M")) return false;                 // la A è un turno di MATTINA: la blocca anche Xm
       if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
       // Vincolo MORBIDO: superabile nel 2° passaggio, quando l'alternativa
       // sarebbe lasciare l'ambulatorio scoperto.
@@ -351,7 +351,7 @@ export function faseAmbulatorio(ctx: Ctx){
       // La A è un turno di MATTINA → vale la Regola N (vietata a g+1 e g+2 di una notte).
       if(!canMatt(m.id,g)) return false;
       if(!canConsec(m.id,g)) return false;
-      const tt=gt(m.id,g).filter(s=>s.tipo!=="X"&&!["L","ANA","per11","104"].includes(s.tipo));
+      const tt=gt(m.id,g).filter(s=>!isEscl(s.tipo)&&!["L","ANA","per11","104"].includes(s.tipo));
       return tt.length===0;
     };
 

@@ -14,8 +14,29 @@ export function vt(t:string,u?:boolean): number {
   return 0;
 }
 
+// ─── ESCLUSIONI ───────────────────────────────────────────────────────────────
+// "X" esclude il medico dall'INTERA giornata. Le esclusioni PARZIALI (v0.3.30)
+// bloccano UNA SOLA fascia: il medico resta disponibile per le altre.
+//   Xm → niente mattina (M, A, 1)      Xp → niente pomeriggio (P, 2)
+//   Xn → niente notte   (N, 3)
+// Sono combinabili: Xm+Xp = "solo notte". Xm+Xp+Xn equivale a X (il CellModal
+// normalizza la terna in X). Come X sono codici SPEC: non sono lavoro, valgono
+// come riposo, pesano 0 e non finiscono nell'export Excel.
+export const ESCL_PARZ = ["Xm","Xp","Xn"];
+/** Il codice è un'esclusione (totale o parziale)? */
+export function isEscl(t:string){ return t==="X" || ESCL_PARZ.includes(t); }
+/** Il codice esclude la fascia f? "X" esclude tutto. */
+export function escludeFascia(t:string, f:"M"|"P"|"N"){
+  if(t==="X") return true;
+  return t === (f==="M" ? "Xm" : f==="P" ? "Xp" : "Xn");
+}
+/** Fascia di appartenenza di un turno reale (null per i codici non-turno). */
+export function fasciaDi(t:string): "M"|"P"|"N"|null {
+  return isMatt(t) ? "M" : isPom(t) ? "P" : isNot(t) ? "N" : null;
+}
+
 // Codici "speciali": non sono lavoro (assenze/esclusioni) e valgono come riposo.
-export const SPEC = ["X","ANA","per11","104","L"];
+export const SPEC = ["X","Xm","Xp","Xn","ANA","per11","104","L"];
 
 // ─── CLONAZIONE VELOCE DI T ───────────────────────────────────────────────────
 // Sostituisce JSON.parse(JSON.stringify(T)) nei punti in cui serve una COPIA

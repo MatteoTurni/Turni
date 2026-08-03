@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, Regole } from "./types";
 import { DF, dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, SPEC } from "./turni";
+import { isMatt, isPom, isNot, SPEC, escludeFascia } from "./turni";
 import { getRegole } from "./regole";
 
 // ─── DIAGNOSI STATICA (v0.3.10) ───────────────────────────────────────────────
@@ -42,6 +42,9 @@ export function diagnosiStatica(
   const fb   = (g:number) => isSp(g)?REG.fabb.fest:isS(g)?REG.fabb.sab:REG.fabb.fer;
 
   const haX      = (id:number,g:number) => man(id,g).some(s=>s.tipo==="X");
+  // ESCLUSIONI PER FASCIA (v0.3.30): come in ctx, ma sui SOLI manuali (qui è
+  // tutto manuale per definizione: X/Xm/Xp/Xn si inseriscono solo a mano).
+  const esclF    = (id:number,g:number,f:"M"|"P"|"N") => man(id,g).some(s=>escludeFascia(s.tipo,f));
   const assenza  = (id:number,g:number) => man(id,g).some(s=>["L","ANA","per11","104"].includes(s.tipo));
   // Notte manuale ai fini del riposo: come manNight in ctx, include il codice PS "3".
   const manNotte = (id:number,g:number) => g>=1 && man(id,g).some(s=>isNot(s.tipo));
@@ -71,18 +74,23 @@ export function diagnosiStatica(
     if(noM && REG.riposoEsteso) return [];                 // riposo esteso: g+2 completamente libero
     const hasM = manMside(m.id,g), hasP = manPside(m.id,g);
     if(hasM && hasP) return [];                            // giornata già piena (anche 1+2, 1+P, M+2)
-    if(hasM) return ["P"];                                 // completamento a giornata piena
-    if(hasP) return noM ? [] : ["M"];
-    if(m.stato==="ML") return (isSp(g)||noM) ? [] : ["M"]; // ML: solo mattine feriali/sabato
+    // Esclusioni parziali: filtro FINALE sulle opzioni, così ogni ramo (ML,
+    // MDC, MR, completamento) resta scritto com'era e non c'è modo di
+    // dimenticarne uno. "MP" cade se cade una qualsiasi delle due metà.
+    const filtra = (o:Opz[]): Opz[] => o.filter(x =>
+      x==="MP" ? (!esclF(m.id,g,"M") && !esclF(m.id,g,"P")) : !esclF(m.id,g,x));
+    if(hasM) return filtra(["P"]);                         // completamento a giornata piena
+    if(hasP) return filtra(noM ? [] : ["M"]);
+    if(m.stato==="ML") return filtra((isSp(g)||noM) ? [] : ["M"]); // ML: solo mattine feriali/sabato
     if(m.stato==="MDC"){
       const okM = !noM && (fb(g).mMax>=2 || compagnoMan(g,"M",m.id));
       const okP = fb(g).pMax>=2 || compagnoMan(g,"P",m.id);
       const okN = compagnoMan(g,"N",m.id);                 // MDC di notte solo con un "3"/N altrui
       const out:Opz[]=[]; if(okM) out.push("M"); if(okP) out.push("P");
       if(okM&&okP) out.push("MP"); if(okN) out.push("N");
-      return out;
+      return filtra(out);
     }
-    return noM ? ["P","N"] : ["M","P","MP","N"];           // MR
+    return filtra(noM ? ["P","N"] : ["M","P","MP","N"]);   // MR
   };
 
   const celle:  CertCella[]  = [];

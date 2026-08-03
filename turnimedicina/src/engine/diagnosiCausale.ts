@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, CellaScoperta, CausaVincolo, CausaCluster, DiagnosiCausale } from "./types";
 import { DF, dowOf } from "./date";
-import { cloneT } from "./turni";
+import { cloneT, isEscl } from "./turni";
 import { ENG, mkRng } from "./state";
 import { getRegole, setRegole } from "./regole";
 import { makeCtx } from "./ctx";
@@ -163,7 +163,7 @@ export function diagnosiCausale(
         m.ambulatorio && m.stato !== "MPS" && !ctx.haX(m.id, g)
         && !ctx.gt(m.id, g).some(s => ["L", "ANA", "per11", "104"].includes(s.tipo))
         && !ctx.haN(m.id, g) && ctx.canMatt(m.id, g) && ctx.canConsec(m.id, g)
-        && ctx.gt(m.id, g).filter(s => s.tipo !== "X" && !["L", "ANA", "per11", "104"].includes(s.tipo)).length === 0;
+        && ctx.gt(m.id, g).filter(s => !isEscl(s.tipo) && !["L", "ANA", "per11", "104"].includes(s.tipo)).length === 0;
       const ambBloccati = daA.filter(g => !meds.some(m => puoA(m, g)));
       if (ambBloccati.length) {
         const ambMotivi = ambBloccati.map(g => {

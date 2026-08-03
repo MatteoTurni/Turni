@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, vt, SPEC, cloneT } from "./turni";
+import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi } from "./turni";
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
@@ -161,6 +161,11 @@ export function makeCtx(
     // Garantiscono che NESSUNA fase — base, ultima chance o emergenza — possa
     // produrre un tabellone che viola i vincoli duri.
     if(!man){
+      // 0) ESCLUSIONI (v0.3.30): X totale o Xm/Xp/Xn sulla fascia del turno.
+      //    Guardia di sicurezza a specchio delle altre: i pool passano già da
+      //    canR, questo chiude anche le aggiunte dirette delle fasi.
+      const fEscl = fasciaDi(tipo);
+      if(fEscl && escluso(id,g,fEscl)) return;
       // 1) Distanza associati: non creare una GIORNATA PIENA (mattina+pomeriggio,
       //    inclusi i codici PS 1/2) troppo vicina a un'altra. Copre anche il caso
       //    di una P automatica aggiunta a un "1" manuale (→ 1+P) e viceversa.
@@ -184,10 +189,21 @@ export function makeCtx(
   };
 
   const haX = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="X");
+  // ── ESCLUSIONI PER FASCIA (v0.3.30) ─────────────────────────────────────────
+  // escluso(id,g,f) = il medico non può fare la fascia f in g, per una X totale
+  // o per l'esclusione parziale corrispondente (Xm/Xp/Xn). È il predicato UNICO
+  // da usare ovunque prima si guardasse haX per decidere UNA fascia; haX resta
+  // solo dove serve davvero il blocco dell'INTERA giornata.
+  const escluso = (id:number,g:number,f:"M"|"P"|"N") => gt(id,g).some(s=>escludeFascia(s.tipo,f));
+  /** Esclusione per una GIORNATA PIENA (associato M+P): basta una delle due. */
+  const esclusoAss = (id:number,g:number) => escluso(id,g,"M")||escluso(id,g,"P");
   const haM = (id:number,g:number) => gt(id,g).some(s=>isMatt(s.tipo));
   const haP = (id:number,g:number) => gt(id,g).some(s=>isPom(s.tipo));
   const haN = (id:number,g:number) => gt(id,g).some(s=>isNot(s.tipo));
-  const haQ = (id:number,g:number) => gt(id,g).some(s=>s.tipo!=="X");
+  // "la cella è occupata da qualcosa": le esclusioni NON occupano. Un Xn su un
+  // giorno altrimenti vuoto deve lasciare il medico eleggibile per M/P (e un
+  // Xm/Xp non deve impedirgli la notte, che pretende la giornata libera).
+  const haQ = (id:number,g:number) => gt(id,g).some(s=>!isEscl(s.tipo));
   // O(1): letti dai contatori incrementali (prima O(31·turni) dentro ogni sort).
   const cnt = (id:number) => cntMap.get(id) || 0;
   const cntN= (id:number) => cntNMap.get(id) || 0;
@@ -344,7 +360,7 @@ export function makeCtx(
       const sh = gt(m.id,g);
       if(sh.some(s=>s.man&&s.tipo===f)){ n++; continue; }   // cella già coperta da un manuale (anche MPS)
       if(m.stato==="MPS") continue;
-      if(haX(m.id,g)) continue;
+      if(escluso(m.id,g,f)) continue;                        // X totale o Xm/Xp/Xn sulla fascia
       if(sh.some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) continue;
       if(f!=="N" && sh.some(s=>s.man&&isNot(s.tipo))) continue;   // notte manuale oggi → niente M/P
       if(manNight(m.id,g-1)) continue;                            // g+1 di una notte immovibile
@@ -359,7 +375,8 @@ export function makeCtx(
 
   const canR = (m:Medico,g:number,f:string) => {
     if(m.stato==="MPS") return false;
-    if(haX(m.id,g))     return false;
+    // ESCLUSIONI: per l'associato basta che sia esclusa una delle due fasce.
+    if(f==="ASS" ? esclusoAss(m.id,g) : escluso(m.id,g,f as "M"|"P"|"N")) return false;
     if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
     // OBIETTIVO RAGGIUNTO: un medico già ad obiettivo non riceve altri turni
     // AUTOMATICI (i turni manuali restano intatti).
@@ -472,11 +489,14 @@ export function makeCtx(
     };
     for(let g=1;g<=ndim;g++){
       if(bloccatoMan(m.id,g)) continue;
-      const okM = pesoSlot(g,"M")>0 && postoMP(m.id,g,"M");
-      const okP = pesoSlot(g,"P")>0 && postoMP(m.id,g,"P");
-      if(!mdcOnly && (okM || okP || pesoSlot(g,"N")>0)) return true;
+      // ESCLUSIONI PARZIALI (v0.3.30): uno slot escluso non è capacità. Un Xn
+      // di domenica toglie la notte ma lascia M e P: il medico resta portatore.
+      const okM = pesoSlot(g,"M")>0 && !escluso(m.id,g,"M") && postoMP(m.id,g,"M");
+      const okP = pesoSlot(g,"P")>0 && !escluso(m.id,g,"P") && postoMP(m.id,g,"P");
+      const okN = pesoSlot(g,"N")>0 && !escluso(m.id,g,"N");
+      if(!mdcOnly && (okM || okP || okN)) return true;
       if(!mdcOnly) continue;
-      if(pesoSlot(g,"N")>0 && affMan(m.id,g,"N")) return true;
+      if(okN && affMan(m.id,g,"N")) return true;
       if(okM && (nmn(g).mx>=2 || affMan(m.id,g,"M"))) return true;
       if(okP && (npn(g).mx>=2 || affMan(m.id,g,"P"))) return true;
     }
@@ -518,7 +538,7 @@ export function makeCtx(
       // reparto (cf), quindi NON bloccano: lì una N vera serve ancora e l'MDC
       // può farla affiancato dall'MPS (com'è nel tabellone-bersaglio: g14).
       const nottePresa = medici.some(a => gt(a.id,g).some(s => s.man && s.tipo==="N"));
-      const viaN = (pN>0 && !nottePresa && (!mdcOnly || affManC(m.id,g,"N"))) ? pN : 0;
+      const viaN = (pN>0 && !nottePresa && !escluso(m.id,g,"N") && (!mdcOnly || affManC(m.id,g,"N"))) ? pN : 0;
       // … oppure mattina+pomeriggio (forma ad associato)
       // FIX CAPACITÀ FANTASMA M/P (v0.3.29, stessa classe del fix Notte sopra):
       // se i turni di REPARTO manuali dei COLLEGHI saturano già il fabbisogno
@@ -532,6 +552,7 @@ export function makeCtx(
       let viaMP = 0;
       for(const f of ["M","P"] as const){
         const p = pesoSlot(g,f); if(p<=0) continue;
+        if(escluso(m.id,g,f)) continue;                      // Xm/Xp: fascia non disponibile
         const mx = f==="M" ? nmn(g).mx : npn(g).mx;
         let occ = 0;
         for(const a of medici){ if(a.id===m.id) continue;
@@ -695,7 +716,7 @@ export function makeCtx(
   };
 
   return {
-    ndim, medici, T, gt, st, add, haX, haM, haP, haN, haQ, cnt, cntN, cntWk,
+    ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
     dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
