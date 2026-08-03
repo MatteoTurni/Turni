@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Medico, TurniMese } from "../engine/types";
 import { MESI, dowOf, isFestivo } from "../engine/date";
-import { isMatt, isPom, isNot } from "../engine/turni";
+import { isMatt, isPom, isNot, isEscl } from "../engine/turni";
 import { LOGO_PNG_BASE64 } from "./logo";
 
 // ─── EXPORT EXCEL ─────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
       // temporale — prima il turno del mattino, poi quello del pomeriggio, poi
       // la notte — e concatenati senza "+" (es. "MP", non "M+P" né "PM").
       const ts = (turni[m.id]?.[g]?.t || [])
-        .filter(s => s.tipo !== "X")
+        .filter(s => !isEscl(s.tipo))                 // X e Xm/Xp/Xn non si stampano
         .sort((a, b) => rankTurno(a.tipo) - rankTurno(b.tipo));
       if (ts.length > 0) {
         const cell = ws.getCell(r, 1 + g);
