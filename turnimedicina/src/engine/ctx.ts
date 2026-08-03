@@ -180,9 +180,11 @@ export function makeCtx(
         if(isNot(tipo) && !canNConsec(id,g)) return;             // max notti di fila (catena a passo 2): mai oltre il tetto in automatico
         // 3) MAX GIORNI CONSECUTIVI DI LAVORO: se questo turno rende "lavorato" un
         //    giorno finora libero e la sequenza risultante di giorni lavorati
-        //    supererebbe MAX_CONSEC, non lo si aggiunge.
-        const giaLavora = c.some(s=>!SPEC.includes(s.tipo));
-        if(!giaLavora && runConsec(id,g) > MAX_CONSEC) return;
+        //    supererebbe MAX_CONSEC, non lo si aggiunge. Delegato a canConsec,
+        //    che è la stessa condizione (giaLavora ≡ lavoraGiorno) più
+        //    l'esenzione ML: qui prima era duplicata a mano, e la copia
+        //    continuava a tappare l'ML anche dopo l'esenzione a monte.
+        if(!canConsec(id,g)) return;
       }
     }
     st(id,g,[...c,{tipo,sott:false,man}]);
@@ -335,7 +337,15 @@ export function makeCtx(
   };
   // Giorni consecutivi lavorati alla FINE del mese precedente.
   const trailingPrev = (id:number) => { let n=0; for(let k=0;k>=1-TAIL && lavoraGiorno(id,k);k--) n++; return n; };
-  const canConsec = (id:number,g:number) => lavoraGiorno(id,g) || runConsec(id,g) <= MAX_CONSEC;
+  // ESENZIONE ML (v0.3.30): il tetto di giorni consecutivi NON si applica agli
+  // ML, come già l'equità weekend (puoPortareWk/wkCapacita li ignorano). L'ML
+  // lavora solo mattine feriali e di sabato: la domenica azzera comunque la
+  // serie, quindi in automatico non supera mai 6 di fila. L'esenzione conta
+  // quando maxConsec scende sotto 6 — e lì l'ML non deve pagare un tetto
+  // pensato per chi ruota su pomeriggi e notti.
+  const esenteConsec = new Set(medici.filter(m=>m.stato==="ML").map(m=>m.id));
+  const canConsec = (id:number,g:number) =>
+    esenteConsec.has(id) || lavoraGiorno(id,g) || runConsec(id,g) <= MAX_CONSEC;
 
   // ── CAPACITÀ STATICA DI CELLA / FABBISOGNO EFFICACE ────────────────────────
   // capCell(g,f): quanti medici possono coprire la cella sotto i SOLI vincoli

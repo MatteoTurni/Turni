@@ -984,7 +984,11 @@ export function validazioneGlobale(ctx: Ctx){
   // un difetto del generatore → non viene segnalato. Si segnala solo quando
   // la corsa supera il massimo per colpa di (almeno) un turno automatico.
   for(const m of medici){
-    if(m.stato==="MPS") continue;
+    // ESENZIONE ML (v0.3.30): l'ML è fuori dal tetto dei consecutivi, come già
+    // dall'obiettivo di weekend liberi. Senza questa riga il cancello di canConsec
+    // lo lascerebbe passare ma la validazione finale scarterebbe comunque il
+    // tentativo, e l'esenzione non avrebbe alcun effetto visibile.
+    if(m.stato==="MPS" || m.stato==="ML") continue;
     // CONTINUITÀ: la corsa parte dai giorni lavorati alla fine del mese
     // precedente (immovibili → contano anche per runMan).
     let run=trailingPrev(m.id), runMan=trailingPrev(m.id);
