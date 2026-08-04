@@ -3,7 +3,7 @@
 // localStorage. È quindi testabile con Vitest in ambiente node e spostabile in
 // un Web Worker senza modifiche (basta importare da questo file).
 export * from "./types";
-export { MESI, DL, DF, calcPasqua, holSet, isHol, isHolLocale, dowOf, dimOf, isSabN, isDomN, isFestivo, mkKey } from "./date";
+export { MESI, DL, DF, calcPasqua, holSet, isHol, dowOf, dimOf, isSabN, isDomN, isFestivo, mkKey } from "./date";
 export { isMatt, isPom, isNot, vt, SPEC, cloneT, cloneTDeep, pulisciT } from "./turni";
 export { REGOLE_DEFAULT, mergeRegole, setRegole, getRegole } from "./regole";
 export { ENG, setPrevContext, setAmbRotStart, setSalt, mkRng, shuf } from "./state";

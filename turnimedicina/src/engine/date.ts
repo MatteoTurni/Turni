@@ -43,29 +43,7 @@ export function holSet(y: number): Set<string> {
   return s;
 }
 
-// ─── FESTIVITÀ LOCALI (v0.3.31) ───────────────────────────────────────────────
-// Feste del santo patrono: NON sono nazionali (per questo non stanno in holSet,
-// che resta l'elenco delle sole nazionali con la sua cache per anno) ma per il
-// motore valgono ESATTAMENTE come un festivo qualsiasi — fabbisogno ridotto,
-// niente ambulatorio, notte del giorno prima prefestiva, conteggio nell'equità
-// dei festivi. La chiave è "MM-GG" SENZA anno perché la data è fissa: la stessa
-// riga vale per ogni anno, senza manutenzione. Per aggiungerne un'altra basta
-// una stringa in più qui (le feste patronali mobili non sono supportate: se
-// mai servissero, servirebbe una chiave completa "AAAA-MM-GG").
-const FESTIVI_LOCALI = new Set([
-  "09-08", // Madonna dell'Olmo — patrona di Cava de' Tirreni
-]);
-
-/** true se (m,d) è una festività LOCALE a data fissa. m è 0-based. */
-export function isHolLocale(m:number,d:number){
-  return FESTIVI_LOCALI.has(`${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
-}
-
-// Festivo "da calendario": nazionale OPPURE locale. Se la data locale cade di
-// domenica (es. 8 settembre 2030) non c'è doppio conteggio: è un OR booleano.
-export function isHol(y:number,m:number,d:number){
-  return holSet(y).has(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`) || isHolLocale(m,d);
-}
+export function isHol(y:number,m:number,d:number){ return holSet(y).has(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`); }
 export function dowOf(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)%7; } // 0=Lun..6=Dom
 export function dimOf(y:number,m:number)  { return new Date(y,m+1,0).getDate(); }
 export function isSabN(n:number)   { return n===5; }
