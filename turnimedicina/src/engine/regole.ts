@@ -13,6 +13,7 @@ export const REGOLE_DEFAULT: Regole = {
   maxNottiConsec: 2,// max notti "di fila" a passo 2 (N-libero-N-libero-N = 3 → vietato)
   notteLiberoNotte: false, // N-libero-N in generazione base: OFF = solo ultima chance (storico)
   riposoEsteso: false, // dopo la notte anche g+2 completamente libero (vince su tutto): OFF = storico
+  mattinaDopoNotte: false, // M ammessa a g+2 dopo una notte: OFF = storico (a g+2 niente M)
   maxConsec: 7,     // max giorni consecutivi di lavoro
   wkTarget: 2,      // obiettivo weekend liberi (resta ADATTIVO: è il tetto)
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
@@ -43,11 +44,14 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const nLN = s.notteLiberoNotte===undefined ? d.notteLiberoNotte : !!s.notteLiberoNotte;
   // riposoEsteso: campo ASSENTE (salvataggi pre-v0.3.16) → default false.
   const rE  = s.riposoEsteso===undefined ? d.riposoEsteso : !!s.riposoEsteso;
+  // mattinaDopoNotte: campo ASSENTE (salvataggi pre-v0.3.33) → default false.
+  const mDN = s.mattinaDopoNotte===undefined ? d.mattinaDopoNotte : !!s.mattinaDopoNotte;
   // blocchiMattina: campo ASSENTE (salvataggi pre-v0.3.17) → default; presente
   // ma non intero ≥ 0 → default. Lo 0 è LEGITTIMO: catena disattivata.
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
-  return { ...d, ...s, giorniAmb: gA, notteLiberoNotte: nLN, riposoEsteso: rE, blocchiMattina: bM, fabb:{
+  return { ...d, ...s, giorniAmb: gA, notteLiberoNotte: nLN, riposoEsteso: rE,
+           mattinaDopoNotte: mDN, blocchiMattina: bM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},

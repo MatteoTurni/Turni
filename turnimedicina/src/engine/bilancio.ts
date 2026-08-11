@@ -51,6 +51,32 @@ export function psMedico(T: TurniMese, id: number, nd: number, contaSott = false
   return n;
 }
 
+/** ALPI: turni di PS SOTTOLINEATI (1/2/3 con sott), nell'unità di vt() presa
+ *  alla versione PIENA — quindi il 3 (notte) vale SEMPRE 2, l'1 e il 2 valgono 1.
+ *  Sono un SOTTOINSIEME di psMedico(...,contaSott=true): il contatore in UI
+ *  mostra "PS totali, di cui ALPI". Non toccano il bilancio: come tutti i
+ *  sottolineati valgono 0 di obiettivo (vt con sott=true). */
+export function alpiMedico(T: TurniMese, id: number, nd: number): number {
+  let n = 0;
+  for (let g = 1; g <= nd; g++)
+    for (const s of gt(T, id, g)) if (PS.includes(s.tipo) && s.sott) n += vt(s.tipo, false);
+  return n;
+}
+
+/** STRAORDINARI (v0.3.33): turni di REPARTO sottolineati — M, P, N — con la N
+ *  che vale SEMPRE 2 e M/P 1, cioè il peso della versione piena. Speculare ad
+ *  alpiMedico, che fa lo stesso per i codici di PS. Non entrano nell'obiettivo
+ *  (vt con sott=true è 0): sono lavoro fatto in più.
+ *  Tipi ESATTI M/P/N: l'ambulatorio (A) non è straordinario, e 1/2/3 sono PS
+ *  e finiscono in ALPI — così i due contatori non si sovrappongono mai. */
+export const STRAORD = ["M", "P", "N"];
+export function straordinariMedico(T: TurniMese, id: number, nd: number): number {
+  let n = 0;
+  for (let g = 1; g <= nd; g++)
+    for (const s of gt(T, id, g)) if (STRAORD.includes(s.tipo) && s.sott) n += vt(s.tipo, false);
+  return n;
+}
+
 /** Riepilogo generale dei turni di un medico (solo conteggio, nessun effetto sul
  *  bilancio). m/p/n contano i turni per fascia INCLUSI i sottolineati; in n rientra
  *  anche il "3" (PS notte) e la sua variante. `wk` è il carico weekend (pesoWeekend). */

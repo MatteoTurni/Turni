@@ -40,6 +40,14 @@ export interface Regole {
    *  quando attivo neutralizza notteLiberoNotte e la deroga relaxN dell'ultima
    *  chance (vincolo duro). false = comportamento storico (a g+2 max un P). */
   riposoEsteso: boolean;
+  /** true = MATTINA AL 2° GIORNO: dopo una Notte, al 2° giorno (g+2) è ammessa
+   *  anche una Mattina (M/A/1), non solo un Pomeriggio. Storicamente la M a
+   *  g+2 è sempre stata vietata; questa regola la sblocca in generazione,
+   *  in add() e in validazione. Ortogonale a notteLiberoNotte (che riguarda la
+   *  N a g+2): possono essere attive insieme. Neutralizzata da riposoEsteso,
+   *  che tiene g+2 completamente libero e vince su tutto.
+   *  false = comportamento storico (a g+2 niente M). */
+  mattinaDopoNotte: boolean;
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;

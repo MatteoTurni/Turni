@@ -53,7 +53,12 @@ export function makeCtx(
   // RIPOSO ESTESO (v0.3.16): g+2 dopo una notte completamente libero (solo
   // SPEC). Regola più stringente di tutte: quando attiva NEUTRALIZZA sia
   // notteLiberoNotte sia il relaxN dell'ultima chance (vincolo duro).
+  // MATTINA AL 2° GIORNO (v0.3.33): con REG.mattinaDopoNotte la M a g+2 dopo
+  // una notte non è più vietata. È ORTOGONALE a notteLiberoNotte (che riguarda
+  // la N a g+2): possono convivere. Il riposo esteso la neutralizza, come già
+  // fa con notteLiberoNotte e col relaxN dell'ultima chance.
   const strictN2 = REG.riposoEsteso === true;
+  const mattG2   = REG.mattinaDopoNotte === true && !strictN2;
   relaxN = (!!relaxN || REG.notteLiberoNotte === true) && !strictN2;
 
   // ── contatori incrementali per-medico ──────────────────────────────────────
@@ -276,8 +281,8 @@ export function makeCtx(
   const canLav = (id:number,g:number) => !postN1(id,g);
   // Un turno non-SPEC di questo tipo viola il g+2 di una notte?
   // Storico: M sempre, N salvo relaxN, P mai. Riposo esteso: qualsiasi cosa.
-  const violaG2 = (tipo:string) => strictN2 || isMatt(tipo) || (!relaxN&&isNot(tipo));
-  const canMatt= (id:number,g:number) => canLav(id,g) && !postN2(id,g);          // M vietata a g+1 e g+2 di una notte
+  const violaG2 = (tipo:string) => strictN2 || (!mattG2&&isMatt(tipo)) || (!relaxN&&isNot(tipo));
+  const canMatt= (id:number,g:number) => canLav(id,g) && (mattG2 || !postN2(id,g)); // M vietata a g+1 e (salvo mattinaDopoNotte) a g+2 di una notte
   const canPom = (id:number,g:number) => !postN1(id,g) && !(strictN2&&postN2(id,g)); // P vietata a g+1 (e a g+2 col riposo esteso)
   const canAss = (id:number,g:number) => canMatt(id,g) && canPom(id,g);          // associato: vietato g+1 e g+2
 
@@ -374,7 +379,7 @@ export function makeCtx(
       if(sh.some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) continue;
       if(f!=="N" && sh.some(s=>s.man&&isNot(s.tipo))) continue;   // notte manuale oggi → niente M/P
       if(manNight(m.id,g-1)) continue;                            // g+1 di una notte immovibile
-      if(f==="M" && manNight(m.id,g-2)) continue;                 // M vietata a g+2 di una notte
+      if(f==="M" && !mattG2 && manNight(m.id,g-2)) continue;      // M vietata a g+2 di una notte (salvo mattinaDopoNotte)
       if(m.stato==="ML" && (f!=="M" || isSp(g))) continue;        // ML: solo mattine feriali/sabato
       n++;
     }
