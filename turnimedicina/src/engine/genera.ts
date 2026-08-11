@@ -453,6 +453,12 @@ function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici
  *  mai comprare frammentazione in cambio di equità weekend o sfori. */
 export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:4 };
 
+/** Ordine di preferenza fra tabelloni: duro, poi scarto weekend, poi soft.
+ *  Lo stesso metro usato da registra(), prova() e generaParallelo. */
+export function cmpMis(a:{s:number;wkScarto:number;soft:number}, b:{s:number;wkScarto:number;soft:number}){
+  return (a.s-b.s) || (a.wkScarto-b.wkScarto) || (a.soft-b.soft);
+}
+
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
   const c = makeCtx(anno, mese, ndim, medici, turni);
   const probs = validazioneGlobale(c);
@@ -625,7 +631,7 @@ export interface OpzioniCerca {
 export function cercaMigliorTentativo(
   anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
   maxMs=12000, opz?:OpzioniCerca,
-): { turni:TurniMese; m:MisuraTab; tentativi:number; conteggi:Record<string,number> } {
+): { turni:TurniMese; m:MisuraTab; top:{turni:TurniMese;m:MisuraTab}[]; tentativi:number; conteggi:Record<string,number> } {
   const misura = (t:TurniMese) => misuraTabellone(anno, mese, ndim, medici, t);
   const BT=ENG.BT, TR=ENG.TRIES, CN=ENG.CLUSTER_NODES, RN=ENG.REBAL_NODES;   // budget originali
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
@@ -634,9 +640,21 @@ export function cercaMigliorTentativo(
   // DIAGNOSI EMPIRICA (v0.3.10): per ogni cella "g-f", in quanti tentativi è
   // rimasta scoperta. Solo telemetria: non tocca la ricerca né l'adozione.
   const conteggi: Record<string, number> = {};
+  const TOPK = 4;
+  const top: { turni:TurniMese; m:MisuraTab }[] = [];
   const registra = (turni:TurniMese) => {
     const m = misura(turni);
     for(const c of m.celle){ const k=`${c.g}-${c.f}`; conteggi[k]=(conteggi[k]||0)+1; }
+    // TOP-K (v0.3.32): la rifinitura è un hill-climb PATH-DEPENDENT — partire
+    // dal miglior tabellone grezzo non garantisce il miglior tabellone finale
+    // (misurato: da un grezzo peggiore la rifinitura arrivava a soft 521 e
+    // wkScarto 0, da uno migliore si fermava a 650 e wkScarto 2). Si conservano
+    // quindi i K migliori candidati e si rifiniscono tutti.
+    if(top.length<TOPK || cmpMis(m, top[top.length-1].m)<0){
+      top.push({ turni, m });
+      top.sort((x,y)=>cmpMis(x.m,y.m));
+      if(top.length>TOPK) top.length=TOPK;
+    }
     // ADOZIONE GERARCHICA (v0.3.28): a punteggio duro pari decide PRIMA lo
     // scarto di carico weekend, POI il soft. Con l'organicità (iso/quickPM)
     // dentro il soft, senza questo strato un tabellone più compatto poteva
@@ -683,6 +701,11 @@ export function cercaMigliorTentativo(
   // registra() tiene il perfetto con il punteggio soft migliore, con limiti:
   //   • al massimo OTTIM_MS dopo il primo perfetto (e mai oltre maxMs);
   //   • stop anticipato se il soft non migliora da STALLO_MAX tentativi.
+  // NB (v0.3.32): provato ad alzare questo tetto al budget pieno — l'idea era
+  // che metà dei worker si spegne a 4-5,6 s su 9,5. Misurato su 7 run appaiati:
+  // scarto weekend IDENTICO (1,29 vs 1,29), soft leggermente PEGGIORE (654 vs
+  // 639) e +50% di CPU. La ricerca satura presto: conta più la DIVERSITÀ fra
+  // worker che la profondità di uno solo. Tetto lasciato com'era.
   const OTTIM_MS   = Math.min(4000, maxMs*0.4);
   const STALLO_MAX = 60;
   const SEED = (opz?.saltSeed ?? 0)>>>0;
@@ -723,7 +746,7 @@ export function cercaMigliorTentativo(
   // un ultimo run SENZA catch — se fallisce anche questo, l'errore risale al
   // chiamante con il suo messaggio vero invece di un crash su null.
   if(!best.turni){ registra(generaCoperturaMinima(anno, mese, ndim, medici, ex).turni); }
-  return { turni: best.turni!, m: best.m!, tentativi: t, conteggi };
+  return { turni: best.turni!, m: best.m!, top, tentativi: t, conteggi };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1040,10 +1063,40 @@ export function rifinituraFinale(
 // API invariata: cerca + rifinitura (percorso sincrono / fallback senza Worker).
 export function generaMigliorTentativo(anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese, maxMs=12000): Risultato {
   const t0 = Date.now();
-  const { turni, tentativi, conteggi } = cercaMigliorTentativo(anno, mese, ndim, medici, ex, maxMs);
+  const { turni, top, tentativi, conteggi } = cercaMigliorTentativo(anno, mese, ndim, medici, ex, maxMs);
   const res = rifinituraFinale(anno, mese, ndim, medici, ex, turni, Math.max(1200, t0 + maxMs - Date.now()));
-  res.diagnosi = { tentativi, conteggi };
-  return res;
+  const out = rifinisciCandidati(anno, mese, ndim, medici, ex, turni, top, res, t0 + maxMs + 1500);
+  out.diagnosi = { tentativi, conteggi };
+  return out;
+}
+
+/** Rifinisce anche i candidati alternativi e tiene il MIGLIORE FINALE.
+ *  MONOTONA per costruzione: parte dal risultato del primario e lo sostituisce
+ *  solo se `cmpMis` è STRETTAMENTE migliore — non può mai peggiorare l'esito.
+ *  Guardia: solo se il primario rifinito non ha buchi — con buchi la rifinitura
+ *  attiva l'ultima chance, che è costosa, e moltiplicarla non è accettabile.
+ *  `limite` è un muro di wall-clock: si smette di provare candidati quando è
+ *  superato e ogni singola rifinitura riceve solo il tempo che resta, così il
+ *  budget promesso al chiamante resta un tetto reale. */
+export function rifinisciCandidati(
+  anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
+  turniBase:TurniMese, cand:{turni:TurniMese;m:MisuraTab}[], resBase:Risultato, limite:number,
+): Risultato {
+  let bestRes = resBase;
+  let bestM = misuraTabellone(anno, mese, ndim, medici, resBase.turni);
+  if(bestM.buchi>0) return bestRes;                 // mai moltiplicare l'ultima chance
+  for(const c of cand){
+    if(c.turni===turniBase) continue;
+    if(c.m.buchi>0) continue;                       // idem: candidato con buchi → salta
+    const resta = limite - Date.now();
+    if(resta < 300) break;
+    try{
+      const r = rifinituraFinale(anno, mese, ndim, medici, ex, c.turni, Math.min(1200, resta));
+      const m = misuraTabellone(anno, mese, ndim, medici, r.turni);
+      if(cmpMis(m, bestM)<0){ bestRes=r; bestM=m; }
+    }catch(_){ /* un candidato che esplode non deve far perdere il primario */ }
+  }
+  return bestRes;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
