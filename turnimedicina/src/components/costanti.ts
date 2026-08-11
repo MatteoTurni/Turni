@@ -31,4 +31,7 @@ export const KC: Record<string, { bg: string; t: string; b: string }> = {
 
 // Tipi selezionabili nel CellModal e tipi che ammettono la variante sottolineata.
 export const TM = ["M","P","N","L","A","1","2","3","104","ANA","per11","X","Xm","Xp","Xn"];
-export const TS = ["M","P","1","2","3"];
+// TS (v0.3.33): la N è sottolineabile come M e P — la variante sottolineata è
+// lo STRAORDINARIO (lavoro reale che non scala l'obiettivo: vt=0), l'analogo
+// per il reparto di quello che 1/2/3 sottolineati sono per il PS (ALPI).
+export const TS = ["M","P","N","1","2","3"];
