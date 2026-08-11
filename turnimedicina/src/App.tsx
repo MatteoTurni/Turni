@@ -15,7 +15,7 @@ import { Badge } from "./components/Badge";
 import { CellModal } from "./components/CellModal";
 import { DocModal, type DocDraft } from "./components/DocModal";
 import { CovDots } from "./components/CovDots";
-import { calcolaBilancio, dettaglioFabbisogno, psMedico, riepilogoMedico } from "./engine/bilancio";
+import { calcolaBilancio, dettaglioFabbisogno, psMedico, alpiMedico, straordinariMedico, riepilogoMedico } from "./engine/bilancio";
 
 // ─── DATI INIZIALI ────────────────────────────────────────────────────────────
 const MEDICI_INIZIALI: Medico[] = [
@@ -47,6 +47,9 @@ export default function App(){
   const [turniAll, setTurniAll] = useState<TurniAll>(saved?.turniAll ?? {});
   const [tab,    setTab]    = useState<"cal"|"medici"|"regole">("cal");
   const [fabbAperto, setFabbAperto] = useState(false);
+  // Accordion del box "Regola della notte" (v0.3.33): raccoglie le varianti
+  // della Regola N, prima sparse in coda ai limiti per medico.
+  const [nottiAperto, setNottiAperto] = useState(false);
   const [cella,  setCella]  = useState<{id:number; g:number}|null>(null);
   const [editDoc,setEditDoc]= useState<DocDraft|null>(null);
   // Conferma eliminazione medico in-app: window.confirm() è bloccato negli
@@ -232,6 +235,12 @@ export default function App(){
   // Contati ANCHE i sottolineati (contaSott=true): il riassunto mostra tutti i
   // turni fatti in PS; il bilancio (quota scalata da D) resta ai soli pieni.
   const cntPS = (id:number) => psMedico(turni, id, nd, true);
+  // ALPI: la quota di PS svolta in libera professione = i turni PS SOTTOLINEATI
+  // (il 3 vale 2). Per costruzione è sempre ≤ cntPS: si mostra come "di cui".
+  const cntALPI = (id:number) => alpiMedico(turni, id, nd);
+  // Straordinari: M/P/N sottolineati (la N vale 2). Speculare ad ALPI ma per il
+  // reparto; come tutti i sottolineati non scala l'obiettivo mensile.
+  const cntStra = (id:number) => straordinariMedico(turni, id, nd);
   // Riepilogo generale del medico: M/P/N di reparto + carico weekend.
   const rieM  = (id:number) => riepilogoMedico(turni, id, nd, anno, mese);
 
@@ -244,11 +253,14 @@ export default function App(){
       const permTxt=PERM.filter(k=>pm.det[k]).map(k=>`${k}${pm.det[k]}`).join("·");
       const mps=m.stato==="MPS";
       out.push(`${m.nome} [${m.stato}]${m.ambulatorio?" · AMB":""}  matr. ${m.codice||"—"}`);
+      const straN=cntStra(m.id), alpiN=cntALPI(m.id);
       out.push(`  Turni: ${mps?`${tot}`:`${tot} / ${m.obiettivo}`}`);
       out.push(`  Reparto: M ${r.m} · P ${r.p} · N ${r.n}`);
-      out.push(`  Weekend lavorati: ${r.wk}${mps?"":` · liberi: ${wkLib}`}`);
+      out.push(`  Straordinari: ${straN}`);
+      out.push(`  PS: ${psN}${alpiN>0?` (di cui ALPI ${alpiN})`:""}`);
+      out.push(`  Festivi lavorati: ${r.wk}`);
+      if(!mps) out.push(`  Weekend liberi: ${wkLib}`);
       if(m.ambulatorio) out.push(`  Ambulatorio: ${ambN}`);
-      out.push(`  PS: ${psN}`);
       out.push(`  Permessi: ${pm.tot>0?`${pm.tot} (${permTxt})`:"0"}`);
       out.push("");
     }
@@ -697,6 +709,7 @@ export default function App(){
             {medici.map(m=>{
               const sc=SC[m.stato]||{bg:"",t:"",b:""}, tot=cntM(m.id);
               const wkLib=cntWkLiberi(m.id), ambN=cntAmb(m.id), psN=cntPS(m.id), r=rieM(m.id), pm=cntPerm(m.id);
+              const straN=cntStra(m.id), alpiN=cntALPI(m.id);
               const permTxt = PERM.filter(k=>pm.det[k]).map(k=>`${k}${pm.det[k]}`).join("·");
               const RIGA: React.CSSProperties = {display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:"10px",color:"#4b7aad",padding:"2.5px 0",fontFamily:"monospace"};
               const SEG: React.CSSProperties = {flex:1,textAlign:"center",fontSize:"10px",padding:"4px 0",background:"#0d1930",fontFamily:"monospace"};
@@ -724,10 +737,22 @@ export default function App(){
                     <span style={{...SEG,color:"#c4b5fd",borderLeft:"1px solid #16304f"}}><b style={{display:"block",fontSize:"13px"}}>{r.p}</b>P</span>
                     <span style={{...SEG,color:"#6ee7b7",borderLeft:"1px solid #16304f"}}><b style={{display:"block",fontSize:"13px"}}>{r.n}</b>N</span>
                   </div>
-                  <div style={RIGA}><span style={{color:"#e879f9"}}>▦ Weekend lav.</span><b style={{color:"#e879f9"}}>{r.wk}</b></div>
+                  {/* ORDINE (v0.3.33): totale → straordinari → PS (di cui ALPI)
+                      → festivi lavorati → weekend liberi → il resto. Il blocco
+                      M/P/N resta attaccato al totale: ne è la scomposizione. */}
+                  <div style={RIGA}>
+                    <span style={{color:straN>0?"#f472b6":"#3d5878"}}>⏱ Straordinari</span>
+                    <b style={{color:straN>0?"#f472b6":"#3d5878"}}>{straN}</b>
+                  </div>
+                  <div style={RIGA}>
+                    <span style={{color:psN>0?"#fb923c":"#3d5878"}}>🚑 PS</span>
+                    <b style={{color:psN>0?"#fb923c":"#3d5878"}}>
+                      {psN}{alpiN>0&&<span style={{color:"#b45309",fontWeight:400}}> · ALPI {alpiN}</span>}
+                    </b>
+                  </div>
+                  <div style={RIGA}><span style={{color:"#e879f9"}}>▦ Festivi lav.</span><b style={{color:"#e879f9"}}>{r.wk}</b></div>
                   {m.stato!=="MPS"&&<div style={RIGA}><span style={{color:"#a78bfa"}}>🗓 Wk liberi</span><b style={{color:"#a78bfa"}}>{wkLib}</b></div>}
                   {m.ambulatorio&&<div style={RIGA}><span style={{color:"#34d399"}}>🏥 Ambulatorio</span><b style={{color:"#34d399"}}>{ambN}</b></div>}
-                  <div style={RIGA}><span style={{color:psN>0?"#fb923c":"#3d5878"}}>🚑 PS</span><b style={{color:psN>0?"#fb923c":"#3d5878"}}>{psN}</b></div>
                   <div style={RIGA}>
                     <span style={{color:pm.tot>0?"#fbbf24":"#3d5878"}}>📋 Permessi</span>
                     <b style={{color:pm.tot>0?"#fbbf24":"#3d5878"}}>{pm.tot}{pm.tot>0&&<span style={{color:"#a16207",fontWeight:400}}> {permTxt}</span>}</b>
@@ -760,9 +785,25 @@ export default function App(){
         const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
         const BOX: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
         const righe: [Fascia,string][] = [["fer","Feriale"],["sab","Sabato"],["fest","Domenica / Festivo"]];
-        const limiti: [CampoTop,string,string][] = [
+        // maxNotti e maxNottiConsec sono migrati nel box REGOLA DELLA NOTTE
+        // (v0.3.33): tutto ciò che riguarda le notti sta ora in un posto solo.
+        const NUM_NOTTE: [CampoTop,string,string][] = [
           ["maxNotti","Max notti / mese","Tetto di notti per medico nel mese. Contano tutte le notti già in tabellone — N e 3, anche sottolineate — più quelle assegnate in automatico."],
           ["maxNottiConsec","Max notti di fila","Notti ravvicinate (una sola notte libera in mezzo: N-libero-N-libero-N) oltre le quali la successiva è vietata. 2 = ammesse due notti così, la terza no."],
+        ];
+        // Varianti della Regola N. `spegne` = le regole in conflitto, disattivate
+        // quando questa si accende. «Notte» (N a g+2) e «Mattina» (M a g+2) sono
+        // ORTOGONALI e convivono; il riposo esteso le neutralizza entrambe.
+        type CampoNotte = "notteLiberoNotte"|"mattinaDopoNotte"|"riposoEsteso";
+        const TOGGLE_NOTTE: {k:CampoNotte; lbl:string; hint:string; spegne:CampoNotte[]}[] = [
+          { k:"notteLiberoNotte", lbl:"Notte — notte → libero → notte", spegne:["riposoEsteso"],
+            hint:"Due giorni dopo una notte è ammessa un'altra Notte, già nella generazione di base, e il pattern non è più segnalato come violazione. Resta il tetto «Max notti di fila». Se spento, la deroga resta a disposizione della sola ultima chance." },
+          { k:"mattinaDopoNotte", lbl:"Mattina", spegne:["riposoEsteso"],
+            hint:"Due giorni dopo una notte è ammessa anche una Mattina (M, A o 1), non solo il Pomeriggio: vale in generazione, nell'inserimento manuale e nella validazione. Indipendente dall'opzione «Notte»: si possono tenere attive entrambe." },
+          { k:"riposoEsteso", lbl:"Nulla — riposo esteso", spegne:["notteLiberoNotte","mattinaDopoNotte"],
+            hint:"Dopo una Notte anche il SECONDO giorno resta completamente libero: nessun turno, ammessi solo X, ANA, per11, 104 o L. Vieta quindi anche il Pomeriggio. Vincolo duro: prevale sulle altre due opzioni e non viene mai derogato, nemmeno dall'ultima chance." },
+        ];
+        const limiti: [CampoTop,string,string][] = [
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
           ["maxAssSett","Max turni associati / settimana","Massimo di M+P nella stessa giornata per medico, per settimana."],
@@ -840,36 +881,78 @@ export default function App(){
                   </div>
                 </div>
               ))}
-              {(()=>{ const on = regole.notteLiberoNotte; return (
-                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
-                  <button onClick={()=>updRegole({...regole,notteLiberoNotte:!on,riposoEsteso:!on?false:regole.riposoEsteso})}
-                    style={{width:"52px",background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
-                            border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
-                            padding:"5px 0",cursor:"pointer",fontSize:"11px",fontWeight:700,
-                            fontFamily:"monospace"}}>
-                    {on?"ON":"OFF"}
-                  </button>
-                  <div>
-                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Notte → libero → notte</div>
-                    <div style={{...LBL,fontSize:"9px"}}>Se attivo, due giorni dopo una notte è ammessa un'altra Notte (invece che al massimo un Pomeriggio) già nella generazione di base, e il pattern non è più segnalato come violazione. Resta il tetto «Max notti di fila». Se spento, la deroga resta usata solo dall'ultima chance. Incompatibile con «Riposo esteso»: attivarne uno spegne l'altro.</div>
+            </div>
+
+            {/* ── REGOLA DELLA NOTTE (v0.3.33) ────────────────────────────────
+                Tutte le varianti della Regola N in un solo box a tendina. La
+                riga di riepilogo resta sempre visibile: dice a colpo d'occhio
+                cosa è ammesso a g+2, senza dover aprire nulla. */}
+            <div style={BOX}>
+              <div onClick={()=>setNottiAperto(v=>!v)}
+                   style={{display:"flex",alignItems:"center",gap:"10px",cursor:"pointer",userSelect:"none"}}>
+                <span style={{color:"#60a5fa",fontSize:"11px",width:"12px"}}>{nottiAperto?"▾":"▸"}</span>
+                <div style={{flex:1}}>
+                  <div style={{...LBL,fontWeight:700,color:"#60a5fa"}}>REGOLA DELLA NOTTE</div>
+                  <div style={{...LBL,fontSize:"9px",marginTop:"2px"}}>
+                    g+1 sempre libero · a g+2{" "}
+                    <b style={{color:"#e2eeff"}}>
+                      {regole.riposoEsteso ? "nulla (riposo esteso)"
+                        : ["P", regole.mattinaDopoNotte && "M", regole.notteLiberoNotte && "N"]
+                            .filter(Boolean).join(" · ")}
+                    </b>
+                    {" · max "}{regole.maxNotti} notti/mese, {regole.maxNottiConsec} di fila
                   </div>
                 </div>
-              );})()}
-              {(()=>{ const on = regole.riposoEsteso; return (
-                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"2px"}}>
-                  <button onClick={()=>updRegole({...regole,riposoEsteso:!on,notteLiberoNotte:!on?false:regole.notteLiberoNotte})}
-                    style={{width:"52px",background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
-                            border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
-                            padding:"5px 0",cursor:"pointer",fontSize:"11px",fontWeight:700,
-                            fontFamily:"monospace"}}>
-                    {on?"ON":"OFF"}
-                  </button>
-                  <div>
-                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Riposo esteso dopo la notte</div>
-                    <div style={{...LBL,fontSize:"9px"}}>Se attivo, dopo una Notte anche il SECONDO giorno deve restare completamente libero: nessun turno, ammessi solo X, ANA, per11, 104 o L. Vieta quindi anche il Pomeriggio a g+2. È un vincolo duro: prevale su «Notte → libero → notte» e non viene mai derogato, nemmeno dall'ultima chance. Incompatibile con «Notte → libero → notte»: attivarne uno spegne l'altro.</div>
+              </div>
+
+              {nottiAperto && (
+                <div style={{marginTop:"12px",paddingTop:"12px",borderTop:"1px solid #1e3a5f"}}>
+                  <div style={{...LBL,fontSize:"9px",lineHeight:1.6,marginBottom:"12px"}}>
+                    Invariante non configurabile: il giorno DOPO una notte (g+1) resta sempre
+                    completamente libero. Le opzioni qui sotto riguardano il SECONDO giorno (g+2),
+                    dove di base è ammesso il solo Pomeriggio.
                   </div>
+
+                  {NUM_NOTTE.map(([k,lbl,hint])=>(
+                    <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
+                      {numInp(regole[k],v=>setTop(k,v))}
+                      <div>
+                        <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>{lbl}</div>
+                        <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div style={{...LBL,fontWeight:700,color:"#60a5fa",margin:"16px 0 8px"}}>
+                    COSA È AMMESSO DUE GIORNI DOPO LA NOTTE (g+2)
+                  </div>
+                  {TOGGLE_NOTTE.map(({k,lbl,hint,spegne})=>{
+                    const on = !!regole[k];
+                    return (
+                      <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
+                        <button onClick={()=>{
+                            const patch: Record<string,boolean> = { [k]: !on };
+                            // Accendendo una variante si spengono quelle in
+                            // conflitto: il pannello non mostra mai due regole
+                            // che si annullano a vicenda.
+                            if(!on) for(const alt of spegne) patch[alt] = false;
+                            updRegole({...regole,...patch});
+                          }}
+                          style={{width:"52px",flexShrink:0,background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
+                                  border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
+                                  padding:"5px 0",cursor:"pointer",fontSize:"11px",fontWeight:700,
+                                  fontFamily:"monospace"}}>
+                          {on?"ON":"OFF"}
+                        </button>
+                        <div>
+                          <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>{lbl}</div>
+                          <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );})()}
+              )}
             </div>
           </div>
         );
