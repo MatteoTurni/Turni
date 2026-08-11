@@ -14,7 +14,8 @@
 // NB su questo modulo: sta FUORI da src/engine/ di proposito — usa API del
 // browser (Worker, navigator) e l'engine deve restare puro/testabile in node.
 import type { Medico, TurniMese, Risultato } from "./engine/types";
-import { generaMigliorTentativo, rifinituraFinale, misuraTabellone } from "./engine/genera";
+import { generaMigliorTentativo, rifinituraFinale, misuraTabellone, rifinisciCandidati, cmpMis } from "./engine/genera";
+import type { MisuraTab } from "./engine/genera";
 import { getRegole } from "./engine/regole";
 import { ENG } from "./engine/state";
 import type { MsgAvvio } from "./genWorker";
@@ -37,6 +38,17 @@ export function generaParallelo(
   return new Promise<Risultato>((resolve) => {
     let bestT: TurniMese | null = null;
     let bestS = Infinity, bestSoft = Infinity, bestWkSc = Infinity;
+    // ── RIFINITURA MULTIPLA, UNO PER WORKER (v0.3.32) ────────────────────────
+    // La rifinitura (LNS + recupero weekend + equalizzatore + compattazione) è
+    // un hill-climb PATH-DEPENDENT: il tabellone GREZZO migliore non produce
+    // affatto il tabellone FINALE migliore. Si conserva quindi il best di OGNI
+    // worker e si rifiniscono tutti, tenendo il migliore DOPO la rifinitura.
+    // Perché uno per worker e non i top-K globali: i top-K globali vengono
+    // quasi sempre dallo stesso worker e sono quasi-cloni fra loro — rifinirli
+    // non aggiunge nulla (misurato: nessun guadagno). I best dei worker sono
+    // invece per costruzione punti di partenza DIVERSI (saltSeed distinti).
+    // Costo misurato: da ~200 ms a ~600 ms di rifinitura totale.
+    const bestPerW: ({ turni:TurniMese; m:MisuraTab } | null)[] = new Array(nW).fill(null);
     const tentPerW = new Array<number>(nW).fill(0);
     // DIAGNOSI EMPIRICA (v0.3.10): somma dei conteggi "cella scoperta" di tutti
     // i worker. I tentativi totali sono la somma dei tentativi per worker.
@@ -46,8 +58,10 @@ export function generaParallelo(
 
     // Rivaluta sul main thread e adotta se migliore (stesso metro GERARCHICO di
     // registra, v0.3.28: duro, poi scarto weekend, poi soft).
-    const considera = (turni: TurniMese) => {
+    const considera = (turni: TurniMese, w: number) => {
       const m = misuraTabellone(anno, mese, ndim, medici, turni);
+      const cur = bestPerW[w];
+      if(!cur || cmpMis(m, cur.m)<0) bestPerW[w] = { turni, m };
       if(m.s < bestS || (m.s === bestS && (m.wkScarto < bestWkSc
          || (m.wkScarto === bestWkSc && m.soft < bestSoft)))){
         bestS=m.s; bestSoft=m.soft; bestWkSc=m.wkScarto; bestT=turni;
@@ -60,9 +74,13 @@ export function generaParallelo(
       for(const w of workers) w.terminate();
       // Nessun best (tutti i worker in errore) → percorso sincrono completo.
       if(!bestT){ resolve(generaMigliorTentativo(anno, mese, ndim, medici, ex, Math.min(4000, maxMs))); return; }
+      const cand = bestPerW.filter((c):c is { turni:TurniMese; m:MisuraTab } => c!==null)
+                           .sort((a,b)=>cmpMis(a.m,b.m));
       const res = rifinituraFinale(anno, mese, ndim, medici, ex, bestT, 2000);
-      res.diagnosi = { tentativi: tentPerW.reduce((a,b)=>a+b,0), conteggi: conteggiTot };
-      resolve(res);
+      const out = rifinisciCandidati(anno, mese, ndim, medici, ex, bestT, cand, res,
+                                     Date.now() + 1800);
+      out.diagnosi = { tentativi: tentPerW.reduce((a,b)=>a+b,0), conteggi: conteggiTot };
+      resolve(out);
     };
     // Guardia: se un worker non risponde (tab in background, throttling) non si
     // aspetta per sempre — si conclude col migliore raccolto fin lì.
@@ -76,7 +94,7 @@ export function generaParallelo(
       workers.push(w);
       w.onmessage = (ev: MessageEvent) => {
         const d = ev.data as { tipo:string; turni?:TurniMese; tentativi?:number; conteggi?:Record<string,number> };
-        if((d.tipo==="best" || d.tipo==="fine") && d.turni) considera(d.turni);
+        if((d.tipo==="best" || d.tipo==="fine") && d.turni) considera(d.turni, i);
         if(d.tipo==="fine" && d.conteggi) for(const k in d.conteggi) conteggiTot[k]=(conteggiTot[k]||0)+d.conteggi[k];
         if(d.tipo==="progresso" || d.tipo==="fine"){
           if(d.tentativi!=null) tentPerW[i]=d.tentativi;
