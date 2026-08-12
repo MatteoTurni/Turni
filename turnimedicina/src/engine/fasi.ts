@@ -359,11 +359,32 @@ export function faseAmbulatorio(ctx: Ctx){
     // l'obiettivo; 2° passaggio IGNORANDO l'obiettivo (vincolo morbido); se
     // nessun abilitato è disponibile per vincoli DURI la fase FALLISCE e
     // l'orchestratore rimescola le notti dei Critici con un seed nuovo.
+    // ── ORDINE DEI CANDIDATI: CARICO PRIMA, ROTAZIONE COME SPAREGGIO (v0.3.34) ─
+    // Il round-robin puro contava POSIZIONI nella lista, non ambulatori davvero
+    // fatti. Due conseguenze, entrambe misurate:
+    //   • le A MANUALI non consumano un giro — il `continue` in cima al ciclo
+    //     salta il giorno senza avanzare nextIdx — quindi chi ne ha già una
+    //     resta in coda alla pari con chi non ne ha nessuna;
+    //   • con 4 abilitati, 4 martedì e una A manuale su un abilitato, quello
+    //     prendeva SEMPRE 2 ambulatori su 4 e un altro restava a 0, per ogni
+    //     valore del cursore di rotazione.
+    // Ora la chiave primaria è il CARICO EFFETTIVO del mese (A manuali
+    // comprese); la distanza dal cursore è il solo spareggio. Quando i carichi
+    // sono pari — il caso tipico del primo giorno del mese, tutti a zero —
+    // l'ordine coincide con quello di prima: la rotazione FRA MESI è intatta,
+    // dentro il mese vince l'equità.
+    const cntAmbMese = (id:number) => {
+      let k=0; for(const gg of giorniArr) if(gt(id,gg).some(s=>s.tipo==="A")) k++;
+      return k;
+    };
+    const ordine = Array.from({length:n},(_,off)=>(nextIdx+off)%n)
+      .sort((a,b)=> (cntAmbMese(ambilitati[a].id)-cntAmbMese(ambilitati[b].id))
+                 || (((a-nextIdx+n)%n)-((b-nextIdx+n)%n)));
+
     let assegnato=false;
     for(const ignoraObiettivo of [false,true]){
       if(assegnato || n===0) break;
-      for(let off=0; off<n; off++){
-        const idx=(nextIdx+off)%n;
+      for(const idx of ordine){
         const m=ambilitati[idx];
         if(!canAmb(m,ignoraObiettivo)) continue;
         add(m.id,g,"A");
