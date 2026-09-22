@@ -10,7 +10,7 @@ import { generaParallelo } from "./generaParallelo";
 import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
 import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
 import { esportaExcel } from "./export/excel";
-import { SC } from "./components/costanti";
+import { SC, KC } from "./components/costanti";
 import { Badge } from "./components/Badge";
 import { CellModal } from "./components/CellModal";
 import { DocModal, type DocDraft } from "./components/DocModal";
@@ -615,6 +615,7 @@ export default function App(){
                           onMouseEnter={editabile ? e=>e.currentTarget.style.background="#22406b" : undefined}
                           onMouseLeave={editabile ? e=>e.currentTarget.style.background=bg : undefined}>
                           <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
+                            {hX && <span style={{color:KC.X.t,fontWeight:700,fontSize:"11px",fontFamily:"monospace"}}>/</span>}
                             {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={s.man}/>)}
                           </div>
                         </td>
