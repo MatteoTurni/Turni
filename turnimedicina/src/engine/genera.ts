@@ -5,7 +5,7 @@ import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche
 import { ENG, scaduto, conDeadline } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
-         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, validazioneGlobale, type Blocco } from "./fasi";
+         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -907,6 +907,10 @@ export function compattaTurni(anno:number, mese:number, ndim:number, medici:Medi
     outer:
     for(const g of c.feriali){
       for(const o of c.att){
+        // L'ML fa SOLO mattine: una mattina tolta non la recupera con P o N,
+        // quindi resterebbe sotto obiettivo (misurato: 1° giugno isolato dal
+        // festivo del 2 → ML a 24/25 con la mattina libera). Mai donatore.
+        if(o.stato==="ML") continue;
         const sh = c.gt(o.id,g);
         // slot donabile: UNICO turno non-SPEC della giornata, M o P puro,
         // automatico e non sottolineato (le varianti sott sono scelte utente).
@@ -1048,6 +1052,21 @@ export function rifinituraFinale(
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
+  // ── ML FINO ALL'OBIETTIVO (v0.3.37) ─────────────────────────────────────
+  // Ultimo ritocco: l'ML fa solo mattine, e ogni mattina che un collega gli ha
+  // "preso" è un turno che non recupera. Adottato se non peggiora copertura,
+  // regole ed equità weekend (il soft può salire di poco: priorità all'ML).
+  if(medici.some(m=>m.stato==="ML")){
+    try{
+      const copia = cloneT(bestT);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(completaML(c)>0){
+        const m = misura(copia);
+        if(m.s <= bestM.s && m.wkScarto <= bestM.wkScarto){ bestT = copia; bestM = m; }
+      }
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
+
   // ── ULTIMA CHANCE COME ALTERNATIVA (non adottata d'ufficio) ─────────────
   // La generazione rilascia SEMPRE il primario "sicuro". L'ultima chance —
   // che per coprire di più spende weekend liberi — viene calcolata a parte e,
@@ -1132,13 +1151,19 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   // M VERA adiacente: per la preferenza di consecutività A e 1 non contano
   // (isMatt li include, ma non sono continuità di reparto).
   const haMR = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="M");
+  const mattineML = ctx.giorniArr.filter(g=>!ctx.isSp(g));   // lun–sab non festivi
 
   // ── M: privilegia sequenze di mattine consecutive ──
-  for(const m of byL([...ml,...mrMdc])){
+  // ML per primo (v0.3.37): la mattina è l'unico turno che può fare, gli
+  // altri possono completare con pomeriggi e notti.
+  for(const m of [...byL(ml), ...byL(mrMdc)]){
     let progress=true;
+    // Per l'ML anche il SABATO non festivo: è una sua mattina possibile, e non
+    // ha weekend liberi da difendere (fuori dall'equità weekend).
+    const giorniM = m.stato==="ML" ? mattineML : feriali;
     while(cnt(m.id)<m.obiettivo && progress){
       progress=false;
-      const cand = feriali.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
+      const cand = giorniM.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
       if(cand.length===0) break;
       cand.sort((a,b)=>{
         const ca=(haMR(m.id,a-1)||haMR(m.id,a+1))?0:1;
@@ -1172,12 +1197,12 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     prog2 = false;
     const pool = [...ml, ...mrMdc]
       .filter(m=>cnt(m.id)<m.obiettivo)
-      .sort((a,b)=>(b.obiettivo-cnt(b.id))-(a.obiettivo-cnt(a.id)));
+      .sort((a,b)=>((a.stato==="ML"?0:1)-(b.stato==="ML"?0:1)) || (b.obiettivo-cnt(b.id))-(a.obiettivo-cnt(a.id)));
     for(const m of pool){
       if(cnt(m.id)>=m.obiettivo) continue;
 
       // 1) Mattina su un feriale libero, entro il massimo giornaliero.
-      const candM = feriali.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
+      const candM = (m.stato==="ML" ? mattineML : feriali).filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
       if(candM.length){
         candM.sort((a,b)=>((sottoMin(a,"M")?0:1)-(sottoMin(b,"M")?0:1)) || a-b);
         add(m.id,candM[0],"M"); prog2=true; continue;

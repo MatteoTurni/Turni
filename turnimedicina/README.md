@@ -61,7 +61,18 @@ difetti già presenti nella 0.3.36, ora corretti:
 
 ML e giorni consecutivi (`harness/mlconsec.ts`): con il tetto da 7 a 2 l'ML
 lavora gli stessi turni (sequenze fino a 6 giorni), mai segnalato; MR e MDC
-restano sempre entro il tetto. Gli harness `sim.ts`/`stress.ts` ora esentano
+restano sempre entro il tetto.
+
+**ML fino all'obiettivo.** L'ML fa solo mattine non festive (lun–sab), quindi
+ogni mattina che perde è un turno che non recupera. Tre punti gliene toglievano:
+la compattazione (spostava la sua mattina "isolata", es. lunedì 1 giugno prima
+del festivo del 2: ML a 24/25 con la mattina libera), le fasi che davano il
+sabato ad altri prima di lui, e "Completa obiettivi", che serviva prima i meno
+carichi e non guardava i sabati. Ora la compattazione non gli toglie turni, un
+passaggio finale (`completaML`) gli dà le mattine libere o gliele fa cedere da
+un collega (mai manuali, copertura invariata, nessun MDC lasciato solo) e il
+pulsante 2 lo serve per primo. Misurato: da 23-24/25 (e 15-23/25 con due ML)
+a 25/25 in tutti i casi di prova. Gli harness `sim.ts`/`stress.ts` ora esentano
 l'ML dal controllo dei consecutivi, come il motore.
 
 Test: `analisi037.test.ts`. Harness: `harness/multiamb.ts` (stress più ambulatori).

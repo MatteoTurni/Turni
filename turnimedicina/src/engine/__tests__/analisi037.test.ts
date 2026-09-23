@@ -240,3 +240,33 @@ describe("ML esente dal massimo di giorni consecutivi", () => {
     expect(t3.turni).toBeGreaterThanOrEqual(t7.turni - 1);           // stesso lavoro col tetto basso
   });
 });
+
+describe("ML: tutte le mattine disponibili fino all'obiettivo", () => {
+  it("completaML aggiunge nei posti liberi e, a fascia piena, un collega gli cede la mattina", async () => {
+    const { completaML } = await import("../fasi");
+    const medici = [med(1, "ML", 3), med(2, "MR", 25), med(3, "MR", 25), med(4, "MR", 25)];
+    const T: TurniMese = {};
+    // lun 1 giugno: fascia M piena (3/3) con tre automatici; mar 2 festivo; mer 3 libera
+    for (const id of [2, 3, 4]) put(T, id, 1, "M", false);
+    put(T, 2, 4, "M");                                                // gio 4: una mattina MANUALE non si cede
+    for (const id of [3, 4]) put(T, id, 4, "M", false);
+    const c = makeCtx(2026, 5, 30, medici, T);
+    expect(completaML(c)).toBe(3);
+    expect(c.gt(1, 1).some(s => s.tipo === "M")).toBe(true);      // scambio sul pieno
+    expect(c.cf(1, "M")).toBe(3);                                   // copertura invariata
+    expect(c.gt(1, 2).length).toBe(0);                              // festivo: mai
+    expect(c.gt(1, 3).some(s => s.tipo === "M")).toBe(true);      // posto libero
+    expect(c.gt(2, 4).some(s => s.tipo === "M" && s.man)).toBe(true); // il manuale resta
+  });
+
+  it("giugno 2026 (25 mattine possibili, obiettivo 25): l'ML le fa tutte", () => {
+    const medici: Medico[] = [
+      med(1, "MR", 25), med(2, "MR", 25, { ambulatorio: true }), med(3, "MDC", 21), med(4, "ML", 25),
+      med(5, "MR", 25, { ambulatorio: true }), med(6, "MR", 25, { ambulatorio: true }), med(7, "MR", 25),
+      med(8, "MR", 25, { ambulatorio: true }), med(9, "MR", 25), med(10, "MPS", 0), med(11, "MPS", 0),
+    ];
+    const r = generaMigliorTentativo(2026, 5, 30, medici, {}, 2500);
+    const c = makeCtx(2026, 5, 30, medici, r.turni);
+    expect(c.cnt(4)).toBe(25);
+  });
+});

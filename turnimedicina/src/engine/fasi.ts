@@ -368,6 +368,49 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ML FINO ALL'OBIETTIVO (v0.3.37)
+// ═══════════════════════════════════════════════════════════════════════════
+// L'ML può fare SOLO mattine non festive (lun–sab): per arrivare all'obiettivo
+// deve avere tutte quelle disponibili. Le fasi gliele danno per prime, ma altri
+// passaggi (cluster critici sui sabati, riempimenti per carico) possono
+// assegnare prima una mattina a un collega che avrebbe potuto fare altro.
+// Qui, a tabellone finito, per ogni ML sotto obiettivo e ogni sua mattina
+// possibile: se c'è posto entro il MASSIMO del giorno la si aggiunge; se la
+// fascia è piena, un collega gli CEDE la sua mattina automatica (mai un
+// manuale, mai un altro ML), purché nessun MDC resti solo. La copertura non
+// cambia mai (scambio 1 a 1). Restituisce quante mattine ha dato all'ML.
+export function completaML(ctx: Ctx): number {
+  const { ml, medici, giorniArr, isSp, gt, st, add, canR, mdcOk, haQ, cf, nmn, cnt, mark, rollback, byL } = ctx;
+  let dati = 0;
+  for(const m of ml){
+    for(const g of giorniArr){
+      if(cnt(m.id) >= m.obiettivo) break;
+      if(isSp(g) || haQ(m.id,g) || !canR(m,g,"M")) continue;
+      if(cf(g,"M") < nmn(g).mx){
+        if(!mdcOk(m,g,"M")) continue;
+        add(m.id,g,"M");
+        if(gt(m.id,g).some(s=>s.tipo==="M"&&!s.man)) dati++;
+        continue;
+      }
+      // Fascia piena: scambio con un collega (il più carico cede per primo).
+      const cedenti = byL(medici.filter(x=>x.id!==m.id && x.stato!=="ML" && x.stato!=="MPS"
+                          && gt(x.id,g).some(s=>s.tipo==="M"&&!s.man&&!s.sott))).reverse();
+      for(const x of cedenti){
+        const m0 = mark();
+        st(x.id,g, gt(x.id,g).filter(s=>!(s.tipo==="M"&&!s.man&&!s.sott)));
+        const mdcSoloDopo = medici.some(d=>d.stato==="MDC" && gt(d.id,g).some(s=>isMatt(s.tipo)) && !mdcOk(d,g,"M"));
+        if(!mdcSoloDopo && canR(m,g,"M")){
+          add(m.id,g,"M");
+          if(gt(m.id,g).some(s=>s.tipo==="M"&&!s.man)){ dati++; break; }
+        }
+        rollback(m0);
+      }
+    }
+  }
+  return dati;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MDC SOLO IN AMBULATORIO (v0.3.37)
 // ═══════════════════════════════════════════════════════════════════════════
 // La fase ambulatorio gira per PRIMA, a tabellone vuoto: non può sapere se
