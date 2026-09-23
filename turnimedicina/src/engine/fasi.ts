@@ -1,6 +1,6 @@
 import type { Medico, TurniMese } from "./types";
 import { DF } from "./date";
-import { isMatt, isPom, isNot, isEscl, isAmbT, ambIdDi } from "./turni";
+import { isMatt, isPom, isNot, isEscl, isAmbT, ambIdDi, type SlotAmb } from "./turni";
 import { ENG, mkRng, shuf, scaduto } from "./state";
 import type { Ctx } from "./ctx";
 
@@ -17,7 +17,12 @@ export type Blocco = Record<number, Set<number>> | null;
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Backtracking su un singolo cluster di caselle critiche.
-export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[], rng: ()=>number, limiteNodi: number){
+// `stats` (v0.3.37, opzionale): dopo la chiamata dice se un fallimento è
+// DIMOSTRATO (albero esplorato per intero: `tagliato` false) o solo PROBABILE
+// (tetto nodi o scadenza raggiunti). La diagnosi causale lo usa per non
+// affermare un'impossibilità che non ha verificato.
+export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[], rng: ()=>number, limiteNodi: number,
+                               stats?: { tagliato: boolean }){
   const { cf, mrMdc, ml, add, gt, st, haM, haP, haQ, canR, mdcOk, pesoSlot, byWkQuota,
           wkPairs, isLibWk, cntWkLiberi, wkTargetMed, cnt, cntWk, wkQuota, wkPavimento } = ctx;
   // ── COSTO IN WEEKEND LIBERI (v0.3.25) ──────────────────────────────────────
@@ -54,13 +59,13 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
   // rimuove SOLO il turno automatico che abbiamo aggiunto (man resta intatto)
   const rimuovi = (id:number,g:number,f:string) => st(id,g, gt(id,g).filter(s=>!(s.tipo===f && !s.man)));
 
-  let nodi = 0;
+  let nodi = 0, tagliato = false;
   const solve = (): boolean => {
-    if(++nodi > limiteNodi) return false;
+    if(++nodi > limiteNodi){ tagliato = true; return false; }
     // DEADLINE: il tetto ai nodi limita la COMBINATORIA, non il TEMPO — su
     // cluster grandi 200k nodi possono costare decine di secondi. Controllo
     // periodico (ogni 256 nodi: costo irrilevante) e abort come per il tetto.
-    if((nodi & 255)===0 && scaduto()) return false;
+    if((nodi & 255)===0 && scaduto()){ tagliato = true; return false; }
     // scegli la casella ancora scoperta col minor numero di candidati (MRV)
     let target:{g:number;f:string;need:number}|null=null, best=Infinity, bestCand:Medico[]|null=null;
     for(const c of cells){
@@ -123,7 +128,9 @@ export function risolviCluster(ctx: Ctx, cells: {g:number;f:string;need:number}[
     }
     return false;
   };
-  return solve();
+  const ok = solve();
+  if(stats) stats.tagliato = tagliato;
+  return ok;
 }
 
 export function faseCritici(ctx: Ctx, seed: number){
@@ -299,26 +306,119 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
     for(let g=lo;g<=hi;g++) for(const f of FASCE){ const need=needEff(g,f); if(need>0) cells.push({g,f,need}); }
     if(cells.length===0) continue;
     const soliPrima = soliMdc(lo,hi);
-    for(let att=0; att<3; att++){
-      if(scaduto()) break;
-      const m0=mark();
-      // Svuota i turni AUTOMATICI M/P/N della finestra (manuali, ambulatorio e
-      // codici speciali intatti). Liberare i vicini del buco è ciò che dà al
-      // solver i gradi di libertà che i riempimenti greedy avevano consumato.
+    // Svuota i turni AUTOMATICI M/P/N della finestra (manuali, ambulatorio e
+    // codici speciali intatti). Liberare i vicini del buco è ciò che dà al
+    // solver i gradi di libertà che i riempimenti greedy avevano consumato.
+    // Con `viaAmb` si liberano anche le A/Ap AUTOMATICHE della finestra.
+    const svuota = (viaAmb:boolean) => {
       for(let g=lo;g<=hi;g++) for(const m of medici){
         const c=gt(m.id,g);
-        const resto=c.filter(s=>s.man || !["M","P","N"].includes(s.tipo));
+        const resto=c.filter(s=>s.man || !(["M","P","N"].includes(s.tipo) || (viaAmb && isAmbT(s.tipo))));
         if(resto.length!==c.length) st(m.id,g,resto);
       }
+    };
+    const accetta = () => [...soliMdc(lo,hi)].every(k=>soliPrima.has(k));
+    let fatto = false;
+    for(let att=0; att<3 && !fatto; att++){
+      if(scaduto()) break;
+      const m0=mark();
+      svuota(false);
       const rng=mkRng(seed + lo*2654435761 + att*7919);
-      if(risolviCluster(ctx,cells,rng,limiteNodi)){
-        const dopo=soliMdc(lo,hi);
-        if([...dopo].every(k=>soliPrima.has(k))){ riparato=true; break; }
-      }
+      if(risolviCluster(ctx,cells,rng,limiteNodi) && accetta()){ riparato=fatto=true; break; }
       rollback(m0);   // soluzione incompleta o nuova violazione MDC → finestra intatta
+    }
+    // ── AMBULATORIO RIASSEGNABILE (v0.3.37) ──────────────────────────────────
+    // L'ambulatorio viene deciso per PRIMO e poi congelato: capita che proprio
+    // il suo assegnatario sia l'unico medico che chiuderebbe il buco (misurato:
+    // settembre con una lunga assenza, giorno 30 interamente scoperto, coperto
+    // del tutto spostando la A del 29 a un altro abilitato). Se la finestra
+    // resta bucata, si liberano anche le A/Ap AUTOMATICHE della finestra e si
+    // prova ogni riassegnazione legale (stesso predicato della fase), con al
+    // più 6 risoluzioni complete. È la stessa sonda "ambMove" della diagnosi
+    // causale: dove la diagnosi dice "basta riassegnare l'ambulatorio", ora ci
+    // prova il motore da solo. Transazionale come sopra.
+    if(!fatto && !scaduto()){
+      const slotAuto: {g:number; sl:SlotAmb}[] = [];
+      for(let g=lo;g<=hi;g++) for(const m of medici) for(const s of gt(m.id,g))
+        if(isAmbT(s.tipo) && !s.man) slotAuto.push({ g, sl:{ amb:ambIdDi(s), cod:s.tipo } });
+      if(slotAuto.length){
+        const m0=mark();
+        svuota(true);
+        const rng=mkRng(seed + lo*2654435761 + 104729);
+        let solves = 0;
+        const piazza = (i:number): boolean => {
+          if(scaduto() || solves>=6) return false;
+          if(i>=slotAuto.length){ solves++; return risolviCluster(ctx,cells,rng,limiteNodi) && accetta(); }
+          const { g, sl } = slotAuto[i];
+          for(const m of ctx.byL(medici.filter(x=>ambAssegnabile(ctx,x,g,sl)))){
+            const m1=mark();
+            ctx.add(m.id,g,sl.cod,false,sl.amb);
+            if(!ctx.haSlot(m.id,g,sl)){ rollback(m1); continue; }
+            if(piazza(i+1)) return true;
+            rollback(m1);
+          }
+          return false;
+        };
+        if(piazza(0)) riparato=fatto=true;
+        else rollback(m0);
+      }
     }
   }
   return riparato;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAPPABUCHI FINALE (v0.3.37) — copertura PARZIALE dei buchi residui
+// ═══════════════════════════════════════════════════════════════════════════
+// riparaBuchi lavora per finestre ed è TUTTO-O-NIENTE: se la finestra contiene
+// anche una sola cella davvero incopribile (tipicamente: tutti i medici
+// disponibili hanno già raggiunto l'obiettivo, o il tetto notti), il solver
+// fallisce e la finestra resta com'era — comprese le celle che si potevano
+// coprire. Misurato sull'harness: giorni interi vuoti (M, P e N) ai bordi del
+// mese dove un ML e un MDC liberi avrebbero coperto le due mattine, o un MR
+// libero mattina e pomeriggio.
+// Qui si riempie cella per cella ciò che è riempibile con un inserimento
+// LEGALE (canR, mdcOk, guardie di add): prima le notti, poi mattine e
+// pomeriggi. Vincolo di progetto: il tabellone principale non SPENDE weekend
+// liberi — un candidato che per quello slot scenderebbe sotto il proprio
+// obiettivo di weekend liberi è escluso (quelle coperture restano materia
+// della variante d'ultima chance, che decide l'utente). Il chiamante adotta il
+// risultato solo se il punteggio migliora.
+export function tappaBuchi(ctx: Ctx): number {
+  const { giorniArr, cf, needEff, ml, mrMdc, canR, mdcOk, add, gt, haQ, haM, haP,
+          wkPairs, isLibWk, cntWkLiberi, wkTargetMed, byL, byWkQuota, pesoSlot } = ctx;
+  const partner = (g:number): number|null => { for(const [s,d] of wkPairs){ if(s===g) return d; if(d===g) return s; } return null; };
+  // Assegnare lo slot brucerebbe una coppia sab-dom ancora libera e porterebbe
+  // il medico sotto il suo obiettivo di weekend liberi?
+  const costaWeekend = (id:number,g:number) => {
+    const p = partner(g);
+    if(p===null || !isLibWk(id,g) || !isLibWk(id,p)) return false;
+    return cntWkLiberi(id) - 1 < wkTargetMed(id);
+  };
+  const libera = (m:Medico,g:number,f:string) =>
+    f==="N" ? !haQ(m.id,g)
+    : f==="M" ? !haM(m.id,g) && (!haP(m.id,g) || canR(m,g,"ASS"))
+    :           !haP(m.id,g) && (!haM(m.id,g) || canR(m,g,"ASS"));
+  let messi = 0;
+  for(const f of ["N","M","P"] as const){
+    for(const g of giorniArr){
+      let guard = 0;
+      while(cf(g,f) < needEff(g,f) && guard++ < 4){
+        const base = f==="M" ? [...ml,...mrMdc] : mrMdc;
+        const pool = base.filter(m=>canR(m,g,f) && mdcOk(m,g,f) && libera(m,g,f) && !costaWeekend(m.id,g));
+        // A parità di tutto, prima chi NON supera l'obiettivo (una notte vale 2).
+        const sfora = (m:Medico) => ctx.cnt(m.id) + (f==="N" ? 2 : 1) > m.obiettivo ? 1 : 0;
+        const ord = (pesoSlot(g,f)>0 ? byWkQuota(pool) : byL(pool)).sort((a,b)=>sfora(a)-sfora(b));
+        let ok = false;
+        for(const m of ord){
+          add(m.id,g,f);
+          if(gt(m.id,g).some(s=>s.tipo===f && !s.man)){ ok = true; messi++; break; }
+        }
+        if(!ok) break;
+      }
+    }
+  }
+  return messi;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -330,8 +430,32 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 // della UI (vedi calcAmbRotNext in genera.ts). Questo chiude anche il bug di
 // equità per cui la rotazione avanzava nei tentativi scartati dal multi-tentativo.
 // ═══════════════════════════════════════════════════════════════════════════
+// Il medico m può prendere lo slot d'ambulatorio `sl` nel giorno g? Vincoli
+// DURI soltanto (l'obiettivo mensile, morbido, lo decide il chiamante). Unica
+// fonte per la fase ambulatorio, la riparazione dei buchi e la diagnosi
+// causale (v0.3.37): prima erano tre copie che potevano divergere.
+export function ambAssegnabile(ctx: Ctx, m: Medico, g: number, sl: SlotAmb): boolean {
+  const { gt, abilitatoAmb, escluso, haN, canConsec, canMatt, canPom, canAssDist } = ctx;
+  const cod = sl.cod, fascia: "M"|"P" = cod==="A" ? "M" : "P";
+  if(m.stato==="MPS") return false;
+  if(!abilitatoAmb(m, sl.amb)) return false;              // solo gli abilitati a QUESTO ambulatorio
+  if(fascia==="P" && m.stato==="ML") return false;         // l'ML non fa pomeriggi: niente Ap
+  if(escluso(m.id,g,fascia)) return false;                // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)
+  if(gt(m.id,g).some(s=>["L","ANA","per11","104"].includes(s.tipo))) return false;
+  if(haN(m.id,g)) return false;
+  // Regola N: la A (mattina) è vietata a g+1 e g+2 di una notte, la Ap
+  // (pomeriggio) segue le regole del P.
+  if(fascia==="M" ? !canMatt(m.id,g) : !canPom(m.id,g)) return false;
+  if(!canConsec(m.id,g)) return false;
+  const tt=gt(m.id,g).filter(s=>!isEscl(s.tipo)&&!["L","ANA","per11","104"].includes(s.tipo));
+  if(tt.length===0) return true;
+  // Unica eccezione: l'altro slot d'ambulatorio dello STESSO giorno (A+Ap =
+  // giornata piena d'ambulatorio), nel rispetto della distanza associati.
+  return tt.every(s=>isAmbT(s.tipo)&&s.tipo!==cod) && canAssDist(m.id,g);
+}
+
 export function faseAmbulatorio(ctx: Ctx){
-  const { giorniArr, ambSlots, haSlot, gt, add, medici, ambilitati, abilitatoAmb, escluso, haN, cnt, canConsec, canMatt, canPom, canAssDist } = ctx;
+  const { giorniArr, ambSlots, haSlot, gt, add, medici, ambilitati, cnt } = ctx;
   const n = ambilitati.length;
   let nextIdx = n>0 ? ((ENG.AMB_ROT_START % n) + n) % n : 0;
   let ok=true;
@@ -349,29 +473,12 @@ export function faseAmbulatorio(ctx: Ctx){
     for(const sl of ambSlots(g)){
     const cod = sl.cod;
     if(medici.some(m=>haSlot(m.id,g,sl))) continue;
-    const fascia: "M"|"P" = cod==="A" ? "M" : "P";
 
     const canAmb = (m: Medico, ignoraObiettivo=false) => {
-      if(m.stato==="MPS") return false;
-      if(!abilitatoAmb(m, sl.amb)) return false;            // solo gli abilitati a QUESTO ambulatorio
-      if(fascia==="P" && m.stato==="ML") return false;       // l'ML non fa pomeriggi: niente Ap
-      if(escluso(m.id,g,fascia)) return false;              // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)
-      if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
       // Vincolo MORBIDO: superabile nel 2° passaggio, quando l'alternativa
       // sarebbe lasciare l'ambulatorio scoperto.
       if(!ignoraObiettivo && m.obiettivo>0 && cnt(m.id)>=m.obiettivo) return false;
-      if(haN(m.id,g)) return false;
-      // Regola N: la A (mattina) è vietata a g+1 e g+2 di una notte, la Ap
-      // (pomeriggio) segue le regole del P.
-      if(fascia==="M" ? !canMatt(m.id,g) : !canPom(m.id,g)) return false;
-      if(!canConsec(m.id,g)) return false;
-      const tt=gt(m.id,g).filter(s=>!isEscl(s.tipo)&&!["L","ANA","per11","104"].includes(s.tipo));
-      if(tt.length===0) return true;
-      // Unica eccezione: l'altro slot d'ambulatorio dello STESSO giorno (A+Ap =
-      // giornata piena d'ambulatorio), nel rispetto della distanza associati.
-      // L'ordine per carico lo mette comunque in coda: si arriva qui solo se
-      // nessun collega è disponibile.
-      return tt.every(s=>isAmbT(s.tipo)&&s.tipo!==cod) && canAssDist(m.id,g);
+      return ambAssegnabile(ctx, m, g, sl);
     };
 
     // La A automatica va SOLO agli abilitati: 1° passaggio rispettando
@@ -474,7 +581,7 @@ export function assegnaWkLiberi(ctx: Ctx, rng: ()=>number, evita?: Record<number
 
 export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
   const { giorniArr, isWk, isSp, isS, haAss, medici, mrMdc, ml, byWk, add, pesoSlot,
-          canR, mdcOk, canAssDist, cf, nmn, npn, haM, haP, haQ, cntWkLiberi, cntWk, wkQuota } = ctx;
+          canR, mdcOk, canAssDist, canAssSett, cf, nmn, npn, haM, haP, haQ, cntWkLiberi, cntWk, wkQuota } = ctx;
   const isBloc = (id:number,g:number) => blocco?.[id]?.has(g) ?? false;
   // EQUITÀ (v0.3.19): i candidati sono ordinati per MINOR carico weekend (byWk)
   // invece che per carico totale, così i turni di weekend si distribuiscono più
@@ -494,7 +601,7 @@ export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
       const mancaM = cf(g,"M") < nmn(g).mn;
       const mancaP = cf(g,"P") < npn(g).mn;
       if(mancaM && mancaP){
-        const poolAss = poolWk(g,"M",mrMdc).filter(m=>canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g));
+        const poolAss = poolWk(g,"M",mrMdc).filter(m=>canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g)&&canAssSett(m.id,g));
         const ch = pick(poolAss,g);
         if(ch){ add(ch.id,g,"M"); add(ch.id,g,"P"); }
         else {
@@ -510,7 +617,7 @@ export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
       // (il P del sabato ha mx 1) + 2ª mattina (priorità ML) + pomeriggio.
       if(cf(g,"M")<nmn(g).mn && cf(g,"P")<npn(g).mn &&
          !medici.some(m=>m.stato!=="MPS"&&haAss(m.id,g))){
-        const poolAss = poolWk(g,"M",mrMdc).filter(m=>canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g));
+        const poolAss = poolWk(g,"M",mrMdc).filter(m=>canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g)&&canAssSett(m.id,g));
         const ch = pick(poolAss,g);
         if(ch){ add(ch.id,g,"M"); add(ch.id,g,"P"); }
       }
@@ -906,9 +1013,7 @@ export function catenaContinuita(ctx: Ctx){
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseDiurni(ctx: Ctx, seed: number){
   const { mark, rollback, snapshot, restore, ndim, feriali, ml, mrMdc, byL, add, canR, mdcOk, cf, gt,
-          nmn, npn, haM, haP, haN, haQ, cnt, eleggibili, haAss, canAssDist, checkRegolaN, maxAssSett, needEff } = ctx;
-  const nSett  = (g:number) => Math.floor((g-1)/7);
-  const assInS = (id:number,s:number) => { let n=0; for(let g=1;g<=ndim;g++) if(nSett(g)===s&&haAss(id,g)) n++; return n; };
+          nmn, npn, haM, haP, haN, haQ, cnt, eleggibili, canAssDist, canAssSett, checkRegolaN, needEff } = ctx;
   const m0 = mark();
   const scoreDiurni = () => feriali.reduce((s,g)=>s+Math.min(cf(g,"M"),nmn(g).mn)+Math.min(cf(g,"P"),npn(g).mn),0);
   let bestSnap: TurniMese | null = null, bestSc = scoreDiurni();   // best-effort: miglior parziale
@@ -967,7 +1072,7 @@ export function faseDiurni(ctx: Ctx, seed: number){
         at++;
         const baseP = mrMdc.filter(m=>!haP(m.id,g)&&!haN(m.id,g)&&canR(m,g,"P")&&mdcOk(m,g,"P"));
         if(baseP.length===0) break;
-        const ass = baseP.filter(m=>haM(m.id,g)&&assInS(m.id,nSett(g))<maxAssSett&&canR(m,g,"ASS")&&canAssDist(m.id,g));
+        const ass = baseP.filter(m=>haM(m.id,g)&&canAssSett(m.id,g)&&canR(m,g,"ASS")&&canAssDist(m.id,g));
         const scelta = (ass.length?byL(ass):byL(baseP))[0];
         if(!scelta) break;
         add(scelta.id,g,"P");
@@ -1014,6 +1119,23 @@ export function validazioneGlobale(ctx: Ctx){
   // Controllo finale dei weekend liberi (dopo le notti), con obiettivo per-medico.
   for(const m of mrMdc){ const w=cntWkLiberi(m.id), t=wkTargetMed(m.id); if(w<t) probs.push(`${m.nome.split(" ").pop()}: ${w}/${t} wk liberi`); }
   if(!checkRegolaN()) probs.push("Violazione Regola N / distanza associati");
+  // Tetto di giornate piene per settimana (v0.3.37): segnalato solo se nella
+  // settimana c'è almeno una giornata piena con un turno AUTOMATICO (quelle
+  // tutte manuali sono una scelta dell'utente, come per gli altri controlli).
+  {
+    const { settDi, inizioSett, assInSett, maxAssSett, pienaReale, gtB, ndim } = ctx;
+    for(const m of medici){
+      if(m.stato==="MPS") continue;
+      for(let w=settDi(1); w<=settDi(ndim); w++){
+        const da = inizioSett(1) + 7*(w - settDi(1));   // lunedì della settimana w (anche ≤ 0)
+        const n = assInSett(m.id, Math.max(1,da));
+        if(n<=maxAssSett) continue;
+        let auto=false;
+        for(let k=Math.max(1,da); k<da+7 && k<=ndim; k++){ const sh=gtB(m.id,k); if(pienaReale(sh) && sh.some(s=>!s.man&&(isMatt(s.tipo)||isPom(s.tipo)))) auto=true; }
+        if(auto) probs.push(`${m.nome.split(" ").pop()}: ${n} giornate piene (M+P) nella settimana del ${Math.max(1,da)} (max ${maxAssSett})`);
+      }
+    }
+  }
   // Controllo MAX giorni consecutivi di lavoro (per ogni medico attivo).
   // TOLLERANZA AI MANUALI: se il superamento esiste già nella sola sequenza
   // dei giorni lavorati MANUALMENTE (runMan), è una scelta dell'utente e non

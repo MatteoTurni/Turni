@@ -186,7 +186,14 @@ export default function App(){
         setPrevContext(turniAll,anno,mese);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
-        showMsg("✓ Obiettivi mensili completati!");
+        if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!");
+        else {
+          const elenco = r.rimasti.map(x=>`${x.nome.split(" ").pop()} −${x.mancano}`).join(", ");
+          const perche = r.postiLiberi===0
+            ? "mattine e pomeriggi feriali sono già al massimo previsto (pannello Regole)"
+            : "i giorni ancora liberi sono bloccati da riposi, consecutivi o turni già presenti";
+          showMsg(`Obiettivi completati dove possibile. Restano sotto: ${elenco} — ${perche}.`,"warn");
+        }
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
@@ -512,7 +519,7 @@ export default function App(){
       {/* PANNELLO DIAGNOSI COPERTURA (v0.3.10) — impossibilità certificate (⊘)
           e celle mai coperte in nessun tentativo (⚠). Solo lettura: aiuta a
           capire PERCHÉ certi buchi restano, senza toccare la generazione. */}
-      {tab==="cal" && (nCert>0 || maiCoperte.length>0 || causVis.length>0) && (()=>{
+      {tab==="cal" && (nCert>0 || maiCoperte.length>0 || causVis.length>0 || !!diagStat.bilancio) && (()=>{
         const FL: Record<string,string> = { M:"mattine", P:"pomeriggi", N:"notte" };
         const gLbl = (g:number)=>`${DF[dowOf(anno,mese,g)].slice(0,3)} ${g}`;
         // "mai coperte" raggruppate per giorno: "Mar 4: mattine · pomeriggi"
@@ -524,6 +531,7 @@ export default function App(){
             <div onClick={()=>setDiagOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:"8px",
               padding:"8px 12px",cursor:"pointer",userSelect:"none"}}>
               <span style={{color:"#a78bfa",fontWeight:700}}>Diagnosi copertura</span>
+              {diagStat.bilancio && <span style={{color:"#f87171"}}>&#9650; bilancio &#8722;{diagStat.bilancio.servono-diagStat.bilancio.disponibili} turni</span>}
               {nCert>0 && <span style={{color:"#c4b5fd"}}>&#8856; {nCert} impossibil{nCert===1?"e certificata":"i certificate"}</span>}
               {maiCoperte.length>0 && <span style={{color:"#fbbf24"}}>&#9888; {maiCoperte.length} mai copert{maiCoperte.length===1?"a":"e"} in {diagGen?.tentativi} tentativi</span>}
               {causVis.length>0 && <span style={{color:"#34d399"}}>&#9670; {causVis.length} caus{causVis.length===1?"a individuata":"e individuate"}</span>}
@@ -531,6 +539,12 @@ export default function App(){
             </div>
             {diagOpen && (
               <div style={{padding:"0 12px 10px",borderTop:"1px solid #1e3a5f"}}>
+                {diagStat.bilancio && (
+                  <div style={{marginTop:"8px"}}>
+                    <div style={{color:"#f87171",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#9650; BILANCIO DEL MESE — gli obiettivi non bastano a coprire il fabbisogno</div>
+                    <div style={{color:"#fca5a5",margin:"3px 0"}}>&#8226; {diagStat.bilancio.motivo}</div>
+                  </div>
+                )}
                 {(diagStat.giorni.length>0||diagStat.celle.length>0||diagStat.mese.length>0) && (
                   <div style={{marginTop:"8px"}}>
                     <div style={{color:"#a78bfa",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#8856; CERTIFICATE (dimostrate dai turni manuali e dalle regole — nessuna generazione potrà coprirle)</div>

@@ -1,4 +1,51 @@
-# TurniMedicina 0.3.36
+# TurniMedicina 0.3.37
+
+## Novità 0.3.37 — analisi di generazione e diagnosi
+
+Revisione completa del motore di generazione e della diagnosi, con ogni
+intervento misurato su `harness/sim.ts` (18 scenari × 3 ripetizioni, stessi
+semi e stesso tempo, contro la 0.3.36; validatori indipendenti: 0 violazioni).
+
+**Risultati complessivi** (54 generazioni): buchi di copertura 92 → 71, mesi
+perfetti 41 → 44, weekend liberi mancanti 39 → 34, tempo −36%, violazioni 0 → 0.
+Unico costo: sforo obiettivi 25 → 33 punti totali (le celle in più coperte
+includono notti, che valgono 2). Nell'app la pagina non si congela più a fine
+generazione (da 5,8–8,7 s a ~0,04 s).
+
+Motore:
+- **Calendario memorizzato** (`date.ts`): giorno della settimana e festivi
+  venivano ricalcolati milioni di volte (quasi metà del tempo nei mesi
+  difficili). Generazione 2,2× più veloce, impronta deterministica IDENTICA.
+- **Tappabuchi finale** (`tappaBuchi`): la riparazione per finestre è
+  tutto-o-niente e lasciava giorni interi vuoti ai bordi del mese pur con
+  medici disponibili. Ora le celle coperibili si coprono una a una, senza mai
+  togliere weekend liberi a nessuno (quelle coperture restano all'ultima chance).
+- **Ambulatorio riassegnabile nella riparazione**: se il titolare della A è
+  l'unico che chiuderebbe un buco, `riparaBuchi` prova a spostare la A a un
+  altro abilitato (settembre con lunga assenza: 3 buchi → 0).
+- **"Max turni associati / settimana" è una regola vera**: prima era solo una
+  preferenza di una fase, con settimane a blocchi di 7 giorni dal giorno 1
+  (con limite 1, 4 tabelloni su 5 lo superavano). Ora vale per ogni
+  inserimento, su settimane lunedì–domenica, ed è segnalata in validazione.
+- Predicato unico `ambAssegnabile` per fase ambulatorio, riparazione e diagnosi.
+- Correzioni: `restore` ignorava l'ambulatorio di A/Ap; il "miglior parziale"
+  contava A/Ap e codici PS come copertura di reparto.
+
+Diagnosi:
+- **Mai più verdetti "strutturali" non verificati**: se il tempo finiva, la
+  diagnosi ripiegava su "mancano materialmente i medici" (falso con obiettivi
+  insufficienti). Il risolutore ora dice se il fallimento è dimostrato; se no
+  l'esito è "indeterminato".
+- **Bilancio del mese**: se gli obiettivi non bastano al fabbisogno, la
+  diagnosi lo dice con i numeri (nuovo riquadro) e la sonda degli obiettivi
+  va per prima.
+
+Interfaccia:
+- Rifinitura finale in un Web Worker (ripiego sul thread principale).
+- "Completa obiettivi" dice chi resta sotto obiettivo e perché, invece di
+  "completati!" in ogni caso.
+
+Test: `analisi037.test.ts`. Harness: `harness/multiamb.ts` (stress più ambulatori).
 
 ## Novità 0.3.36 — più ambulatori, ciascuno coi suoi abilitati
 

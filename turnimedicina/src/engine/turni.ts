@@ -4,9 +4,10 @@ import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio } from "./types";
 // I turni associati (M+P oppure A+P) NON sono un tipo a sé: sono sempre
 // due turni distinti nella stessa giornata. Le utility considerano quindi
 // solo i singoli codici di mattina, pomeriggio e notte.
-export function isMatt(t:string){ return ["M","A","1"].includes(t); }
-export function isPom(t:string) { return ["P","2","Ap"].includes(t); }
-export function isNot(t:string) { return ["N","3"].includes(t); }
+const MATT = new Set(["M","A","1"]), POM = new Set(["P","2","Ap"]), NOT = new Set(["N","3"]);
+export function isMatt(t:string){ return MATT.has(t); }
+export function isPom(t:string) { return POM.has(t); }
+export function isNot(t:string) { return NOT.has(t); }
 export function vt(t:string,u?:boolean): number {
   if(u)return 0;
   if(["N","3"].includes(t))return 2;

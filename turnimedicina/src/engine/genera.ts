@@ -5,7 +5,7 @@ import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche
 import { ENG, scaduto, conDeadline } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
-         riequilibraWeekendLiberi, riparaBuchi, validazioneGlobale, type Blocco } from "./fasi";
+         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, validazioneGlobale, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -96,19 +96,14 @@ export function generaCoperturaMinima(
   // ── BEST-EFFORT ────────────────────────────────────────────────────────────
   // Conserviamo sempre la configurazione col punteggio più alto incontrata
   // (copia PIENA: deve sopravvivere ai rollback dell'undo-log).
+  // Stessa metrica di copertura di scoreCopertura/cf (v0.3.37): contano SOLO
+  // i turni di reparto M/P/N. Prima si contavano anche A/Ap e i codici PS
+  // 1/2/3, che non coprono il fabbisogno: un parziale con l'ambulatorio al
+  // posto di una mattina di reparto sembrava completo quanto uno vero.
   const scoreOf = () => {
     let s=0;
-    for(let g=1;g<=ndim;g++){
-      let m=0,p=0,n=0;
-      for(const med of medici){
-        for(const sh of ctx.gt(med.id,g)){
-          if(["M","A","1"].includes(sh.tipo)) m++;
-          else if(["P","2","Ap"].includes(sh.tipo)) p++;
-          else if(["N","3"].includes(sh.tipo)) n++;
-        }
-      }
-      s += Math.min(m,ctx.nmn(g).mn)+Math.min(p,ctx.npn(g).mn)+Math.min(n,1);
-    }
+    for(let g=1;g<=ndim;g++)
+      s += Math.min(ctx.cf(g,"M"),ctx.nmn(g).mn)+Math.min(ctx.cf(g,"P"),ctx.npn(g).mn)+Math.min(ctx.cf(g,"N"),1);
     return s;
   };
   let bestSnap = ctx.snapshot(), bestScore = scoreOf();
@@ -262,7 +257,7 @@ export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medi
     if(isWk(g)){
       guard=0;
       while(cf(g,"M")<nmn(g).mn && cf(g,"P")<npn(g).mn && guard++<5){
-        const p = ordina(cand(g,"M").filter(m=>!haM(m.id,g)&&!haP(m.id,g)&&canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g)),g,"N");
+        const p = ordina(cand(g,"M").filter(m=>!haM(m.id,g)&&!haP(m.id,g)&&canR(m,g,"P")&&mdcOk(m,g,"P")&&canAssDist(m.id,g)&&c.canAssSett(m.id,g)),g,"N");
         if(!p.length) break;
         add(p[0].id,g,"M"); add(p[0].id,g,"P");
         if(!haM(p[0].id,g)) break;   // guardie di add() hanno rifiutato: evita loop sterile
@@ -989,6 +984,18 @@ export function rifinituraFinale(
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
+  // ── TAPPABUCHI (v0.3.37) ─────────────────────────────────────────────────
+  // Dopo la riparazione per finestre (tutto-o-niente) restano spesso celle
+  // coperibili singolarmente: le si copre con inserimenti legali che non
+  // tolgono weekend liberi a nessuno. Adottato solo se il punteggio migliora.
+  if(bestM.buchi>0){
+    try{
+      const copia = cloneT(bestT);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(tappaBuchi(c)>0) prova(copia);
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
+
   // ── RECUPERO WEEKEND FINALE (sul PRIMARIO) ──────────────────────────────
   // Weekend liberi mancanti → ultimo riequilibrio col BUDGET NODI PIENO.
   // Anticipato PRIMA dell'ultima chance: così il primario è già il migliore
@@ -1109,9 +1116,7 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   const T = cloneT(ex);
   const ctx = makeCtx(anno, mese, ndim, medici, T);
   const { feriali, ml, mrMdc, byL, add, canR, mdcOk, cf, nmn, npn,
-          haM, haP, haN, haQ, cnt, haAss, canAssDist, maxAssSett, gt } = ctx;
-  const nSett  = (g:number) => Math.floor((g-1)/7);
-  const assInS = (id:number,s:number) => { let n=0; for(let g=1;g<=ndim;g++) if(nSett(g)===s&&haAss(id,g)) n++; return n; };
+          haM, haP, haN, haQ, cnt, canAssDist, canAssSett, gt } = ctx;
   // M VERA adiacente: per la preferenza di consecutività A e 1 non contano
   // (isMatt li include, ma non sono continuità di reparto).
   const haMR = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="M");
@@ -1139,7 +1144,7 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
       if(!haM(m.id,g)) continue;
       if(haP(m.id,g)||haN(m.id,g)) continue;
       if(cf(g,"P")>=npn(g).mx) continue;
-      if(assInS(m.id,nSett(g))>=maxAssSett) continue;
+      if(!canAssSett(m.id,g)) continue;
       if(!canR(m,g,"ASS")||!mdcOk(m,g,"P")||!canAssDist(m.id,g)) continue;
       add(m.id,g,"P");
     }
@@ -1172,7 +1177,7 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
           if(haP(m.id,g)||haN(m.id,g)) return false;
           if(cf(g,"P")>=npn(g).mx) return false;
           if(!mdcOk(m,g,"P")) return false;
-          if(haM(m.id,g)) return canR(m,g,"ASS") && assInS(m.id,nSett(g))<maxAssSett; // associato
+          if(haM(m.id,g)) return canR(m,g,"ASS") && canAssSett(m.id,g);               // associato
           return canR(m,g,"P");                                                      // singolo
         });
         if(candP.length){
@@ -1183,7 +1188,16 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     }
   }
 
-  return { turni: pulisciT(T) };
+  // ESITO LEGGIBILE (v0.3.37): chi resta sotto obiettivo e se il motivo è
+  // strutturale (mattine e pomeriggi feriali già al MASSIMO del pannello
+  // Regole). Prima la UI diceva sempre "Obiettivi completati!", anche con
+  // metà dei medici a -5.
+  const rimasti = [...ml, ...mrMdc]
+    .filter(m=>cnt(m.id)<m.obiettivo)
+    .map(m=>({ id:m.id, nome:m.nome, mancano:m.obiettivo-cnt(m.id) }));
+  let postiLiberi = 0;
+  for(const g of feriali) postiLiberi += Math.max(0,nmn(g).mx-cf(g,"M")) + Math.max(0,npn(g).mx-cf(g,"P"));
+  return { turni: pulisciT(T), rimasti, postiLiberi };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

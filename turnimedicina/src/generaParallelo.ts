@@ -18,7 +18,7 @@ import { generaMigliorTentativo, rifinituraFinale, misuraTabellone, rifinisciCan
 import type { MisuraTab } from "./engine/genera";
 import { getRegole } from "./engine/regole";
 import { ENG } from "./engine/state";
-import type { MsgAvvio } from "./genWorker";
+import type { MsgAvvio, MsgRifinisci } from "./genWorker";
 
 export interface ProgressoGen { tentativi:number; s:number; workers:number }
 
@@ -76,11 +76,39 @@ export function generaParallelo(
       if(!bestT){ resolve(generaMigliorTentativo(anno, mese, ndim, medici, ex, Math.min(4000, maxMs))); return; }
       const cand = bestPerW.filter((c):c is { turni:TurniMese; m:MisuraTab } => c!==null)
                            .sort((a,b)=>cmpMis(a.m,b.m));
-      const res = rifinituraFinale(anno, mese, ndim, medici, ex, bestT, 2000);
-      const out = rifinisciCandidati(anno, mese, ndim, medici, ex, bestT, cand, res,
-                                     Date.now() + 1800);
-      out.diagnosi = { tentativi: tentPerW.reduce((a,b)=>a+b,0), conteggi: conteggiTot };
-      resolve(out);
+      const T0 = bestT;
+      const chiudi = (out: Risultato) => {
+        out.diagnosi = { tentativi: tentPerW.reduce((a,b)=>a+b,0), conteggi: conteggiTot };
+        resolve(out);
+      };
+      // Rifinitura sul thread principale: solo come RIPIEGO se il worker non
+      // parte, va in errore o non risponde (stesso identico calcolo).
+      const rifinisciQui = () => {
+        const res = rifinituraFinale(anno, mese, ndim, medici, ex, T0, 2000);
+        chiudi(rifinisciCandidati(anno, mese, ndim, medici, ex, T0, cand, res, Date.now() + 1800));
+      };
+      // RIFINITURA IN UN WORKER (v0.3.37): nei mesi difficili dura 4-7 s
+      // (riparazione, variante d'ultima chance, diagnosi causale) e sul thread
+      // principale congelava la pagina, spinner compreso.
+      let wr: Worker;
+      try{ wr = new Worker(new URL("./genWorker.ts", import.meta.url), { type: "module" }); }
+      catch(_){ rifinisciQui(); return; }
+      let fatto = false;
+      const ripiego = () => { if(fatto) return; fatto = true; clearTimeout(gr); wr.terminate(); rifinisciQui(); };
+      const gr = setTimeout(ripiego, 20000);
+      wr.onmessage = (ev: MessageEvent) => {
+        const d = ev.data as { tipo:string; risultato?:Risultato };
+        if(d.tipo==="rifinito" && d.risultato){
+          if(fatto) return; fatto = true; clearTimeout(gr); wr.terminate(); chiudi(d.risultato);
+        } else if(d.tipo==="errore") ripiego();
+      };
+      wr.onerror = () => ripiego();
+      const msg: MsgRifinisci = {
+        tipo:"rifinisci", anno, mese, ndim, medici, ex,
+        regole: getRegole(), prev: ENG.PREV, ambRot: ENG.AMB_ROT_START,
+        bestT: T0, cand,
+      };
+      wr.postMessage(msg);
     };
     // Guardia: se un worker non risponde (tab in background, throttling) non si
     // aspetta per sempre — si conclude col migliore raccolto fin lì.

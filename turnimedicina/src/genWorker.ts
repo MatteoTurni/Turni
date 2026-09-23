@@ -12,10 +12,27 @@
 //   { tipo:"fine",      turni, tentativi, conteggi }  best finale del worker
 //                                                 (conteggi: diagnosi empirica)
 //   { tipo:"errore",    msg }                     eccezione irrecuperabile
-import { cercaMigliorTentativo } from "./engine/genera";
+//
+// Secondo compito (v0.3.37): la RIFINITURA finale. Messaggio
+//   { tipo:"rifinisci", ...contesto, bestT, cand }  →  { tipo:"rifinito", risultato }
+// Prima girava sul thread principale e nei mesi difficili (riparazione,
+// variante d'ultima chance, diagnosi causale) congelava la pagina per 4-7 s.
+import { cercaMigliorTentativo, rifinituraFinale, rifinisciCandidati } from "./engine/genera";
+import type { MisuraTab } from "./engine/genera";
 import { setRegole } from "./engine/regole";
 import { ENG } from "./engine/state";
 import type { Medico, TurniMese, Regole } from "./engine/types";
+
+export interface MsgRifinisci {
+  tipo:"rifinisci";
+  anno:number; mese:number; ndim:number;
+  medici:Medico[]; ex:TurniMese;
+  regole:Regole;
+  prev: null | { ndim:number; T:TurniMese };
+  ambRot:number;
+  bestT:TurniMese;
+  cand:{ turni:TurniMese; m:MisuraTab }[];
+}
 
 export interface MsgAvvio {
   anno:number; mese:number; ndim:number;
@@ -32,6 +49,20 @@ export interface MsgAvvio {
 const ws = self as unknown as { postMessage(m:unknown):void; onmessage: ((e:MessageEvent)=>void)|null };
 
 ws.onmessage = (e: MessageEvent) => {
+  if((e.data as { tipo?:string })?.tipo === "rifinisci"){
+    const q = e.data as MsgRifinisci;
+    try{
+      setRegole(q.regole);
+      ENG.PREV = q.prev ?? null;
+      ENG.AMB_ROT_START = q.ambRot ?? 0;
+      const res = rifinituraFinale(q.anno, q.mese, q.ndim, q.medici, q.ex, q.bestT, 2000);
+      const out = rifinisciCandidati(q.anno, q.mese, q.ndim, q.medici, q.ex, q.bestT, q.cand, res, Date.now() + 1800);
+      ws.postMessage({ tipo:"rifinito", risultato: out });
+    }catch(err){
+      ws.postMessage({ tipo:"errore", msg:String((err as Error)?.message ?? err) });
+    }
+    return;
+  }
   const p = e.data as MsgAvvio;
   try{
     setRegole(p.regole);
