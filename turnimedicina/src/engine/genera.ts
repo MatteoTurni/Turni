@@ -5,7 +5,7 @@ import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche
 import { ENG, scaduto, conDeadline } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
-         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, validazioneGlobale, type Blocco } from "./fasi";
+         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, validazioneGlobale, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -963,6 +963,18 @@ export function rifinituraFinale(
   };
   // NB: s===0 ⇒ buchi=0 ∧ wkDef=0 ⇒ sui tabelloni perfetti non si esegue nulla
   // (equivale al vecchio guard `!perfetto &&`).
+
+  // ── MDC SOLO IN AMBULATORIO (v0.3.37) ───────────────────────────────────
+  // Sempre, anche sui tabelloni perfetti: sposta l'ambulatorio di un MDC
+  // rimasto senza colleghi nella sua fascia. La validazione ora lo segnala,
+  // quindi prova() adotta la correzione quando riduce i problemi.
+  if(bestM.probs.some(p=>p.includes("MDC da solo"))){
+    try{
+      const copia = cloneT(bestT);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(sistemaMdcAmb(c)>0) prova(copia);
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
 
   // ── RIPARAZIONE LOCALE (LNS) ────────────────────────────────────────────
   // Prima dell'ultima chance: si prova a RIPARARE il miglior tentativo invece

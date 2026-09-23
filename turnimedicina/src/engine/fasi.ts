@@ -368,6 +368,52 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MDC SOLO IN AMBULATORIO (v0.3.37)
+// ═══════════════════════════════════════════════════════════════════════════
+// La fase ambulatorio gira per PRIMA, a tabellone vuoto: non può sapere se
+// l'MDC a cui dà una A/Ap avrà un collega nella stessa fascia. Col pomeriggio
+// (fascia di norma con un solo medico di reparto) capita che resti solo — il
+// fuzz l'ha trovato con il P di reparto scoperto per assenze. Qui, a tabellone
+// finito, l'ambulatorio di un MDC rimasto solo passa a un altro abilitato che
+// può prenderlo (stesso predicato della fase). Restituisce quante ne sistema.
+export function sistemaMdcAmb(ctx: Ctx): number {
+  const { medici, giorniArr, gt, st, add, mdcOk, haSlot, mark, rollback, byL } = ctx;
+  let fatti = 0;
+  for(const m of medici){
+    if(m.stato!=="MDC") continue;
+    for(const g of giorniArr) for(const s of gt(m.id,g)){
+      if(s.man || !isAmbT(s.tipo)) continue;
+      const f = s.tipo==="A" ? "M" : "P";
+      if(mdcOk(m,g,f)) continue;
+      const sl: SlotAmb = { amb: ambIdDi(s), cod: s.tipo };
+      const m0 = mark();
+      st(m.id,g, gt(m.id,g).filter(x=>x!==s));
+      let ok = false;
+      for(const x of byL(medici.filter(x=>x.id!==m.id && ambAssegnabile(ctx,x,g,sl)))){
+        add(x.id,g,sl.cod,false,sl.amb);
+        if(haSlot(x.id,g,sl)){ ok = true; break; }
+      }
+      if(ok) fatti++; else rollback(m0);
+    }
+  }
+  return fatti;
+}
+
+/** Turni AUTOMATICI di un MDC rimasto senza colleghi nella stessa fascia. */
+export function mdcSoli(ctx: Ctx): { m: Medico; g: number; f: "M"|"P"|"N" }[] {
+  const out: { m: Medico; g: number; f: "M"|"P"|"N" }[] = [];
+  for(const m of ctx.medici){
+    if(m.stato!=="MDC") continue;
+    for(const g of ctx.giorniArr) for(const s of ctx.gt(m.id,g)){
+      if(s.man) continue;
+      const f = isMatt(s.tipo) ? "M" : isPom(s.tipo) ? "P" : isNot(s.tipo) ? "N" : null;
+      if(f && !ctx.mdcOk(m,g,f)) out.push({ m, g, f });
+    }
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TAPPABUCHI FINALE (v0.3.37) — copertura PARZIALE dei buchi residui
 // ═══════════════════════════════════════════════════════════════════════════
 // riparaBuchi lavora per finestre ed è TUTTO-O-NIENTE: se la finestra contiene
@@ -1119,6 +1165,10 @@ export function validazioneGlobale(ctx: Ctx){
   // Controllo finale dei weekend liberi (dopo le notti), con obiettivo per-medico.
   for(const m of mrMdc){ const w=cntWkLiberi(m.id), t=wkTargetMed(m.id); if(w<t) probs.push(`${m.nome.split(" ").pop()}: ${w}/${t} wk liberi`); }
   if(!checkRegolaN()) probs.push("Violazione Regola N / distanza associati");
+  // MDC (Decreto Calabria) mai solo in turno (v0.3.37): era verificato solo
+  // all'inserimento; ora anche sul tabellone finito, per i turni automatici.
+  for(const x of mdcSoli(ctx))
+    probs.push(`${x.m.nome.split(" ").pop()}: MDC da solo in turno (${x.f==="M"?"mattina":x.f==="P"?"pomeriggio":"notte"}) G${x.g}`);
   // Tetto di giornate piene per settimana (v0.3.37): segnalato solo se nella
   // settimana c'è almeno una giornata piena con un turno AUTOMATICO (quelle
   // tutte manuali sono una scelta dell'utente, come per gli altri controlli).

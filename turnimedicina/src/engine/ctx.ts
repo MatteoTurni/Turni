@@ -176,6 +176,11 @@ export function makeCtx(
       //    canR, questo chiude anche le aggiunte dirette delle fasi.
       const fEscl = fasciaDi(tipo);
       if(fEscl && escluso(id,g,fEscl)) return;
+      // 0b) UNA SOLA FASCIA ALLA VOLTA (v0.3.37): mai un secondo turno nella
+      //     stessa fascia (A + M, Ap + P, 1 + M...). Prima il controllo era
+      //     affidato a ogni singolo chiamante e lo "scambio compensato" del
+      //     riequilibrio weekend lo saltava: il fuzz ha trovato A+M e Ap+P.
+      if(fEscl && c.some(s=>fasciaDi(s.tipo)===fEscl)) return;
       // 1) Distanza associati: non creare una GIORNATA PIENA (mattina+pomeriggio,
       //    inclusi i codici PS 1/2) troppo vicina a un'altra. Copre anche il caso
       //    di una P automatica aggiunta a un "1" manuale (→ 1+P) e viceversa.
@@ -460,6 +465,8 @@ export function makeCtx(
       return canN(m.id,g);
     }
     if(haN(m.id,g)) return false;
+    // Già un turno in questa fascia (anche A/Ap o codici PS): non ne regge un altro.
+    if((f==="M" && haM(m.id,g)) || (f==="P" && haP(m.id,g))) return false;
     if(f==="ASS"){ if(m.stato==="ML") return false; return canAss(m.id,g)&&canAssDist(m.id,g)&&canAssSett(m.id,g); }
     // Tetto settimanale di giornate piene (v0.3.37): specchia la guardia di add().
     if((f==="M"||f==="P") && creaPiena(m.id,g,f) && !canAssSett(m.id,g)) return false;

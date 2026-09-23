@@ -95,8 +95,9 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
     let notti=0, nottiAuto=0;
     for(let g=1;g<=ndim;g++) for(const s of cell(T,m.id,g)) if(isNot(s.tipo)){ notti++; if(!s.man) nottiAuto++; }
     if(notti>R.maxNotti && nottiAuto>0) V.push(`${m.nome}: ${notti} notti (max ${R.maxNotti})`);
-    // ── max giorni consecutivi (violazione imputabile ad almeno un auto)
-    {
+    // ── max giorni consecutivi (violazione imputabile ad almeno un auto).
+    //    L'ML è ESENTE per regola (v0.3.30): prima questo validatore lo contava.
+    if(m.stato!=="ML"){
       let run=0, runMan=0;
       // coda mese precedente (immovibile)
       let tp=0; for(let k=0;k>=-6 && lavoraB(m.id,k);k--) tp++;

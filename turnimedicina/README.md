@@ -45,6 +45,25 @@ Interfaccia:
 - "Completa obiettivi" dice chi resta sotto obiettivo e perché, invece di
   "completati!" in ogni caso.
 
+Collaudo a configurazioni casuali (`harness/fuzz.ts` + validatori indipendenti
+`harness/validatori.ts`): 180 configurazioni casuali di squadra, regole,
+assenze, esclusioni, manuali, mese precedente e ambulatori; generazione completa
++ "Completa obiettivi". Configurazioni con violazioni: 87 nella 0.3.36 → 3,
+tutte segnalate in validazione e strutturali (MDC unico abilitato disponibile
+per un ambulatorio di pomeriggio senza colleghi). Il fuzz ha trovato due
+difetti già presenti nella 0.3.36, ora corretti:
+- **Due turni nella stessa fascia** (ambulatorio + reparto: A+M, Ap+P): lo
+  "scambio compensato" del riequilibrio weekend saltava il controllo. Ora
+  `canR` e `add` rifiutano sempre un secondo turno nella stessa fascia.
+- **MDC da solo con l'ambulatorio**: la fase ambulatorio gira a tabellone
+  vuoto. Ora la rifinitura sposta l'ambulatorio a un altro abilitato
+  (`sistemaMdcAmb`) e la validazione segnala l'MDC rimasto solo.
+
+ML e giorni consecutivi (`harness/mlconsec.ts`): con il tetto da 7 a 2 l'ML
+lavora gli stessi turni (sequenze fino a 6 giorni), mai segnalato; MR e MDC
+restano sempre entro il tetto. Gli harness `sim.ts`/`stress.ts` ora esentano
+l'ML dal controllo dei consecutivi, come il motore.
+
 Test: `analisi037.test.ts`. Harness: `harness/multiamb.ts` (stress più ambulatori).
 
 ## Novità 0.3.36 — più ambulatori, ciascuno coi suoi abilitati

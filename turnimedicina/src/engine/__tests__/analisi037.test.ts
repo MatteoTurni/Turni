@@ -173,3 +173,70 @@ describe("completaObiettivi dice chi resta sotto obiettivo", () => {
     expect(validazioneGlobale(c).filter(p => p.includes("giornate piene"))).toEqual([]);
   });
 });
+
+describe("una sola fascia per volta (fuzz v0.3.37)", () => {
+  it("add e canR non danno una seconda mattina/pomeriggio a chi ha già ambulatorio o PS", () => {
+    const T: TurniMese = {};
+    put(T, 1, 9, "A", false, "A"); put(T, 1, 10, "Ap", false, "A"); put(T, 1, 11, "1");
+    const m = med(1, "MR", 40);
+    const c = makeCtx(2026, 5, 30, [m], T);
+    expect(c.canR(m, 9, "M")).toBe(false);
+    expect(c.canR(m, 10, "P")).toBe(false);
+    c.add(1, 9, "M"); c.add(1, 10, "P"); c.add(1, 11, "M");
+    expect(c.gt(1, 9).map(s => s.tipo)).toEqual(["A"]);
+    expect(c.gt(1, 10).map(s => s.tipo)).toEqual(["Ap"]);
+    expect(c.gt(1, 11).map(s => s.tipo)).toEqual(["1"]);
+    // la fascia opposta resta disponibile (giornata piena)
+    expect(c.canR(m, 9, "P")).toBe(true);
+  });
+});
+
+describe("MDC mai solo con l'ambulatorio", () => {
+  it("la validazione lo segnala e sistemaMdcAmb passa l'ambulatorio a un altro abilitato", async () => {
+    const { sistemaMdcAmb } = await import("../fasi");
+    setRegole(mergeRegole({ ...dft(), ambulatori: [{ id: "A", nome: "Amb", sigla: "A", giorni: { 3: "P" } }] }));
+    const medici = [med(1, "MDC", 21, { ambulatorio: true, ambulatori: ["A"] }), med(2, "MR", 25, { ambulatorio: true, ambulatori: ["A"] })];
+    const T: TurniMese = {}; put(T, 1, 4, "Ap", false, "A");               // giovedì 4 giugno, nessun P di reparto
+    const c = makeCtx(2026, 5, 30, medici, T);
+    expect(validazioneGlobale(c).some(p => p.includes("MDC da solo"))).toBe(true);
+    expect(sistemaMdcAmb(c)).toBe(1);
+    expect(c.gt(2, 4).some(s => s.tipo === "Ap")).toBe(true);
+    expect(validazioneGlobale(c).some(p => p.includes("MDC da solo"))).toBe(false);
+  });
+});
+
+describe("ML esente dal massimo di giorni consecutivi", () => {
+  it("canConsec: l'ML può proseguire oltre il tetto, l'MR no", () => {
+    setRegole(mergeRegole({ ...dft(), maxConsec: 3 }));
+    const T: TurniMese = {};
+    for (let g = 1; g <= 5; g++) { put(T, 1, g, "M"); put(T, 2, g, "M"); }
+    const c = makeCtx(2026, 5, 30, [med(1, "ML", 25), med(2, "MR", 25)], T);
+    expect(c.canConsec(1, 6)).toBe(true);
+    expect(c.canConsec(2, 6)).toBe(false);
+    expect(c.canR(med(1, "ML", 25), 6, "M")).toBe(true);           // sabato 6: mattina ML ammessa
+    expect(validazioneGlobale(c).some(p => p.startsWith("M1:") && p.includes("consecutivi"))).toBe(false);
+  });
+
+  it("generazione con tetto 3: l'ML lavora più di 3 giorni di fila e raggiunge i suoi turni", () => {
+    const squadra = (): Medico[] => [
+      med(1, "MR", 25), med(2, "MR", 25, { ambulatorio: true }), med(3, "MDC", 21), med(4, "ML", 22),
+      med(5, "MR", 25, { ambulatorio: true }), med(6, "MR", 25, { ambulatorio: true }), med(7, "MR", 25),
+      med(8, "MR", 25, { ambulatorio: true }), med(9, "MR", 25), med(10, "MPS", 0), med(11, "MPS", 0),
+    ];
+    const conTetto = (mc: number) => {
+      setRegole(mergeRegole({ ...dft(), maxConsec: mc }));
+      const r = generaMigliorTentativo(2026, 5, 30, squadra(), {}, 2500);
+      const o = completaObiettivi(2026, 5, 30, squadra(), r.turni);
+      let run = 0, max = 0, turni = 0;
+      for (let g = 1; g <= 30; g++) {
+        const lav = (o.turni[4]?.[g]?.t || []).some(s => s.tipo === "M");
+        run = lav ? run + 1 : 0; max = Math.max(max, run); if (lav) turni++;
+      }
+      return { max, turni, avvisi: r.problemi.filter(p => p.startsWith("M4:") && p.includes("consecutivi")).length };
+    };
+    const t3 = conTetto(3), t7 = conTetto(7);
+    expect(t3.max).toBeGreaterThan(3);
+    expect(t3.avvisi).toBe(0);
+    expect(t3.turni).toBeGreaterThanOrEqual(t7.turni - 1);           // stesso lavoro col tetto basso
+  });
+});
