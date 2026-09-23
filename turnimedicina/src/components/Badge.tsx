@@ -1,10 +1,12 @@
 import { KC } from "./costanti";
 
 // ─── BADGE ────────────────────────────────────────────────────────────────────
-export function Badge({ tipo, sott, man }: { tipo?: string; sott?: boolean; man?: boolean }){
+// `lbl` (v0.3.36): etichetta da mostrare al posto del codice (es. la sigla
+// dell'ambulatorio per A/Ap); i colori restano quelli del tipo.
+export function Badge({ tipo, sott, man, lbl: lblIn }: { tipo?: string; sott?: boolean; man?: boolean; lbl?: string }){
   if(!tipo) return null;
   const c = KC[tipo]||{bg:"#1f2937",t:"#9ca3af",b:"#374151"};
-  const lbl = tipo==="per11"?"p11":tipo;
+  const lbl = lblIn ?? (tipo==="per11"?"p11":tipo);
   return (
     <span style={{
       display:"inline-flex",alignItems:"center",justifyContent:"center",

@@ -1,7 +1,7 @@
 import type { Medico, Risultato, TurniMese, AlternativaUC, CellaScoperta, WeekendPerso } from "./types";
 import { dowOf, isHol } from "./date";
 import { getRegole } from "./regole";
-import { cloneT, pulisciT, SPEC } from "./turni";
+import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche, slotAmbGiorno } from "./turni";
 import { ENG, scaduto, conDeadline } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
@@ -103,7 +103,7 @@ export function generaCoperturaMinima(
       for(const med of medici){
         for(const sh of ctx.gt(med.id,g)){
           if(["M","A","1"].includes(sh.tipo)) m++;
-          else if(["P","2"].includes(sh.tipo)) p++;
+          else if(["P","2","Ap"].includes(sh.tipo)) p++;
           else if(["N","3"].includes(sh.tipo)) n++;
         }
       }
@@ -201,7 +201,7 @@ export function scegliMigliore(anno:number, mese:number, ndim:number, medici:Med
 export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese, relaxN?:boolean){
   const c = makeCtx(anno, mese, ndim, medici, turni, null, relaxN);
   const { giorniArr, isWk, cf, nmn, npn, canR, mdcOk, add, haQ, haM, haP,
-          cntWkLiberi, mrMdc, isAmb, isH, gt, cnt, canAssDist, wkPairs, isLibWk,
+          cntWkLiberi, mrMdc, ambMancanti, abilitatoAmb, gt, cnt, canAssDist, wkPairs, isLibWk,
           cntWk, wkQuota } = c;
   const cand = (g:number,f:string) => mrMdc.filter(m=>!haQ(m.id,g)&&canR(m,g,f)&&mdcOk(m,g,f));
 
@@ -247,10 +247,14 @@ export function riempimentoEmergenza(anno:number, mese:number, ndim:number, medi
   for(const g of giorniArr){
     let guard: number;
     // AMBULATORIO (giorno d'ambulatorio feriale) scoperto: assegna un medico d'ambulatorio libero.
-    if(isAmb(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))){
-      const ambPool = mrMdc.filter(m=>m.ambulatorio && !haQ(m.id,g) && canR(m,g,"M"))
+    // Uno slot per (ambulatorio, fascia): A (mattina) e/o Ap (pomeriggio),
+    // solo fra gli abilitati a quell'ambulatorio.
+    for(const sl of ambMancanti(g)){
+      const fA = sl.cod==="A" ? "M" : "P";
+      const ambPool = mrMdc.filter(m=>abilitatoAmb(m,sl.amb) && !haQ(m.id,g) && canR(m,g,fA)
+                                     && !gt(m.id,g).some(s=>s.tipo===sl.cod))
                             .sort((a,b)=>cnt(a.id)-cnt(b.id));
-      if(ambPool.length) add(ambPool[0].id,g,"A");
+      if(ambPool.length) add(ambPool[0].id,g,sl.cod,false,sl.amb);
     }
     guard=0; while(cf(g,"N")<1        && guard++<15){ const p=ordina(cand(g,"N"),g,"N"); if(!p.length) break; add(p[0].id,g,"N"); }
     // Sui giorni di WEEKEND, se mancano sia M sia P, prova PRIMA il turno
@@ -284,14 +288,13 @@ export function problemiResidui(anno:number, mese:number, ndim:number, medici:Me
     if(c.cf(g,"M")<c.nmn(g).mn) P.push(`G${g}: mattine ${c.cf(g,"M")}/${c.nmn(g).mn} (IMPOSSIBILE)`);
     if(c.cf(g,"P")<c.npn(g).mn) P.push(`G${g}: pomeriggi ${c.cf(g,"P")}/${c.npn(g).mn} (IMPOSSIBILE)`);
     if(c.cf(g,"N")<1)           P.push(`G${g}: notte mancante (IMPOSSIBILE)`);
-    if(c.isAmb(g)&&!c.isH(g)&&!medici.some(m=>c.gt(m.id,g).some(s=>["A"].includes(s.tipo))))
-      P.push(`G${g}: ambulatorio mancante`);
+    for(const sl of c.ambMancanti(g))
+      P.push(`G${g}: ${c.slotLbl(sl)} mancante`);
   }
   // Stessa rete di sicurezza della validazione globale.
   for(const m of medici){
-    if(m.ambulatorio) continue;
     for(let g=1; g<=ndim; g++)
-      if(c.gt(m.id,g).some(s=>!s.man&&["A"].includes(s.tipo)))
+      if(c.gt(m.id,g).some(s=>!s.man&&isAmbT(s.tipo)&&!abilitatoAmb(m,ambIdDi(s))))
         P.push(`${m.nome.split(" ").pop()}: ambulatorio G${g} a medico non abilitato`);
   }
   // Anche l'ultima chance deve dichiarare i weekend liberi mancanti (con
@@ -582,7 +585,7 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
          && !c.lavoraGiorno(m2.id,g-1)
          && !c.lavoraGiorno(m2.id,g+1)) lavIso++;   // l'ultimo giorno del mese non si giudica (il seguito è ignoto)
       if(lavOggi && g+1<=ndim && !haNot
-         && sh.some(x=>["P","2"].includes(x.tipo))
+         && sh.some(x=>["P","2","Ap"].includes(x.tipo))
          && c.gt(m2.id,g+1).some(x=>["M","A","1"].includes(x.tipo))) quickPM++;
     }
   }
@@ -774,7 +777,7 @@ export function cercaMigliorTentativo(
 // ed era stato scartato. Qui lo sweep mdcOk esplicito lo rende sicuro.
 function fasciaSlot(t:string): "M"|"P"|"N"|null {
   if(["M","A","1"].includes(t)) return "M";
-  if(["P","2"].includes(t))     return "P";
+  if(["P","2","Ap"].includes(t)) return "P";
   if(["N","3"].includes(t))     return "N";
   return null;
 }
@@ -1054,7 +1057,7 @@ export function rifinituraFinale(
   // finale. In sola lettura, budget di tempo proprio: mai un rallentamento
   // percettibile, mai un effetto sulla generazione. Un errore qui non deve
   // mai far perdere il tabellone: try/catch e si rilascia senza diagnosi.
-  if(bestM.buchi>0 || bestM.probs.some(p=>p.includes("ambulatorio mancante"))){
+  if(bestM.buchi>0 || bestM.probs.some(p=>/ambulatorio.* mancante$/.test(p))){
     try{ res.causale = conDeadline(Date.now()+2500, ()=>diagnosiCausale(anno, mese, ndim, medici, bestT, { maxMs: 1500 })); }catch(_){}
   }
   return res;
@@ -1193,14 +1196,18 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
 // I giorni d'ambulatorio vengono dalle REGOLE correnti (default martedì).
 // ═══════════════════════════════════════════════════════════════════════════
 export function calcAmbRotNext(turni:TurniMese, medici:Medico[], anno:number, mese:number, ndim:number, start:number){
-  const ab = medici.filter(m=>m.ambulatorio);
+  // Stessa lista del cursore della fase: abilitati ad ALMENO un ambulatorio.
+  const ambs = getRegole().ambulatori ?? [];
+  const ab = medici.filter(m=>abilitatoQualche(m,ambs));
   if(ab.length===0) return start;
-  const ambDw = new Set(getRegole().giorniAmb ?? [1]);
   let next = ((start % ab.length) + ab.length) % ab.length;
   for(let g=1; g<=ndim; g++){
-    if(!ambDw.has(dowOf(anno,mese,g)) || isHol(anno,mese,g)) continue;   // solo giorni d'ambulatorio feriali
-    for(let i=0;i<ab.length;i++){
-      if((turni[ab[i].id]?.[g]?.t||[]).some(s=>s.tipo==="A" && !s.man)){ next=(i+1)%ab.length; break; }
+    if(isHol(anno,mese,g)) continue;                     // solo giorni d'ambulatorio feriali
+    // Stesso ordine della fase: ambulatori in ordine di lista, A poi Ap.
+    for(const sl of slotAmbGiorno(ambs, dowOf(anno,mese,g))){
+      for(let i=0;i<ab.length;i++){
+        if((turni[ab[i].id]?.[g]?.t||[]).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb && !s.man)){ next=(i+1)%ab.length; break; }
+      }
     }
   }
   return next;

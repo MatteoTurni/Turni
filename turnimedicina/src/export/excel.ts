@@ -1,7 +1,8 @@
 import ExcelJS from "exceljs";
-import type { Medico, TurniMese } from "../engine/types";
+import type { Medico, TurniMese, Turno } from "../engine/types";
 import { MESI, dowOf, isFestivo } from "../engine/date";
-import { isMatt, isPom, isNot, isEscl } from "../engine/turni";
+import { isMatt, isPom, isNot, isEscl, isAmbT, etichettaTurno } from "../engine/turni";
+import { getRegole } from "../engine/regole";
 import { LOGO_PNG_BASE64 } from "./logo";
 
 // ─── EXPORT EXCEL ─────────────────────────────────────────────────────────────
@@ -83,12 +84,20 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
         // quindi si usa il rich text di ExcelJS: un "run" per turno, con
         // underline solo sui run sott. I font per-run prevalgono sullo stile di
         // cella impostato dal loop degli stili più sotto, che resta invariato.
-        const testo = ts.map(s => s.tipo).join("");
+        // A/Ap: la sigla dell'ambulatorio (v0.3.36), es. "DIA" / "DIAp".
+        const amb = getRegole().ambulatori ?? [];
+        const lbl = (s: Turno) => etichettaTurno(s, amb);
+        // Con un ambulatorio nella cella i turni si separano con uno spazio:
+        // attaccati, "A"+"P" darebbe "AP", indistinguibile dalla "Ap"
+        // (ambulatorio di pomeriggio), e "CAR"+"P" = "CARP" ≈ "CARp".
+        // Senza ambulatori resta il formato dell'ospedale ("MP").
+        const sep = ts.length > 1 && ts.some(s => isAmbT(s.tipo)) ? " " : "";
+        const testo = ts.map(lbl).join(sep);
         const sz = corpoTurni(testo);
         if (ts.some(s => s.sott)) {
           cell.value = {
-            richText: ts.map(s => ({
-              text: s.tipo,
+            richText: ts.map((s, i) => ({
+              text: (i > 0 ? sep : "") + lbl(s),
               font: { name: "Calibri", size: sz, bold: true, ...(s.sott ? { underline: true } : {}) },
             })),
           };

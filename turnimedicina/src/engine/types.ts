@@ -7,13 +7,20 @@ export interface Medico {
   codice: string;
   stato: Stato;
   obiettivo: number;
+  /** Abilitato ad ALMENO un ambulatorio. Storico (pre-v0.3.36): unica
+   *  abilitazione, vale per l'ambulatorio "A" quando `ambulatori` è assente. */
   ambulatorio: boolean;
+  /** Ambulatori (id di Regole.ambulatori) a cui il medico è abilitato
+   *  (v0.3.36). Assente = storico: `ambulatorio` vale per l'ambulatorio "A". */
+  ambulatori?: string[];
 }
 
 export interface Turno {
   tipo: string;
   sott?: boolean;
   man?: boolean;
+  /** Solo per A/Ap: id dell'ambulatorio (Regole.ambulatori). Assente = "A". */
+  amb?: string;
 }
 
 export interface Cella { t: Turno[]; }
@@ -25,6 +32,19 @@ export type TurniMese = Record<string, Record<string, Cella>>;
 export type TurniAll = Record<string, TurniMese>;
 
 export interface FasciaFabb { mMin: number; mMax: number; pMin: number; pMax: number; }
+
+export type FasciaAmb = "M"|"P"|"MP";
+
+/** Un ambulatorio del reparto (v0.3.36). */
+export interface Ambulatorio {
+  id: string;
+  nome: string;
+  /** Etichetta breve mostrata in tabellone ed Excel (pomeriggio: sigla + "p"). */
+  sigla: string;
+  /** Giorno della settimana (0=Lun … 4=Ven) → fascia. Assente = niente
+   *  ambulatorio quel giorno. I festivi sono sempre esclusi. */
+  giorni: Partial<Record<number, FasciaAmb>>;
+}
 
 export interface Regole {
   maxNotti: number;
@@ -58,9 +78,14 @@ export interface Regole {
    *  bordi col ML — sempre ENTRO il fabbisogno MINIMO. Preferenza SOFT:
    *  nessuna cella dipende dalla catena per essere coperta. 0 = disattivata. */
   blocchiMattina: number;
-  /** Giorni della settimana con ambulatorio (0=Lun … 4=Ven, festivi sempre
-   *  esclusi). Default [1] = martedì. Lista vuota = nessun ambulatorio. */
-  giorniAmb: number[];
+  /** Ambulatori del reparto (v0.3.36), ciascuno coi suoi giorni e fasce.
+   *  Lista vuota = nessun ambulatorio. Gli abilitati stanno sul Medico. */
+  ambulatori: Ambulatorio[];
+  /** @deprecated solo in INGRESSO (salvataggi pre-v0.3.36): mergeRegole li
+   *  converte nell'ambulatorio "A" quando `ambulatori` è assente. */
+  giorniAmb?: number[];
+  /** @deprecated vedi giorniAmb. */
+  fasceAmb?: Partial<Record<number, FasciaAmb>>;
   fabb: { fer: FasciaFabb; sab: FasciaFabb; fest: FasciaFabb };
 }
 

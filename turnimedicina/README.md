@@ -1,4 +1,379 @@
-# TurniMedicina 0.3.0
+# TurniMedicina 0.3.36
+
+## Novità 0.3.36 — più ambulatori, ciascuno coi suoi abilitati
+
+Il pannello **Regole → Ambulatori** sostituisce "Giorni di ambulatorio": ora è
+un elenco di ambulatori (aggiungi / elimina), ognuno con
+
+- **nome** e **sigla** (quella che compare in tabellone ed Excel: `DIA` di
+  mattina, `DIAp` di pomeriggio);
+- **giorni e fascia**: per ogni giorno feriale —, Mattina, Pomeriggio o
+  Mattina + pomeriggio;
+- **medici abilitati**, modificabili anche dalla scheda del medico (una
+  casella per ambulatorio).
+
+Il generatore assegna ogni ambulatorio solo ai suoi abilitati. L'equità è
+misurata sul **totale** degli ambulatori fatti (chi è abilitato a più
+ambulatori non ne fa di più), con un unico cursore di rotazione fra mesi.
+Due ambulatori nella stessa fascia dello stesso giorno vanno a medici diversi.
+Un ambulatorio senza abilitati resta scoperto ed è segnalato col suo nome.
+
+Dati: ogni A/Ap porta l'id del suo ambulatorio (`Turno.amb`); le abilitazioni
+stanno su `Medico.ambulatori`. **Compatibilità**: le regole salvate prima
+(giorniAmb/fasceAmb) diventano l'ambulatorio "Ambulatorio" (sigla `A`); i
+medici col vecchio flag vi risultano abilitati; le A/Ap già in tabellone gli
+appartengono. A regole di default l'impronta deterministica (`harness/det.ts`)
+è identica alla 0.3.35. Test: `piuAmbulatori.test.ts`.
+
+
+## Novità 0.3.35 — ambulatorio anche di pomeriggio
+
+Nel pannello **Regole → Giorni di ambulatorio**, per ogni giorno selezionato
+si sceglie ora la fascia:
+
+- **Mattina** (default, comportamento storico): turno `A`;
+- **Pomeriggio**: nuovo turno `Ap` (ambulatorio di pomeriggio);
+- **Mattina + pomeriggio**: sia `A` sia `Ap`, due slot distinti assegnati con
+  la stessa rotazione/equità fra gli abilitati — di norma a due medici diversi
+  (lo stesso medico prende entrambi solo se nessun collega è disponibile, e
+  sempre nel rispetto della distanza fra giornate piene).
+
+La `Ap` si comporta come un pomeriggio per tutte le regole (Regola N, Xp,
+distanza associati, affiancamento MDC) ma, come la `A`, non conta nel
+fabbisogno di reparto. Pesa 1 sull'obiettivo, si inserisce anche a mano dal
+CellModal e compare nella riga di copertura con un quadratino per slot
+(`A?`/`Ap?` se scoperto). Il fabbisogno del mese conta 2 slot nei giorni
+mattina + pomeriggio. Regole salvate prima della 0.3.35: tutto resta di
+mattina. Test: `ambulatorioFasce.test.ts`.
+
+
+## Novità 0.3.34 — equità degli ambulatori con A manuali
+
+`faseAmbulatorio` distribuiva le A con un round-robin che contava POSIZIONI
+nella lista degli abilitati, non ambulatori davvero fatti. Il giorno con una A
+MANUALE veniva saltato dal `continue` in cima al ciclo SENZA far avanzare
+`nextIdx`, quindi il manuale non consumava alcun giro: chi ne aveva già uno
+rientrava in gara alla pari con chi non ne aveva nessuno. (Anche
+`calcAmbRotNext` conta le sole A automatiche, quindi il manuale era invisibile
+pure alla rotazione fra mesi.)
+
+Caso reale, settembre 2026: 4 abilitati, 4 martedì (l'8 è il patrono) e una A
+manuale su Renis il giorno 1. Risultato: **Renis prendeva sempre 2 ambulatori
+su 4 e un altro restava a 0, per OGNI valore del cursore di rotazione** — esito
+deterministico, non sfortuna.
+
+Ora la chiave primaria dell'ordinamento è il CARICO EFFETTIVO del mese (A
+manuali comprese) e la distanza dal cursore è il solo spareggio. A carichi pari
+— il caso tipico del primo giorno del mese, tutti a zero — l'ordine coincide
+con quello di prima: la rotazione FRA MESI resta intatta, dentro il mese vince
+l'equità.
+
+Misure — scenario reale, 6 run appaiati (pipeline completa, tutti gli indici
+di rotazione):
+
+| | prima | dopo |
+|---|---|---|
+| ripartizione | sempre 2/1/1/0 | **sempre 1/1/1/1** |
+| spread max−min | 2,00 | **0,00** |
+| `wkScarto` medio | 2,50 | **1,50** |
+| soft medio | 692 | **689** |
+| copertura completa | 6/6 | 6/6 |
+
+Rotazione su 12 mesi consecutivi senza manuali (cursore riportato di mese in
+mese come fa la UI): 13/13/13/12 prima e dopo, `max−min = 1`. Con ambulatorio
+3 giorni a settimana (`giorniAmb: [0,2,4]`), 6 mesi: 19/19/18/18 in entrambi.
+Dove era già equo la patch non cambia nulla.
+
+Nessun aumento dei fallimenti di fase: su 40 restart deterministici per
+scenario, gli ambulatori mancanti restano identici prima e dopo.
+
+Un caso resta a spread 2 ed è CORRETTO: in agosto 2026 il giorno 25 ha due
+abilitati bloccati da una `L` manuale, quindi la seconda A può andare solo a chi
+ne ha già una. Lì la patch è un no-op esatto — i risultati coincidono
+bit-a-bit con quelli di prima.
+
+Test: `equitaAmbulatorio.test.ts` (3 casi). Il caso «A manuale» FALLISCE sul
+motore pre-0.3.34 e passa dopo: fissa esattamente la regressione.
+
+## Novità 0.3.33 — straordinari e ALPI nel riepilogo, mattina a g+2
+
+### 1. Sottolineatura anche sulla N
+
+`TS` in `src/components/costanti.ts` include ora la `N`. Il motore era già
+pronto: `vt("N", sott)` vale 0, quindi una N sottolineata è lavoro reale che NON
+scala l'obiettivo mensile — la semantica dello straordinario. Continua invece a
+contare per il tetto `maxNotti`, per l'equità delle notti e per i festivi
+lavorati: una notte affatica comunque, sottolineata o no.
+
+### 2. Riepilogo del medico
+
+Due contatori nuovi in `src/engine/bilancio.ts`, speculari fra loro:
+
+| | cosa conta | pesi |
+|---|---|---|
+| `alpiMedico` | turni di PS SOTTOLINEATI | 1 e 2 → 1, il 3 → 2 |
+| `straordinariMedico` | turni di reparto SOTTOLINEATI | M e P → 1, la N → 2 |
+
+Sono DISGIUNTI per costruzione: `STRAORD` usa i tipi esatti `M`/`P`/`N`, quindi
+l'ambulatorio (`A`) non è straordinario e i codici PS finiscono solo in ALPI.
+In entrambi il peso è quello della versione PIENA (`vt(tipo, false)`): il turno
+c'è stato, non conta l'obiettivo che non scala.
+
+Nuovo ordine, in card e in «Copia riepilogo»: **turni totali → straordinari →
+PS (di cui ALPI) → festivi lavorati → weekend liberi → ambulatorio → permessi**.
+Il blocco M/P/N resta attaccato al totale, di cui è la scomposizione. «Weekend
+lavorati» è ora «Festivi lavorati» (solo etichetta: la metrica `pesoWeekend` è
+invariata). L'ALPI compare accanto al PS solo quando è > 0.
+
+### 3. Regola della notte: nuova opzione «Mattina» a g+2
+
+Nuova regola configurabile `mattinaDopoNotte`: due giorni dopo una notte è
+ammessa anche una Mattina (M, A o 1), non solo il Pomeriggio. Innestata nei
+QUATTRO punti che decidono la cosa, così generazione, inserimento manuale e
+validazione dicono la stessa cosa:
+
+- `violaG2` — cosa vìola il g+2 di una notte (usato da `canN` e da `checkRegolaN`)
+- `canMatt` — la M a g+2
+- il calcolo di capacità in `ctx` (`f==="M" && manNight(g-2)`)
+- `opzioni` in `diagnosi.ts`, per la diagnosi delle impossibilità certificate
+
+È ORTOGONALE a `notteLiberoNotte` (che riguarda la N a g+2): possono stare
+accese insieme. `riposoEsteso` le neutralizza entrambe, come già faceva.
+
+Il pannello Regole ha ora un box **REGOLA DELLA NOTTE** a tendina che raccoglie
+tutto quanto riguarda le notti: `maxNotti` e `maxNottiConsec` (migrati da
+«Limiti per medico») più i tre toggle sotto «Cosa è ammesso due giorni dopo la
+notte (g+2)». La riga di riepilogo resta sempre visibile:
+`g+1 sempre libero · a g+2 P · M · N · max 5 notti/mese, 2 di fila`.
+Accendere un toggle spegne quelli in conflitto (tabella `TOGGLE_NOTTE`, campo
+`spegne`), così il pannello non mostra mai due regole che si annullano.
+
+### Verifiche
+
+- **154/154 test** (140 preesistenti + 14 nuovi: `mattinaDopoNotte.test.ts`,
+  `contatoriRiepilogo.test.ts`), build e typecheck puliti.
+- **Impronta deterministica identica alla 0.3.32**: `harness/det.ts` genera 100
+  tabelloni con SALT fissi (2 mesi × 2 valori di `maxConsec` × 25 restart),
+  senza fasi a tempo, e confronta l'hash di ognuno — `a26ddccbd5410baa` in
+  entrambi i rami. A regole di default la modifica è un no-op PROVATO.
+  L'impronta deterministica è preferita a `harness/sim.ts` per questo confronto:
+  sim usa budget a wall-clock e ha una varianza run-to-run che renderebbe il
+  raffronto inconcludente.
+
+## Novità 0.3.32 — rifinitura multipla, uno per worker
+
+`generaParallelo` sceglieva il vincitore fra i tabelloni GREZZI dei worker e
+rifiniva solo quello. Ma `rifinituraFinale` (LNS + recupero weekend +
+equalizzatore di carico + compattazione) è un hill-climb PATH-DEPENDENT: il
+grezzo migliore non produce affatto il tabellone FINALE migliore. Ora si
+conserva il best di OGNI worker e si rifiniscono tutti, tenendo il migliore
+DOPO la rifinitura (`rifinisciCandidati`, stesso metro gerarchico `cmpMis`).
+
+Uno per worker e non i top-K globali: i top-K globali arrivano quasi sempre
+dallo stesso worker e sono quasi-cloni fra loro (misurato: nessun guadagno).
+I best dei worker sono per costruzione punti di partenza DIVERSI (saltSeed
+distinti).
+
+`rifinisciCandidati` è MONOTONA per costruzione: parte dal risultato del
+primario e lo sostituisce solo se `cmpMis` è strettamente migliore. Nella
+stessa esecuzione non può quindi peggiorare l'esito. Due guardie: si esce
+subito se il primario rifinito ha buchi (con i buchi la rifinitura attiva
+l'ultima chance, e moltiplicarla ×4 non è accettabile), e `limite` è un muro di
+wall-clock — ogni rifinitura riceve solo il tempo che resta, così il budget
+promesso al chiamante resta un tetto reale.
+
+Misure — settembre 2026 reale (scenario dell'utente), `maxConsec:5`, 24 run,
+confronto primario→finale NELLA STESSA esecuzione (privo del rumore delle fasi
+a budget di tempo):
+
+| | primario | finale |
+|---|---|---|
+| scarto carico weekend medio | 1,42 | **1,21** |
+| run con `wkScarto ≤ 1` | 14/24 (58%) | **17/24 (71%)** |
+| run migliorati / peggiorati | — | **5 / 0** |
+| costo rifinitura | ~200 ms | ~600 ms |
+
+Nota sul soft: in 2 dei 5 run migliorati il soft SALE mentre `wkScarto` scende
+(es. 643→741 con scarto 2→1). È corretto: `cmpMis` mette l'equità weekend prima
+dell'organicità, ed è la stessa gerarchia usata da `registra()` e `prova()`.
+
+Su 16 run appaiati a parità di seme (vecchio comportamento vs nuovo):
+`wkScarto` medio 1,44 → 1,06, soft medio 667 → 633, run con `wkScarto ≤ 1`
+da 9/16 a 13/16.
+
+Regressione `harness/sim.ts` (18 scenari × 2): **0 violazioni, 18 migliorati,
+0 peggiorati**, `wkScarto` totale 47 → 37, soft medio 680 → 674.
+Harness dedicato allo scenario: `harness/set26.ts` + `scenario_settembre2026.json`.
+
+### Vicoli ciechi documentati (misurati e scartati)
+
+Il caso di partenza era: un tabellone di settembre 2026 ottimo per equità
+weekend usciva solo dopo moltissime generazioni. Diagnosi: `wkScarto=2` in
+pratica sempre, `wkScarto=1` raro. Cose provate e BOCCIATE dai numeri:
+
+- **Budget pieno dopo il primo perfetto.** `OTTIM_MS = min(4000, maxMs*0.4)`
+  spegne metà dei worker a 4-5,6 s su 9,5 (telemetria). Alzarlo a `maxMs`: su 7
+  run appaiati scarto weekend IDENTICO (1,29 vs 1,29), soft PEGGIORE (654 vs
+  639), +50% di CPU. La ricerca satura presto: conta più la diversità fra
+  worker che la profondità di uno solo. Tetto lasciato invariato.
+- **Riparazione dei near-miss** (`riequilibraWeekendLiberi` sui tabelloni con
+  `buchi=0 && wkDef>0`, dentro `registra`): 25 riparati su 705, tasso `s=0` da
+  16,6% a 19,3%, zero effetto sullo scarto weekend.
+- **Ordinamento quota-aware** in `coperturaWeekend` e `faseNotti` (penalizzare
+  `cntWk + pesoSlot > quota.hi`): distribuzione di `wkScarto` invariata su 300
+  restart.
+- **Ridistribuzione CP di tutti gli slot weekend** sul tabellone finito
+  (svuota e ri-risolve con MRV + branch&bound): 6.000-9.000 foglie complete
+  raggiunte, **zero valide** — a feriali fissi ogni distribuzione con
+  `wkScarto ≤ 1` viola i weekend liberi. La struttura weekend non è
+  riparabile a posteriori, deve uscire giusta dalla ricerca: è il motivo per
+  cui l'intervento è finito sulla SELEZIONE dei candidati e non su una nuova
+  fase di riparazione.
+- **Scambio compensato di partecipazione weekend** (due medici si scambiano
+  due interi weekend, liberi invariati): a somma zero, tutti i weekend valgono
+  ~2 punti a testa.
+
+## Novità 0.3.31 — festività locale del santo patrono (8 settembre)
+
+L'8 settembre (Madonna dell'Olmo, patrona di Cava de' Tirreni) è ora trattato
+come un festivo a tutti gli effetti. L'innesto è UNICO — `isHol` in
+`src/engine/date.ts` — perché tutto il resto del motore e della UI si appoggia
+già a quel predicato:
+
+```ts
+const FESTIVI_LOCALI = new Set([
+  "09-08", // Madonna dell'Olmo — patrona di Cava de' Tirreni
+]);
+export function isHolLocale(m,d){ … }          // chiave "MM-GG", senza anno
+export function isHol(y,m,d){ return holSet(y).has(…) || isHolLocale(m,d); }
+```
+
+Scelte di progetto:
+- `holSet` NON è stato toccato: resta l'elenco delle sole festività NAZIONALI,
+  con la sua cache per anno (che così non va mai invalidata). La separazione è
+  verificata da un test (`holSet(2026)` non contiene `2026-09-08`).
+- Chiave `"MM-GG"` senza anno: la data è fissa, la stessa riga vale per ogni
+  anno futuro senza manutenzione. Aggiungere un'altra festa locale = una
+  stringa in più nel Set (le feste patronali MOBILI non sono supportate:
+  servirebbe una chiave completa `"AAAA-MM-GG"`).
+- `date.ts` resta PURO (nessun import nuovo): la variante configurabile da
+  pannello (campo in `Regole` + UI + persistenza) è stata valutata e scartata
+  per ora — l'unico manutentore è chi fa il deploy, e la data non cambia.
+  Se un giorno servisse, l'upgrade tocca solo `isHolLocale`, non i chiamanti.
+
+Effetti automatici (nessun altro file modificato): fabbisogno FESTIVO (1M/1P
+invece di 2-3 / 1-2), ambulatorio soppresso, notte del 7 settembre PREFESTIVA
+(peso 2), mattina dell'8 con peso 1 nell'equità dei festivi, colonna colorata
+in griglia ed export Excel.
+
+Test: nuovo `src/engine/__tests__/festivoLocale.test.ts` (8 test, suite a 140).
+I due test di generazione asseriscono INVARIANTI DURI (tetti massimi, divieto
+di ambulatorio nei festivi) e verificano i minimi solo se `r.ok`: con budget a
+tempo il tabellone non è deterministico, e assertire `r.ok` misura la CPU
+invece del codice. Stabilità verificata 12/12 run.
+
+Misure A/B (harness/patrono.ts, motore con e senza la data locale):
+- `set26-vuoto` (settembre 2026 pieno organico, 6 run/lato): buchi 0 → 0,
+  violazioni 0 → 0. Unico effetto: l'ambulatorio del martedì 8 sparisce
+  (A@8 6/6 → 0/6).
+- `set27-mercoledì` e `set30-domenica` (controlli): invariati. Nel 2030 l'8
+  cade di domenica ed era già festivo — nessun doppio conteggio.
+- `set26-lungodeg` (scenario duro: un MR assente tutto il mese + uno per metà,
+  20 run/lato + campione di conferma da 12): copertura INVARIATA (buchi 0.10 e
+  0.17 su entrambi i lati), ma **equità weekend peggiore**: wkScarto 0.25 →
+  2.05 (conferma: 0.33 → 2.08), wkDef 0.25 → 0.55. Causa: il festivo in più
+  toglie ~3 slot al mese (fabbisogno ridotto + ambulatorio chiuso) mentre gli
+  obiettivi restano a 25, quindi su un organico già sottile il carico migra sui
+  weekend e la forchetta si allarga. Costo dichiarato e ACCETTATO: l'8 settembre
+  è un dato di calendario, non un parametro da tarare.
+
+Nota non correlata: `organicita.test.ts` ("la generazione resta senza
+violazioni…", giugno 2026, budget 2000 ms) fallisce sporadicamente sotto carico
+per lo stesso motivo — assertisce `r.ok` su una ricerca a tempo. In isolamento
+6/6 run puliti. È flakiness PREESISTENTE, indipendente da questa versione.
+
+---
+
+## Novità 0.3.29 — carico weekend di chi ha turni weekend manuali
+
+Problema segnalato e riprodotto (harness/wkman.ts): a un medico con 6 turni
+weekend inseriti a mano la generazione aggiungeva quasi sempre altri slot
+weekend (10/10 run), portandolo oltre la sua quota equa di carico in 3-5 run
+su 10. Cause: i suoi weekend non sono riservabili come liberi (wkTargetMed
+ridotto dai manuali) e il criterio di risparmio dei weekend liberi (costoWk,
+v0.3.25) mette primo proprio chi ha la coppia sab-dom "già spesa".
+
+Interventi, tutti verificati A/B con METRO DI GIUDIZIO UNICO (i tabelloni di
+entrambe le versioni rivalutati dallo stesso valutatore, harness/eval.ts):
+
+1. **Fix capacità fantasma M/P** (stessa classe del fix Notte v0.3.27): il
+   "compagno" manuale che rende ammissibile uno slot festivo per l'MDC può
+   saturare lui stesso il fabbisogno massimo (festivi 1/1): quello slot non
+   aggiunge capacità a nessuno. wkCapacita/puoPortareWk ora lo riconoscono:
+   niente più quote mai realizzabili che falsavano la forchetta d'equità.
+2. **Protezione di chi ha carico weekend manuale**: negli ordinamenti dei
+   cluster critici e del riempimento d'emergenza, un candidato con pavimento
+   manuale (wkPavimento>0) che con lo slot supererebbe la propria quota alta
+   scivola in fondo alla fila (mai un filtro: resta candidato se è l'unico).
+   La condizione sul pavimento è essenziale: applicata a tutti bruciava
+   coppie libere nei mesi senza manuali (misurato e scartato).
+3. **Equalizzatore con scambio compensato**: se il ricevente è bloccato dal
+   tetto dell'obiettivo, cede al donatore un suo slot feriale e prende lo
+   slot weekend — i carichi restano invariati e il carico weekend migra.
+4. wkQuota memoizzata nel ctx (invalidata dall'unico scrittore) e
+   wkPavimento memoizzato: costo degli ordinamenti nuovi trascurabile.
+
+Esito (18 scenari × 6 run, metro unico): violazioni 0=0, buchi identici,
+wkDef −0.03, wkScarto −0.13 medio (punte: −1.5 obiettivi bassi, −0.83
+notte-libero-notte), wkLibMin +0.02, nessun peggioramento ≥0.3 su alcuno
+scenario. Scenario segnalato: 0/10 run sopra quota (prima 3-5/10). Percorsi
+scartati perché misurati peggiori: quota "senior" al costoWk globale, quota
+come spareggio senza condizione sul pavimento.
+
+---
+
+## Novità 0.3.28
+
+### 1. Budget di tempo REALE (deadline dura del motore)
+
+`maxMs` era rispettato solo FRA i restart/le iterazioni: un singolo run a
+budget pieno (BT=60, TRIES=20, 200k nodi) su un mese molto vincolato durava
+minuti. Misurato sull'harness multi-scenario: `generaConUltimaChance` >4 min
+su organico ridotto, `riparaBuchi` da solo 37 s con obiettivi bassi, e la
+ricerca sforava il budget di 3-5×. Ora `ENG.DEADLINE` (epoch ms, 0=off) viene
+impostata dagli entry-point a tempo (`cercaMigliorTentativo`,
+`generaConUltimaChance`, i passi di `rifinituraFinale`) dentro try/finally, e
+i loop costosi la controllano periodicamente abortendo in best-effort: stessi
+risultati quando il tempo basta, tabellone migliore-fin-lì quando non basta.
+Sui tre scenari patologici: da >4-10 min a 5-13 s totali, zero regressioni
+sulla suite e sull'harness.
+
+### 2. Organicità dei turni (lavIso / quickPM + compattaTurni)
+
+Problema misurato: anche nei mesi facili il tabellone conteneva ~12-16 giorni
+di lavoro ISOLATI (libero-lavoro-libero) e ~10-15 liberi "bucati" fra due
+giorni lavorati. Tre interventi, tutti SOFT (mai un buco o una violazione in
+cambio):
+
+- `misuraTabellone` conta `lavIso` (giorni lavorati isolati, Notti escluse) e
+  `quickPM` (rientri rapidi P→M) e li aggiunge al punteggio soft con pesi
+  bassi (10 e 4, sotto sforo=40 e wkScarto=60).
+- ADOZIONE GERARCHICA: a punteggio duro pari decide prima `wkScarto` (equità
+  del carico weekend), poi il soft — l'organicità non può mai comprare un
+  punto di iniquità weekend (senza questo strato: +0.12 wkScarto medio
+  misurato).
+- `compattaTurni` (rifinitura): hill-climb transazionale che sposta singoli
+  slot M/P automatici dei feriali dai frammenti verso i blocchi (stessa
+  disciplina di riequilibraCaricoWeekend, mdcOk incluso). Toccando solo
+  feriali non-festivi, carico weekend e weekend liberi restano invariati.
+
+Verificato su 18 scenari × 5-24 run con validatori INDIPENDENTI dal ctx
+(harness/sim.ts): 0 violazioni, buchi/wkDef/notti invariati, giorni isolati
+−8 in media (12.6→4.2 su dicembre, 14.3→3.0 su febbraio), liberi bucati
+−3.8, transizioni lavoro/riposo −1.7 per medico. Nuova suite:
+`__tests__/organicita.test.ts`.
+
+---
 
 Pianificazione turni per la U.O.C. Medicina Interna. Da questa versione il
 progetto è un'app Vite + React + TypeScript modulare (prima: singolo TSX da
@@ -20,7 +395,7 @@ src/
   engine/            MOTORE — puro: zero React, zero DOM, zero localStorage
     types.ts         tipi del dominio (Medico, Turno, TurniMese, Regole, ...)
     date.ts          festivi dinamici (Pasqua Gauss/Meeus), dowOf/dimOf, mkKey
-    turni.ts         isMatt/isPom/isNot/vt, SPEC, cloneT/pulisciT
+    turni.ts         isMatt/isPom/isNot/vt, SPEC, esclusioni (X, Xm/Xp/Xn), cloneT/pulisciT
     regole.ts        REGOLE_DEFAULT, mergeRegole, setRegole/getRegole
     state.ts         ENG (sale, budget, PREV, rotazione amb.), mkRng/shuf
     ctx.ts           makeCtx: guardie, Regola N, contatori, undo-log
