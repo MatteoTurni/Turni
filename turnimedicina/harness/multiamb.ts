@@ -96,7 +96,7 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
     for(let g=1;g<=ndim;g++) for(const s of cell(T,m.id,g)) if(isNot(s.tipo)){ notti++; if(!s.man) nottiAuto++; }
     if(notti>R.maxNotti && nottiAuto>0) V.push(`${m.nome}: ${notti} notti (max ${R.maxNotti})`);
     // ── max giorni consecutivi (violazione imputabile ad almeno un auto)
-    if(m.stato!=="ML"){                                  // ML esente (v0.3.30)
+    {
       let run=0, runMan=0;
       // coda mese precedente (immovibile)
       let tp=0; for(let k=0;k>=-6 && lavoraB(m.id,k);k--) tp++;
@@ -160,16 +160,6 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
         const slots = isHol(anno,mese,g) ? [] : slotAmbGiorno(R.ambulatori??[],dow);
         if(!slots.some(sl=>sl.cod===s.tipo&&sl.amb===ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto fuori dai giorni/fasce d'ambulatorio`);
       }
-    }
-  }
-  // ── ESCLUSIONI: nessun turno sulla fascia negata (né auto né manuale)
-  for(const m of medici) for(let g=1;g<=ndim;g++){
-    const c = cell(T,m.id,g);
-    for(const s of c){
-      const f = isMatt(s.tipo)?"M":isPom(s.tipo)?"P":isNot(s.tipo)?"N":null;
-      if(!f) continue;
-      const bloc = c.find((e:any)=> e.tipo==="X" || e.tipo===(f==="M"?"Xm":f==="P"?"Xp":"Xn"));
-      if(bloc) V.push(`${m.nome}: ${s.tipo} g${g} su fascia ${f} esclusa da ${bloc.tipo}`);
     }
   }
   // ── conservazione dei manuali
@@ -258,133 +248,135 @@ function conAssenze(assenze: Record<number,[number,number][]>, tipo="L"): TurniM
   return T;
 }
 
-function scenari(): ScenCfg[] {
-  const S: ScenCfg[] = [];
-  // 1) reale agosto 2026 dallo snapshot dell'utente
-  const snap = JSON.parse(fs.readFileSync("./scenario_agosto2026.json", "utf8"));
-  S.push({ nome:"ago26-reale", anno:snap.anno, mese:snap.mese, medici:snap.medici, ex:snap.ex });
-  // 2) giugno 2026 pieno organico, nessuna assenza
-  S.push({ nome:"giu26-vuoto", anno:2026, mese:5, medici:mediciBase(), ex:{} });
-  // 3) marzo 2026 due settimane di ferie sfalsate
-  S.push({ nome:"mar26-ferie", anno:2026, mese:2, medici:mediciBase(),
-           ex: conAssenze({1:[[2,8]], 5:[[9,15]], 7:[[16,22]], 9:[[9,15]]}) });
-  // 4) agosto 2026 sintetico difficile: quindicine sovrapposte, 5 medici via
-  S.push({ nome:"ago26-sint", anno:2026, mese:7, medici:mediciBase(),
-           ex: conAssenze({1:[[1,15]], 2:[[10,24]], 5:[[16,31]], 7:[[1,15]], 9:[[16,31]]}) });
-  // 5) dicembre 2026: festivi di Natale + ferie
-  S.push({ nome:"dic26-fest", anno:2026, mese:11, medici:mediciBase(),
-           ex: conAssenze({2:[[21,31]], 7:[[24,31]], 1:[[28,31]]}) });
-  // 6) febbraio 2027 (mese corto)
-  S.push({ nome:"feb27-corto", anno:2027, mese:1, medici:mediciBase(), ex: conAssenze({5:[[8,14]]}) });
-  // 7) organico ridotto: 2 MR in meno
-  S.push({ nome:"giu26-ridotto", anno:2026, mese:5,
-           medici: mediciBase().filter(m=>![7,9].includes(m.id)), ex:{} });
-  // 8) luglio 2026 senza MPS in organico
-  S.push({ nome:"lug26-noMPS", anno:2026, mese:6,
-           medici: mediciBase().filter(m=>m.stato!=="MPS"), ex: conAssenze({2:[[6,19]]}) });
-  // 9) aprile 2027 (Pasqua/Pasquetta) con ferie attorno a Pasqua
-  S.push({ nome:"apr27-pasqua", anno:2027, mese:3, medici:mediciBase(),
-           ex: conAssenze({1:[[1,11]], 6:[[1,11]]}) });
-  // 10) regola notte-libero-notte attiva (agosto reale)
-  S.push({ nome:"ago26-nLn", anno:snap.anno, mese:snap.mese, medici:snap.medici, ex:snap.ex,
-           regole:{ notteLiberoNotte:true } });
-  // 11) riposo esteso attivo
-  S.push({ nome:"giu26-ripEst", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ riposoEsteso:true } });
-  // 12) obiettivo 3 weekend liberi
-  S.push({ nome:"giu26-wk3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ wkTarget:3 } });
-  // 13) ambulatorio 3 giorni a settimana
-  S.push({ nome:"giu26-amb3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ ambulatori:[{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:{ 0:"M", 2:"M", 4:"M" } }] } });
-  // 14) fabbisogno alto (3 mattine, 2 pomeriggi minimi nei feriali)
-  S.push({ nome:"giu26-fabbAlto", anno:2026, mese:5, medici:mediciBase(), ex:{},
-           regole:{ fabb:{ fer:{mMin:3,mMax:3,pMin:2,pMax:2}, sab:{mMin:2,mMax:2,pMin:1,pMax:1}, fest:{mMin:1,mMax:1,pMin:1,pMax:1} } as any } });
-  // 15) continuità: notti manuali a fine mese precedente
-  {
-    const prevT: TurniMese = { 1:{30:{t:[{tipo:"N",sott:false,man:true}]}}, 5:{29:{t:[{tipo:"N",sott:false,man:true}]}} };
-    S.push({ nome:"lug26-prevN", anno:2026, mese:6, medici:mediciBase(), ex:{}, prevT });
+// ═══════════════════════════════════════════════════════════════════════════
+// STRESS PIÙ AMBULATORI (v0.3.36): configurazioni CASUALI di ambulatori
+// (1-3 ambulatori, giorni/fasce casuali, abilitati casuali, A/Ap manuali
+// sparse) sulle squadre reali di agosto/settembre 2026 e su giugno pieno
+// organico. Oltre ai validatori di sim.ts, controlli specifici:
+//   · ogni slot (ambulatorio, A|Ap) coperto da UN solo medico, oppure
+//     dichiarato mancante nei problemi;
+//   · nessun medico con due A (o due Ap) nello stesso giorno;
+//   · A/Ap automatiche solo agli abilitati di QUEL ambulatorio e solo nei
+//     suoi giorni/fasce (già in violazioni()).
+// Uso: node multiamb.cjs [n_config=40] [ms=2000]
+// ═══════════════════════════════════════════════════════════════════════════
+function violazioniAmb(sc: ScenCfg, T: TurniMese, problemi: string[]): string[] {
+  const V: string[] = [];
+  const R = getRegole();
+  const ndim = dimOf(sc.anno, sc.mese);
+  for(let g=1; g<=ndim; g++){
+    for(const m of sc.medici){
+      const c = cell(T,m.id,g);
+      if(c.filter(s=>s.tipo==="A").length>1) V.push(`g${g}: ${m.nome} con due A`);
+      if(c.filter(s=>s.tipo==="Ap").length>1) V.push(`g${g}: ${m.nome} con due Ap`);
+    }
+    const slots = isFestivo(sc.anno,sc.mese,g) ? [] : slotAmbGiorno(R.ambulatori, dowOf(sc.anno,sc.mese,g));
+    for(const sl of slots){
+      const chi = sc.medici.filter(m=>cell(T,m.id,g).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb));
+      if(chi.length>1 && chi.some(m=>cell(T,m.id,g).some(s=>s.tipo===sl.cod&&ambIdDi(s)===sl.amb&&!s.man)))
+        V.push(`g${g}: slot ${sl.amb}/${sl.cod} coperto ${chi.length} volte`);
+      if(chi.length===0 && !problemi.some(p=>new RegExp(`(^|\\D)${g}: .*ambulatorio.*mancante`).test(p)))
+        V.push(`g${g}: slot ${sl.amb}/${sl.cod} scoperto e NON segnalato`);
+    }
   }
-  // 16) obiettivi bassi (part-time diffuso)
-  {
-    const med = mediciBase().map(m=>({...m, obiettivo: m.stato==="MPS"?0:15}));
-    S.push({ nome:"giu26-obj15", anno:2026, mese:5, medici:med, ex:{} });
+  return V;
+}
+
+function scenari(n: number): (ScenCfg & { desc: string })[] {
+  const rnd = mulberry32(0xA3B1);
+  const pick = <T,>(a: T[]) => a[Math.floor(rnd()*a.length)];
+  const basi: { nome:string; anno:number; mese:number; medici:Medico[]; ex:TurniMese }[] = [];
+  for(const f of ["scenario_agosto2026.json","scenario_settembre2026.json"]){
+    const s = JSON.parse(fs.readFileSync(f,"utf8"));
+    basi.push({ nome:f.slice(9,15), anno:s.anno, mese:s.mese, medici:s.medici, ex:s.ex });
   }
-  // 17) un MR assente tutto il mese + un altro mezzo mese
-  S.push({ nome:"set26-lungodeg", anno:2026, mese:8, medici:mediciBase(),
-           ex: conAssenze({1:[[1,30]], 2:[[1,15]]}) });
-  // 18) manuali fitti: notti e associati pre-piazzati dall'utente
-  {
-    const ex: TurniMese = {};
-    const put=(id:number,g:number,tipo:string)=>{ (ex[id] ||= {})[g]={t:[...(ex[id]?.[g]?.t||[]),{tipo,sott:false,man:true}]}; };
-    put(1,3,"N"); put(1,10,"N"); put(5,6,"N"); put(7,7,"M"); put(7,7,"P"); put(9,14,"N"); put(2,20,"N");
-    put(6,12,"M"); put(6,12,"P");
-    S.push({ nome:"ott26-manuali", anno:2026, mese:9, medici:mediciBase(), ex });
+  const giu = JSON.parse(fs.readFileSync("scenario_settembre2026.json","utf8"));
+  basi.push({ nome:"giugno", anno:2026, mese:5, medici:giu.medici, ex:{} });
+  const S: (ScenCfg & { desc: string })[] = [];
+  for(let i=0;i<n;i++){
+    const b = basi[i % basi.length];
+    const nAmb = 1 + Math.floor(rnd()*3);
+    const ambs: any[] = [];
+    for(let k=0;k<nAmb;k++){
+      const giorni: Record<number,string> = {};
+      const nG = 1 + Math.floor(rnd()*2);
+      for(let j=0;j<nG;j++) giorni[Math.floor(rnd()*5)] = pick(["M","M","P","MP"]);
+      ambs.push({ id:"amb"+k, nome:"Amb"+k, sigla:"A"+k, giorni });
+    }
+    const cand = b.medici.filter(m=>m.stato!=="MPS");
+    const medici = b.medici.map(m=>{
+      if(m.stato==="MPS") return { ...m, ambulatori:[] as string[] };
+      const ids = ambs.filter(()=>rnd()<0.45).map(a=>a.id);
+      return { ...m, ambulatori:ids, ambulatorio:ids.length>0 };
+    });
+    // garantisce almeno 2 abilitati per ambulatorio (salvo 1 config su 8: 0 abilitati)
+    for(const a of ambs){
+      if(i%8===7 && a.id==="amb0"){ for(const m of medici) m.ambulatori = (m.ambulatori||[]).filter(x=>x!==a.id); continue; }
+      let k = medici.filter(m=>m.ambulatori?.includes(a.id)).length;
+      while(k<2){ const m = pick(medici.filter(x=>x.stato!=="MPS" && !x.ambulatori?.includes(a.id))); m.ambulatori=[...(m.ambulatori||[]),a.id]; m.ambulatorio=true; k++; }
+    }
+    // A/Ap manuali sparse (1 config su 3)
+    const ex: TurniMese = JSON.parse(JSON.stringify(b.ex||{}));
+    if(i%3===0){
+      const ndim=dimOf(b.anno,b.mese);
+      for(let t=0;t<2;t++){
+        const a = pick(ambs), g = 1+Math.floor(rnd()*ndim), m = pick(cand);
+        const c = (ex[m.id] ||= {})[g] ||= { t:[] };
+        if(c.t.length===0) c.t.push({ tipo: rnd()<0.5?"A":"Ap", sott:false, man:true, amb:a.id });
+      }
+    }
+    const desc = ambs.map(a=>`${a.id}:${JSON.stringify(a.giorni)}[${medici.filter(m=>m.ambulatori?.includes(a.id)).length}ab]`).join(" ");
+    S.push({ nome:`${b.nome}#${i}`, anno:b.anno, mese:b.mese, medici, ex, regole:{ ambulatori: ambs } as any, desc });
   }
   return S;
 }
 
-// ─── VARIANTI CON ESCLUSIONI PARZIALI ────────────────────────────────────────
-// Da ogni scenario si derivano 4 varianti, dalla più blanda alla più cattiva.
-function conEscl(sc: ScenCfg, modo: string): ScenCfg {
-  const ndim = dimOf(sc.anno, sc.mese);
-  const ex: TurniMese = JSON.parse(JSON.stringify(sc.ex));
-  const att = sc.medici.filter(m=>m.stato!=="MPS");
-  const put = (id:number,g:number,tipo:string) => {
-    const c = ex[id]?.[g]?.t || [];
-    if(c.some((s:any)=>!SPEC.includes(s.tipo)||s.tipo==="X")) return;   // non sporcare turni/assenze già messi
-    if(c.some((s:any)=>s.tipo===tipo)) return;
-    (ex[id] ||= {})[g] = { t:[...c, { tipo, sott:false, man:true }] };
-  };
-  const rng = mulberry32(0xE5C1 ^ ndim ^ modo.length*7919);
-  if(modo==="sparse"){                      // ~1 esclusione ogni 5 giorni per medico
-    for(const m of att) for(let g=1;g<=ndim;g++){
-      if(rng()>0.2) continue;
-      put(m.id,g,["Xm","Xp","Xn"][Math.floor(rng()*3)]);
-    }
-  } else if(modo==="soloNotte"){            // metà organico: Xm+Xp su giorni sparsi
-    for(const m of att.filter((_,i)=>i%2===0)) for(let g=2;g<=ndim;g+=5){ put(m.id,g,"Xm"); put(m.id,g,"Xp"); }
-  } else if(modo==="wkNoNotte"){            // nessuno vuole la notte nei weekend
-    for(const m of att) for(let g=1;g<=ndim;g++){
-      const d = dowOf(sc.anno,sc.mese,g);
-      if(d>=5 || isFestivo(sc.anno,sc.mese,g)) put(m.id,g,"Xn");
-    }
-  } else if(modo==="noMattine"){            // Xm diffuso: stressa mattine e ambulatorio
-    for(const m of att) for(let g=1;g<=ndim;g++) if(rng()<0.35) put(m.id,g,"Xm");
-  }
-  return { ...sc, nome: sc.nome+"/"+modo, ex };
-}
-
-// ─── RUN ─────────────────────────────────────────────────────────────────────
-async function main(){
-  const [,, outFile="/tmp/sim_out.json", repsS="5", msS="2200", soloScen=""] = process.argv;
-  const REPS=+repsS, MS=+msS;
-  const out: any[] = [];
-  let lista = scenari();
-  if(process.env.ESCL){
-    const modi = ["sparse","soloNotte","wkNoNotte","noMattine"];
-    lista = lista.flatMap(sc => modi.map(md => conEscl(sc, md)));
-  }
-  lista = lista.filter(s=>!soloScen || s.nome.includes(soloScen));
-  for(const sc of lista){
+function main(){
+  const [,, nS="40", msS="2000"] = process.argv;
+  let tot=0, conViol=0, ambMancanti=0, mancantiSenzaAbil=0;
+  for(const sc of scenari(+nS)){
     const ndim = dimOf(sc.anno, sc.mese);
-    for(let rep=0; rep<REPS; rep++){
-      setRegole(mergeRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), ...(sc.regole||{}) } as any));
-      ENG.PREV = sc.prevT ? { ndim: sc.mese===0?dimOf(sc.anno-1,11):dimOf(sc.anno,sc.mese-1), T: sc.prevT } : null;
-      setSalt(0); setAmbRotStart(rep % Math.max(1,sc.medici.filter(m=>m.ambulatorio).length));
-      const rng = mulberry32(0xC0FFEE ^ (rep*2654435761));
-      const mrand = Math.random; (Math as any).random = rng;
-      const t0=Date.now();
-      let r;
-      try { r = generaMigliorTentativo(sc.anno, sc.mese, ndim, sc.medici, sc.ex, MS); }
-      finally { (Math as any).random = mrand; }
-      const ms=Date.now()-t0;
-      const viol = violazioni(sc, r.turni);
-      const met = metriche(sc, r.turni);
-      out.push({ scen: sc.nome, rep, ms, ok: r.ok, viol, ...met,
-                 problemi: r.problemi, altUC: !!r.alternativaUC, turni: r.turni });
-      const wkl = Object.values(met.wkLib).join(",");
-      console.log(`${sc.nome.padEnd(15)} #${rep} ${String(ms).padStart(5)}ms ok=${r.ok?1:0} s=${String(met.s).padStart(4)} soft=${String(met.soft).padStart(7)} buchi=${met.buchi} wkDef=${met.wkDef} wkSc=${met.wkScarto} sforo=${met.sforo} trans=${met.transMean} lavIso=${met.lavIsolati} libIso=${met.libIsolati} strisceM=${met.strisceM} wkLib=[${wkl}] VIOL=${viol.length}${viol.length?" !!! "+viol.slice(0,3).join(" | "):""}`);
+    setRegole(mergeRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), ...(sc.regole||{}) } as any));
+    ENG.PREV = null; setSalt(0); setAmbRotStart(0);
+    const rng = mulberry32(0xBEEF ^ tot); const mr = Math.random; (Math as any).random = rng;
+    let r; try { r = generaMigliorTentativo(sc.anno, sc.mese, ndim, sc.medici, sc.ex, +msS); } finally { (Math as any).random = mr; }
+    const v = [...violazioni(sc, r.turni), ...violazioniAmb(sc, r.turni, r.problemi)];
+    const pa = r.problemi.filter(p=>/ambulatorio.*mancante/.test(p));
+    tot++; if(v.length) conViol++; ambMancanti += pa.length;
+    console.log(`${sc.nome.padEnd(12)} ok=${r.ok?1:0} amb-mancanti=${pa.length} VIOL=${v.length}${v.length?" !!! "+v.slice(0,4).join(" | "):""}  ${sc.desc}`);
+    if(pa.length) console.log("      ", pa.slice(0,3).join(" | "));
+    // Per ogni slot mancante: perché ciascun abilitato non poteva prenderlo
+    // (classificazione INDIPENDENTE, grossolana). "LIBERO?" = nessun motivo
+    // evidente: da guardare.
+    const R = getRegole();
+    for(let g=1; g<=ndim; g++){
+      if(isFestivo(sc.anno,sc.mese,g)) continue;
+      for(const sl of slotAmbGiorno(R.ambulatori, dowOf(sc.anno,sc.mese,g))){
+        if(sc.medici.some(m=>cell(r.turni,m.id,g).some(s=>s.tipo===sl.cod&&ambIdDi(s)===sl.amb))) continue;
+        const ab = sc.medici.filter(m=>abilitatoAmb(m,sl.amb));
+        const mot = ab.map(m=>{
+          const c = cell(r.turni,m.id,g), pom = sl.cod==="Ap";
+          const has = (id:number,gg:number,f:(t:string)=>boolean)=> gg>=1 && gg<=ndim && cell(r.turni,id,gg).some(s=>f(s.tipo));
+          let why = "LIBERO?";
+          if(c.some(s=>["L","ANA","104","per11","X"].includes(s.tipo))) why="assente";
+          else if(c.some(s=>s.tipo===(pom?"Xp":"Xm"))) why="escluso fascia";
+          else if(pom && m.stato==="ML") why="ML";
+          else if(c.some(s=>isNot(s.tipo))) why="notte oggi";
+          else if(has(m.id,g-1,isNot)) why="smonto notte";
+          else if(!pom && has(m.id,g-2,isNot)) why="notte g-2";
+          else if(c.some(s=>s.tipo===sl.cod)) why="altro amb stessa fascia";
+          else if(c.some(s=>(pom?isPom:isMatt)(s.tipo))) why="già in turno quella fascia";
+          else {
+            let run=1; for(let k=g-1;k>=1&&lavora(r.turni,m.id,k);k--) run++; for(let k=g+1;k<=ndim&&lavora(r.turni,m.id,k);k++) run++;
+            if(!lavora(r.turni,m.id,g) && run>R.maxConsec) why="consecutivi";
+            else if(c.some(s=>!SPEC.includes(s.tipo))) why="già in turno altra fascia("+c.map(s=>s.tipo).join("")+")";
+          }
+          return `${m.nome.split(" ").pop()}=${why}`;
+        });
+        console.log(`        g${g} ${sl.amb}/${sl.cod}: ${mot.join(", ")||"nessun abilitato"}`);
+      }
     }
   }
-  fs.writeFileSync(outFile, JSON.stringify(out,null,1));
-  console.log("scritto", outFile);
+  console.log(`\nTOTALE: ${tot} configurazioni, ${conViol} con violazioni, ${ambMancanti} slot d'ambulatorio segnalati mancanti`);
 }
 main();

@@ -354,6 +354,7 @@ export function faseAmbulatorio(ctx: Ctx){
     const canAmb = (m: Medico, ignoraObiettivo=false) => {
       if(m.stato==="MPS") return false;
       if(!abilitatoAmb(m, sl.amb)) return false;            // solo gli abilitati a QUESTO ambulatorio
+      if(fascia==="P" && m.stato==="ML") return false;       // l'ML non fa pomeriggi: niente Ap
       if(escluso(m.id,g,fascia)) return false;              // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)
       if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
       // Vincolo MORBIDO: superabile nel 2° passaggio, quando l'alternativa

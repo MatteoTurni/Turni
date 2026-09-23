@@ -115,6 +115,7 @@ export function diagnosiCausale(
   const motivoNoA = (ctx: C, m: Medico, g: number, cod = "A"): string => {
     const pom = cod === "Ap";
     if (m.stato === "MPS") return "MPS (fuori generazione)";
+    if (pom && m.stato === "ML") return "ML: niente pomeriggi";
     if (ctx.haX(m.id, g)) return "escluso (X)";
     if (ctx.escluso(m.id, g, pom ? "P" : "M")) return pom ? "escluso dal pomeriggio (Xp)" : "escluso dalla mattina (Xm)";
     if (ctx.gt(m.id, g).some(s => ["L", "ANA", "per11", "104"].includes(s.tipo))) return "assente";
@@ -164,6 +165,7 @@ export function diagnosiCausale(
       const puoA = (m: Medico, g: number, sl: SlotAmb) => {
         const cod = sl.cod, pom = cod === "Ap";
         if (!abilitatoAmb(m, sl.amb) || ctx.haX(m.id, g)) return false;
+        if (pom && m.stato === "ML") return false;          // l'ML non fa pomeriggi
         if (ctx.escluso(m.id, g, pom ? "P" : "M")) return false;
         if (ctx.gt(m.id, g).some(s => ["L", "ANA", "per11", "104"].includes(s.tipo))) return false;
         if (ctx.haN(m.id, g) || !ctx.canConsec(m.id, g)) return false;

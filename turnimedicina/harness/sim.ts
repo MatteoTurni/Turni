@@ -130,7 +130,7 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
   // ── MDC mai solo in turno
   for(const m of medici){
     if(m.stato!=="MDC") continue;
-    const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2"], N:["N","3"] };
+    const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2","Ap"], N:["N","3"] };
     for(let g=1;g<=ndim;g++) for(const s of cell(T,m.id,g)){
       const f = isMatt(s.tipo)?"M":isPom(s.tipo)?"P":isNot(s.tipo)?"N":null;
       if(!f || s.man) continue;
