@@ -26,6 +26,8 @@ export type TurniAll = Record<string, TurniMese>;
 
 export interface FasciaFabb { mMin: number; mMax: number; pMin: number; pMax: number; }
 
+export type FasciaAmb = "M"|"P"|"MP";
+
 export interface Regole {
   maxNotti: number;
   maxNottiConsec: number;   // max notti "di fila" (a passo 2: N-libero-N-libero-N…)
@@ -61,6 +63,9 @@ export interface Regole {
   /** Giorni della settimana con ambulatorio (0=Lun … 4=Ven, festivi sempre
    *  esclusi). Default [1] = martedì. Lista vuota = nessun ambulatorio. */
   giorniAmb: number[];
+  /** Fascia dell'ambulatorio per giorno della settimana (chiave 0..4):
+   *  "M" solo mattina (default se assente), "P" solo pomeriggio, "MP" entrambe. */
+  fasceAmb: Partial<Record<number, FasciaAmb>>;
   fabb: { fer: FasciaFabb; sab: FasciaFabb; fest: FasciaFabb };
 }
 

@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi } from "./turni";
+import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, codiciAmb } from "./turni";
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
@@ -229,6 +229,14 @@ export function makeCtx(
   // Giorni di ambulatorio dal pannello Regole (era il martedì hardcoded).
   const AMB_DW = new Set(REG.giorniAmb ?? [1]);
   const isAmb= (g:number) => AMB_DW.has(dw(g));
+  // Slot d'ambulatorio richiesti nel giorno g (v0.3.35): [] se non è un giorno
+  // d'ambulatorio feriale, altrimenti ["A"], ["Ap"] o ["A","Ap"] secondo la
+  // fascia scelta nelle Regole per quel giorno della settimana.
+  const ambCodici = (g:number): string[] =>
+    (isAmb(g)&&!isH(g)) ? codiciAmb(REG.fasceAmb?.[dw(g)]) : [];
+  // Slot d'ambulatorio del giorno g ancora scoperti (nessun medico ha il codice).
+  const ambMancanti = (g:number): string[] =>
+    ambCodici(g).filter(c=>!medici.some(m=>gt(m.id,g).some(s=>s.tipo===c)));
 
   // Fabbisogni giornalieri dal pannello Regole.
   const FB  = REG.fabb;
@@ -419,7 +427,7 @@ export function makeCtx(
   const mdcOk = (m:Medico,g:number,f:string) => {
     if(m.stato!=="MDC") return true;
     const COMP = f==="M" ? ["M","A","1"]
-               : f==="P" ? ["P","2"]
+               : f==="P" ? ["P","2","Ap"]
                : f==="N" ? ["N","3"] : [];
     for(const a of medici){
       if(a.id===m.id) continue;
@@ -485,7 +493,7 @@ export function makeCtx(
     // GIÀ un turno compatibile inserito a mano. Solo turni MANUALI: così la
     // capacità è IDENTICA per tutti i tabelloni a confronto, che è ciò che
     // rende la forchetta un metro comparabile.
-    const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2"], N:["N","3"] };
+    const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2","Ap"], N:["N","3"] };
     const affMan = (id:number, g:number, f:"M"|"P"|"N") =>
       medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMP[f].includes(s.tipo)));
     // FIX CAPACITÀ FANTASMA M/P (v0.3.29) — stessa classe del fix Notte 0.3.27:
@@ -530,7 +538,7 @@ export function makeCtx(
   //    giorni): si sbaglia dalla parte prudente, mai vincolando troppo.
   //  · wkPavimento(id) = PAVIMENTO: i punti che ha già per TURNI MANUALI e che
   //    nessuna generazione può togliergli.
-  const COMPF:Record<string,string[]> = { M:["M","A","1"], P:["P","2"], N:["N","3"] };
+  const COMPF:Record<string,string[]> = { M:["M","A","1"], P:["P","2","Ap"], N:["N","3"] };
   const affManC = (id:number, g:number, f:"M"|"P"|"N") =>
     medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMPF[f].includes(s.tipo)));
   const wkCapacita = (m:Medico) => {
@@ -732,7 +740,7 @@ export function makeCtx(
 
   return {
     ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
-    dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, nmn, npn, SPEC, cf,
+    dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambCodici, ambMancanti, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,

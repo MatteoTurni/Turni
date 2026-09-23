@@ -1,6 +1,6 @@
 import type { Medico, TurniMese } from "./types";
 import { DF } from "./date";
-import { isMatt, isPom, isNot, isEscl } from "./turni";
+import { isMatt, isPom, isNot, isEscl, isAmbT } from "./turni";
 import { ENG, mkRng, shuf, scaduto } from "./state";
 import type { Ctx } from "./ctx";
 
@@ -331,28 +331,43 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 // equità per cui la rotazione avanzava nei tentativi scartati dal multi-tentativo.
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseAmbulatorio(ctx: Ctx){
-  const { giorniArr, isAmb, isH, gt, add, medici, ambilitati, escluso, haN, cnt, canConsec, canMatt } = ctx;
+  const { giorniArr, ambCodici, gt, add, medici, ambilitati, escluso, haN, cnt, canConsec, canMatt, canPom, canAssDist } = ctx;
   const n = ambilitati.length;
   let nextIdx = n>0 ? ((ENG.AMB_ROT_START % n) + n) % n : 0;
   let ok=true;
+  // Carico d'ambulatorio del mese: slot A/Ap (mattina e pomeriggio contano
+  // ciascuno uno), manuali compresi.
+  const cntAmbMese = (id:number) => {
+    let k=0; for(const gg of giorniArr) for(const s of gt(id,gg)) if(isAmbT(s.tipo)) k++;
+    return k;
+  };
   for(const g of giorniArr){
-    if(!isAmb(g)||isH(g)) continue;
-    if(medici.some(m=>gt(m.id,g).some(s=>s.man&&["A"].includes(s.tipo)))) continue;
-    if(medici.some(m=>gt(m.id,g).some(s=>!s.man&&s.tipo==="A"))) continue;
+    // FASCE (v0.3.35): il giorno può chiedere la sola A (mattina, storico), la
+    // sola Ap (pomeriggio) o entrambe. Ogni slot si tratta a sé: uno slot già
+    // presente (manuale o automatico) si salta.
+    for(const cod of ambCodici(g)){
+    if(medici.some(m=>gt(m.id,g).some(s=>s.tipo===cod))) continue;
+    const fascia: "M"|"P" = cod==="A" ? "M" : "P";
 
     const canAmb = (m: Medico, ignoraObiettivo=false) => {
       if(m.stato==="MPS") return false;
-      if(escluso(m.id,g,"M")) return false;                 // la A è un turno di MATTINA: la blocca anche Xm
+      if(escluso(m.id,g,fascia)) return false;              // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)
       if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
       // Vincolo MORBIDO: superabile nel 2° passaggio, quando l'alternativa
       // sarebbe lasciare l'ambulatorio scoperto.
       if(!ignoraObiettivo && m.obiettivo>0 && cnt(m.id)>=m.obiettivo) return false;
       if(haN(m.id,g)) return false;
-      // La A è un turno di MATTINA → vale la Regola N (vietata a g+1 e g+2 di una notte).
-      if(!canMatt(m.id,g)) return false;
+      // Regola N: la A (mattina) è vietata a g+1 e g+2 di una notte, la Ap
+      // (pomeriggio) segue le regole del P.
+      if(fascia==="M" ? !canMatt(m.id,g) : !canPom(m.id,g)) return false;
       if(!canConsec(m.id,g)) return false;
       const tt=gt(m.id,g).filter(s=>!isEscl(s.tipo)&&!["L","ANA","per11","104"].includes(s.tipo));
-      return tt.length===0;
+      if(tt.length===0) return true;
+      // Unica eccezione: l'altro slot d'ambulatorio dello STESSO giorno (A+Ap =
+      // giornata piena d'ambulatorio), nel rispetto della distanza associati.
+      // L'ordine per carico lo mette comunque in coda: si arriva qui solo se
+      // nessun collega è disponibile.
+      return tt.every(s=>isAmbT(s.tipo)&&s.tipo!==cod) && canAssDist(m.id,g);
     };
 
     // La A automatica va SOLO agli abilitati: 1° passaggio rispettando
@@ -373,10 +388,6 @@ export function faseAmbulatorio(ctx: Ctx){
     // sono pari — il caso tipico del primo giorno del mese, tutti a zero —
     // l'ordine coincide con quello di prima: la rotazione FRA MESI è intatta,
     // dentro il mese vince l'equità.
-    const cntAmbMese = (id:number) => {
-      let k=0; for(const gg of giorniArr) if(gt(id,gg).some(s=>s.tipo==="A")) k++;
-      return k;
-    };
     const ordine = Array.from({length:n},(_,off)=>(nextIdx+off)%n)
       .sort((a,b)=> (cntAmbMese(ambilitati[a].id)-cntAmbMese(ambilitati[b].id))
                  || (((a-nextIdx+n)%n)-((b-nextIdx+n)%n)));
@@ -387,15 +398,16 @@ export function faseAmbulatorio(ctx: Ctx){
       for(const idx of ordine){
         const m=ambilitati[idx];
         if(!canAmb(m,ignoraObiettivo)) continue;
-        add(m.id,g,"A");
+        add(m.id,g,cod);
         // Le guardie di add() possono rifiutare in silenzio: verificare SEMPRE
         // che la A sia stata davvero inserita prima di dichiarare successo.
-        if(!gt(m.id,g).some(s=>s.tipo==="A")) continue;
+        if(!gt(m.id,g).some(s=>s.tipo===cod)) continue;
         nextIdx=(idx+1)%n;
         assegnato=true; break;
       }
     }
     if(!assegnato) ok=false;
+    }
   }
   return ok;
 }
@@ -516,7 +528,7 @@ export function coperturaWeekend(ctx: Ctx, blocco: Blocco){
 export function validaWeekend(ctx: Ctx){
   // NB: il controllo dei weekend liberi NON è qui: è nella validazione globale
   // finale (dopo le notti), perché le notti possono occupare weekend liberi.
-  const { giorniArr, isWk, cf, isAmb, isH, medici, gt, checkRegolaN, needEff } = ctx;
+  const { giorniArr, isWk, cf, ambMancanti, checkRegolaN, needEff } = ctx;
   for(const g of giorniArr){
     if(!isWk(g)) continue;
     // needEff: un sabato/festivo STRUTTURALMENTE impossibile non deve rendere
@@ -527,7 +539,7 @@ export function validaWeekend(ctx: Ctx){
     if(cf(g,"P")<needEff(g,"P")) return false;
   }
   for(const g of giorniArr){
-    if(isAmb(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo)))) return false;
+    if(ambMancanti(g).length) return false;
   }
   if(!checkRegolaN()) return false;
   return true;
@@ -975,7 +987,7 @@ export function faseDiurni(ctx: Ctx, seed: number){
 // VALIDAZIONE GLOBALE (controllo finale della prima generazione)
 // ═══════════════════════════════════════════════════════════════════════════
 export function validazioneGlobale(ctx: Ctx){
-  const { giorniArr, cf, nmn, npn, mrMdc, cntWkLiberi, isAmb, isH, medici, gt, checkRegolaN, wkTargetMed, lavoraGiorno, MAX_CONSEC, trailingPrev, needEff, SPEC } = ctx;
+  const { giorniArr, cf, nmn, npn, mrMdc, cntWkLiberi, ambMancanti, medici, gt, checkRegolaN, wkTargetMed, lavoraGiorno, MAX_CONSEC, trailingPrev, needEff, SPEC } = ctx;
   const probs: string[]=[];
   // I buchi si dichiarano sempre rispetto al fabbisogno PIENO (onestà in UI),
   // ma quelli sotto la capacità statica vengono marcati IMPOSSIBILE.
@@ -986,14 +998,14 @@ export function validazioneGlobale(ctx: Ctx){
     if(cf(g,"N")<1)          probs.push(`G${g}: notte mancante${imp(g,"N",1)}`);
   }
   for(const g of giorniArr){
-    if(isAmb(g)&&!isH(g) && !medici.some(m=>gt(m.id,g).some(s=>["A"].includes(s.tipo))))
-      probs.push(`${DF[ctx.dw(g)]} ${g}: ambulatorio mancante`);
+    for(const cod of ambMancanti(g))
+      probs.push(`${DF[ctx.dw(g)]} ${g}: ${cod==="Ap"?"ambulatorio pomeriggio":"ambulatorio"} mancante`);
   }
   // RETE DI SICUREZZA: una A AUTOMATICA su un medico non abilitato non è mai valida.
   for(const m of medici){
     if(m.ambulatorio) continue;
     for(const g of giorniArr)
-      if(gt(m.id,g).some(s=>!s.man&&["A"].includes(s.tipo)))
+      if(gt(m.id,g).some(s=>!s.man&&isAmbT(s.tipo)))
         probs.push(`${m.nome.split(" ").pop()}: ambulatorio G${g} a medico non abilitato`);
   }
   // Controllo finale dei weekend liberi (dopo le notti), con obiettivo per-medico.

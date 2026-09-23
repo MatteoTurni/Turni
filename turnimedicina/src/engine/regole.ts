@@ -19,6 +19,7 @@ export const REGOLE_DEFAULT: Regole = {
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
   blocchiMattina: 4,// catena di continuità mattine: blocchi da ~4 giorni (0 = off)
   giorniAmb: [1],   // giorni di ambulatorio (0=Lun … 4=Ven): default martedì
+  fasceAmb: {},     // fascia per giorno ("M"/"P"/"MP"): assente = mattina (storico)
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -39,6 +40,16 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const gA = Array.isArray(s.giorniAmb)
     ? [...new Set(s.giorniAmb.filter(g=>Number.isInteger(g)&&g>=0&&g<=4))].sort((a,b)=>a-b)
     : d.giorniAmb;
+  // fasceAmb: campo ASSENTE (salvataggi pre-v0.3.35) → {} (tutto mattina).
+  // Presente → tieni solo chiavi 0..4 con valore valido; "M" è il default e
+  // non serve memorizzarlo.
+  const fA: Regole["fasceAmb"] = {};
+  if(s.fasceAmb && typeof s.fasceAmb==="object"){
+    for(const [k,v] of Object.entries(s.fasceAmb)){
+      const d0=+k;
+      if(Number.isInteger(d0)&&d0>=0&&d0<=4&&(v==="P"||v==="MP")) fA[d0]=v;
+    }
+  }
   // notteLiberoNotte: campo ASSENTE (salvataggi pre-v0.3.11) → default false;
   // presente ma non boolean → coercizione difensiva.
   const nLN = s.notteLiberoNotte===undefined ? d.notteLiberoNotte : !!s.notteLiberoNotte;
@@ -50,7 +61,7 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   // ma non intero ≥ 0 → default. Lo 0 è LEGITTIMO: catena disattivata.
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
-  return { ...d, ...s, giorniAmb: gA, notteLiberoNotte: nLN, riposoEsteso: rE,
+  return { ...d, ...s, giorniAmb: gA, fasceAmb: fA, notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},

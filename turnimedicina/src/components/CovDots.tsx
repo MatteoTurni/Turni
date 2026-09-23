@@ -12,16 +12,17 @@ export type DiagFascia = "imp" | "mai";
 // il numero diventa "n/min" (quanto c'è / quanto serve), così il deficit è
 // quantificato a colpo d'occhio. `diag` (opzionale): marca la fascia
 // sotto-minimo come impossibile certificata (⊘) o mai coperta (⚠).
-// `amb` (v0.3.13): SOLO nei giorni d'ambulatorio feriali il chiamante passa il
-// codice del medico con la A (stringa) o null se la A manca → quarto
-// quadratino: verde acqua col codice, rosso tratteggiato "A?" se scoperta.
-// `undefined` = giorno senza ambulatorio: nessun quadratino extra.
+// `amb` (v0.3.13, per fascia dalla v0.3.35): SOLO nei giorni d'ambulatorio
+// feriali il chiamante passa uno slot per codice richiesto (A = mattina,
+// Ap = pomeriggio) col codice del medico assegnato o null se manca → un
+// quadratino per slot: verde acqua col codice, rosso tratteggiato "A?"/"Ap?"
+// se scoperto. `undefined` = giorno senza ambulatorio: nessun quadratino extra.
 export function CovDots({ mc, pc, nc, sp, sat, fabb, diag, amb }: {
   mc: number; pc: number; nc: number;
   sp: boolean; sat: boolean;
   fabb: Regole["fabb"];
   diag?: Partial<Record<"M"|"P"|"N", DiagFascia>>;
-  amb?: string | null;
+  amb?: { cod: string; med: string | null }[];
 }){
   const mn = sp?{mn:fabb.fest.mMin,mx:fabb.fest.mMax}:sat?{mn:fabb.sab.mMin,mx:fabb.sab.mMax}:{mn:fabb.fer.mMin,mx:fabb.fer.mMax};
   const pn = sp?{mn:fabb.fest.pMin,mx:fabb.fest.pMax}:sat?{mn:fabb.sab.pMin,mx:fabb.sab.pMax}:{mn:fabb.fer.pMin,mx:fabb.fer.pMax};
@@ -46,14 +47,17 @@ export function CovDots({ mc, pc, nc, sp, sat, fabb, diag, amb }: {
   };
   return <div>
     <Dot n={mc} need={mn} dg={diag?.M}/><Dot n={pc} need={pn} dg={diag?.P}/><Dot n={nc} need={{mn:1,mx:1}} dg={diag?.N}/>
-    {amb!==undefined && (amb
-      ? <div title={"Ambulatorio assegnato: "+amb}
+    {amb?.map(({cod,med})=>{
+      const fl = cod==="Ap" ? "pomeriggio" : "mattina";
+      return med
+      ? <div key={cod} title={`Ambulatorio (${fl}) assegnato: ${med}`}
           style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",background:"#052e2b",
-          border:"1px solid #14b8a6",color:"#5eead4",fontSize:"8px",textAlign:"center",lineHeight:"13px",
-          fontFamily:"monospace",fontWeight:700,overflow:"hidden"}}>{amb.slice(0,3)}</div>
-      : <div title="Giorno d'ambulatorio SENZA medico assegnato alla A"
+          border:`1px solid ${cod==="Ap"?"#8b5cf6":"#14b8a6"}`,color:"#5eead4",fontSize:"8px",textAlign:"center",lineHeight:"13px",
+          fontFamily:"monospace",fontWeight:700,overflow:"hidden"}}>{med.slice(0,3)}</div>
+      : <div key={cod} title={`Giorno d'ambulatorio SENZA medico assegnato alla ${cod} (${fl})`}
           style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",background:"#3a0a0a",
           border:"1px dashed #ef4444",color:"#fca5a5",fontSize:"8px",textAlign:"center",lineHeight:"13px",
-          fontFamily:"monospace",fontWeight:700}}>A?</div>)}
+          fontFamily:"monospace",fontWeight:700}}>{cod}?</div>;
+    })}
   </div>;
 }

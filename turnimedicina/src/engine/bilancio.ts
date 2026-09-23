@@ -1,5 +1,5 @@
 import type { Medico, Turno, TurniMese, Regole } from "./types";
-import { vt, isMatt, isPom, isNot } from "./turni";
+import { vt, isMatt, isPom, isNot, codiciAmb } from "./turni";
 import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 
 // ─── BILANCIO DEL MESE ────────────────────────────────────────────────────────
@@ -17,13 +17,13 @@ import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 //
 // Gli MPS sono fuori da S (obiettivo 0), quindi devono restare fuori anche da
 // L+P e da PS: i loro permessi non scalano nulla. I turni di reparto che però
-// coprono davvero (M/P/N/A) si sottraggono da F, che è quindi un fabbisogno
+// coprono davvero (M/P/N/A/Ap) si sottraggono da F, che è quindi un fabbisogno
 // NETTO e si abbassa man mano che li inserisci.
 
 export const ASSENZE = ["L", "104", "per11", "ANA"];
 export const PS      = ["1", "2", "3"];
 /** Turni che coprono il fabbisogno di reparto (l'ambulatorio è dentro F). */
-export const COPRONO = ["M", "P", "N", "A"];
+export const COPRONO = ["M", "P", "N", "A", "Ap"];
 
 export interface Bilancio {
   lp: number;   // L + 104 + p11 + ANA (manuali, non-MPS)
@@ -147,7 +147,8 @@ export function dettaglioFabbisogno(anno: number, mese: number, nd: number, r: R
     const fs = sp ? r.fabb.fest : isSabN(dw) ? r.fabb.sab : r.fabb.fer;
     m += fs.mMin;
     p += fs.pMin;
-    if ((r.giorniAmb ?? [1]).includes(dw) && !h) a += 1;   // giorno d'ambulatorio feriale
+    // giorno d'ambulatorio feriale: 1 slot (A o Ap) o 2 (A+Ap) secondo la fascia
+    if ((r.giorniAmb ?? [1]).includes(dw) && !h) a += codiciAmb(r.fasceAmb?.[dw]).length;
   }
   const n = nd;                    // una notte per ogni giorno del mese
   return { m, p, n, a, vt: m + p + 2 * n + a };

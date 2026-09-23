@@ -1,17 +1,32 @@
-import type { Turno, TurniMese } from "./types";
+import type { Turno, TurniMese, FasciaAmb } from "./types";
 
 // ─── UTILITY TURNI ────────────────────────────────────────────────────────────
 // I turni associati (M+P oppure A+P) NON sono un tipo a sé: sono sempre
 // due turni distinti nella stessa giornata. Le utility considerano quindi
 // solo i singoli codici di mattina, pomeriggio e notte.
 export function isMatt(t:string){ return ["M","A","1"].includes(t); }
-export function isPom(t:string) { return ["P","2"].includes(t); }
+export function isPom(t:string) { return ["P","2","Ap"].includes(t); }
 export function isNot(t:string) { return ["N","3"].includes(t); }
 export function vt(t:string,u?:boolean): number {
   if(u)return 0;
   if(["N","3"].includes(t))return 2;
-  if(["M","P","A","L","ANA","104","per11","1","2"].includes(t))return 1;
+  if(["M","P","A","Ap","L","ANA","104","per11","1","2"].includes(t))return 1;
   return 0;
+}
+
+// ─── AMBULATORIO ──────────────────────────────────────────────────────────────
+// "A" = ambulatorio di MATTINA, "Ap" = ambulatorio di POMERIGGIO (v0.3.35).
+// Per ogni giorno d'ambulatorio il pannello Regole sceglie la fascia:
+//   "M" solo mattina (storico) · "P" solo pomeriggio · "MP" mattina E pomeriggio
+// (due slot distinti, di norma a due medici diversi). Come la A, la Ap occupa
+// la sua fascia (isPom) ma NON conta nel fabbisogno di reparto.
+export const AMB = ["A","Ap"];
+export const FASCE_AMB: FasciaAmb[] = ["M","P","MP"];
+/** Il codice è un ambulatorio (mattina o pomeriggio)? */
+export function isAmbT(t:string){ return AMB.includes(t); }
+/** Codici d'ambulatorio richiesti da una fascia (assente → "M", storico). */
+export function codiciAmb(f?: FasciaAmb|null): string[] {
+  return f==="P" ? ["Ap"] : f==="MP" ? ["A","Ap"] : ["A"];
 }
 
 // ─── ESCLUSIONI ───────────────────────────────────────────────────────────────

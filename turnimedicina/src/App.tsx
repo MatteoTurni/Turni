@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Medico, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
 import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
-import { vt, SPEC } from "./engine/turni";
+import { vt, SPEC, isAmbT, codiciAmb, FASCE_AMB } from "./engine/turni";
 import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
@@ -215,10 +215,10 @@ export default function App(){
     return lib;
   };
 
-  // Conta turni ambulatorio (A) del medico nel mese
+  // Conta turni ambulatorio (A mattina + Ap pomeriggio) del medico nel mese
   const cntAmb = (id:number) => {
     let n=0;
-    for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(["A"].includes(s.tipo)) n++;
+    for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(isAmbT(s.tipo)) n++;
     return n;
   };
   // Conta i permessi (L / ANA / 104 / per11) del medico nel mese, con
@@ -331,9 +331,13 @@ export default function App(){
   // Cluster causali ancora ATTUALI: almeno una cella del cluster è tuttora
   // sotto-minimo, oppure uno dei suoi ambulatori è tuttora scoperto. Se
   // l'utente sistema a mano quei giorni, il cluster sparisce da sé.
+  // Slot d'ambulatorio richiesti nel giorno g (A e/o Ap secondo la fascia).
+  const ambCodiciApp = (g:number): string[] => {
+    const d = dowOf(anno,mese,g);
+    return (regole.giorniAmb ?? [1]).includes(d) && !metaG(g).h ? codiciAmb(regole.fasceAmb?.[d]) : [];
+  };
   const ambMancaApp = (g:number) =>
-    (regole.giorniAmb ?? [1]).includes(dowOf(anno,mese,g)) && !metaG(g).h &&
-    !medici.some(m=>gT(m.id,g).some(s=>s.tipo==="A"));
+    ambCodiciApp(g).some(c=>!medici.some(m=>gT(m.id,g).some(s=>s.tipo===c)));
   const causVis = !diagCaus ? [] : diagCaus.cluster.filter(cl=>
     cl.celle.some(c=>cfApp(c.g,c.f)<minDi(c.g,c.f)) || cl.ambGiorni.some(ambMancaApp));
 
@@ -633,16 +637,18 @@ export default function App(){
                 {giorni.map(g=>{
                   const mt=metaG(g);
                   // Giorno d'ambulatorio FERIALE (segue regole.giorniAmb, quindi
-                  // anche giorni diversi dal martedì se configurati): quarto
-                  // quadratino con il codice del medico che ha la A, o "A?" se
-                  // la A manca. undefined = giorno normale, niente quadratino.
-                  const ambDay = (regole.giorniAmb ?? [1]).includes(mt.d) && !mt.h;
-                  const ambMed = ambDay ? medici.find(m=>gT(m.id,g).some(s=>s.tipo==="A")) : undefined;
+                  // anche giorni diversi dal martedì se configurati): un
+                  // quadratino per slot (A mattina / Ap pomeriggio) con il codice
+                  // del medico assegnato, o "A?"/"Ap?" se manca. undefined =
+                  // giorno normale, niente quadratino.
+                  const ambCod = ambCodiciApp(g);
+                  const ambSlot = ambCod.length ? ambCod.map(cod=>({cod,
+                    med: medici.find(m=>gT(m.id,g).some(s=>s.tipo===cod))?.codice ?? null})) : undefined;
                   return (
                     <td key={g} style={{background:"#0b1626",border:"1px solid #1e3a5f",padding:"3px 1px",textAlign:"center",verticalAlign:"top"}}>
                       <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}
                         diag={{M:diagFlag(g,"M"),P:diagFlag(g,"P"),N:diagFlag(g,"N")}}
-                        amb={ambDay ? (ambMed?.codice ?? null) : undefined}/>
+                        amb={ambSlot}/>
                     </td>
                   );
                 })}
@@ -679,7 +685,7 @@ export default function App(){
 
           <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #1e3a5f",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
             <span style={{color:"#3d5878",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
-            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
+            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["Ap","Ambulatorio pom."],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
               <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
                 <Badge tipo={tipo} man/><span style={{color:"#4b7aad",fontSize:"8px"}}>{desc}</span>
               </div>
@@ -864,10 +870,41 @@ export default function App(){
                   );
                 })}
               </div>
+              {regole.giorniAmb.length>0 && (
+                <div style={{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"8px"}}>
+                  {regole.giorniAmb.map(d=>{
+                    const cur = regole.fasceAmb?.[d] ?? "M";
+                    const LBLF: Record<string,string> = { M:"Mattina", P:"Pomeriggio", MP:"Mattina + pomeriggio" };
+                    return (
+                      <div key={d} style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
+                        <span style={{...LBL,color:"#34d399",fontWeight:700,minWidth:"80px"}}>{DF[d]}</span>
+                        {FASCE_AMB.map(f=>{
+                          const on = cur===f;
+                          return (
+                            <button key={f}
+                              onClick={()=>{
+                                const fa = {...(regole.fasceAmb||{})};
+                                if(f==="M") delete fa[d]; else fa[d]=f;
+                                updRegole({...regole,fasceAmb:fa});
+                              }}
+                              style={{background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
+                                      border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
+                                      padding:"4px 9px",cursor:"pointer",fontSize:"10px",fontWeight:700,
+                                      fontFamily:"monospace"}}>
+                              {LBLF[f]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div style={{...LBL,fontSize:"9px",lineHeight:1.6}}>
-                Nei giorni selezionati (se non festivi) viene generato un turno A con la solita
-                rotazione fra i medici abilitati. Nessun giorno selezionato = nessun ambulatorio.
-                I festivi restano sempre esclusi.
+                Nei giorni selezionati (se non festivi) viene generato l'ambulatorio con la solita
+                rotazione fra i medici abilitati: turno A se di mattina, Ap se di pomeriggio,
+                entrambi (di norma a due medici diversi) se mattina + pomeriggio.
+                Nessun giorno selezionato = nessun ambulatorio. I festivi restano sempre esclusi.
               </div>
             </div>
 
@@ -985,7 +1022,10 @@ export default function App(){
               {RIGA("M","Mattine (minimo di copertura)", fab.m, 1, "#60a5fa")}
               {RIGA("P","Pomeriggi (minimo di copertura)", fab.p, 1, "#a78bfa")}
               {RIGA("N","Notti (una per giorno)", fab.n, 2, "#4ade80")}
-              {RIGA("A",`Ambulatori (${regole.giorniAmb.length?regole.giorniAmb.map(d=>DF[d].toLowerCase()).join(", ")+" non festivi":"nessun giorno"})`, fab.a, 1, "#34d399")}
+              {RIGA("A",`Ambulatori (${regole.giorniAmb.length?regole.giorniAmb.map(d=>{
+                const f=regole.fasceAmb?.[d];
+                return DF[d].toLowerCase()+(f==="P"?" pom.":f==="MP"?" mat.+pom.":"");
+              }).join(", ")+" non festivi":"nessun giorno"})`, fab.a, 1, "#34d399")}
 
               <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a5f"}}>
                 <span style={{color:"#8fb3d9",fontSize:"11px"}}>Totale lordo</span>
