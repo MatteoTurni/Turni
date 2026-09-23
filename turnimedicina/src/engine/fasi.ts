@@ -1,6 +1,6 @@
 import type { Medico, TurniMese } from "./types";
 import { DF } from "./date";
-import { isMatt, isPom, isNot, isEscl, isAmbT } from "./turni";
+import { isMatt, isPom, isNot, isEscl, isAmbT, ambIdDi } from "./turni";
 import { ENG, mkRng, shuf, scaduto } from "./state";
 import type { Ctx } from "./ctx";
 
@@ -322,8 +322,8 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FASE 2 — AMBULATORIO nei giorni configurati (REGOLE.giorniAmb, default
-// martedì), poi CONGELATO.
+// FASE 2 — AMBULATORI nei giorni/fasce configurati (REGOLE.ambulatori, default
+// un ambulatorio il martedì mattina), poi CONGELATO.
 // Rotazione round-robin: l'indice di partenza è INIETTATO (ENG.AMB_ROT_START)
 // e avanzato solo LOCALMENTE. Niente più localStorage nel motore: la
 // persistenza dell'indice, calcolata dal SOLO tabellone accettato, è compito
@@ -331,7 +331,7 @@ export function riparaBuchi(ctx: Ctx, seed: number, limiteNodi = ENG.CLUSTER_NOD
 // equità per cui la rotazione avanzava nei tentativi scartati dal multi-tentativo.
 // ═══════════════════════════════════════════════════════════════════════════
 export function faseAmbulatorio(ctx: Ctx){
-  const { giorniArr, ambCodici, gt, add, medici, ambilitati, escluso, haN, cnt, canConsec, canMatt, canPom, canAssDist } = ctx;
+  const { giorniArr, ambSlots, haSlot, gt, add, medici, ambilitati, abilitatoAmb, escluso, haN, cnt, canConsec, canMatt, canPom, canAssDist } = ctx;
   const n = ambilitati.length;
   let nextIdx = n>0 ? ((ENG.AMB_ROT_START % n) + n) % n : 0;
   let ok=true;
@@ -342,15 +342,18 @@ export function faseAmbulatorio(ctx: Ctx){
     return k;
   };
   for(const g of giorniArr){
-    // FASCE (v0.3.35): il giorno può chiedere la sola A (mattina, storico), la
-    // sola Ap (pomeriggio) o entrambe. Ogni slot si tratta a sé: uno slot già
-    // presente (manuale o automatico) si salta.
-    for(const cod of ambCodici(g)){
-    if(medici.some(m=>gt(m.id,g).some(s=>s.tipo===cod))) continue;
+    // FASCE (v0.3.35) e PIÙ AMBULATORI (v0.3.36): ogni slot (ambulatorio,
+    // A|Ap) si tratta a sé; uno slot già coperto (manuale o automatico) si
+    // salta. Due ambulatori nella stessa fascia vanno per forza a medici
+    // diversi: un medico non può avere due A (o due Ap) nello stesso giorno.
+    for(const sl of ambSlots(g)){
+    const cod = sl.cod;
+    if(medici.some(m=>haSlot(m.id,g,sl))) continue;
     const fascia: "M"|"P" = cod==="A" ? "M" : "P";
 
     const canAmb = (m: Medico, ignoraObiettivo=false) => {
       if(m.stato==="MPS") return false;
+      if(!abilitatoAmb(m, sl.amb)) return false;            // solo gli abilitati a QUESTO ambulatorio
       if(escluso(m.id,g,fascia)) return false;              // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)
       if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
       // Vincolo MORBIDO: superabile nel 2° passaggio, quando l'alternativa
@@ -398,10 +401,10 @@ export function faseAmbulatorio(ctx: Ctx){
       for(const idx of ordine){
         const m=ambilitati[idx];
         if(!canAmb(m,ignoraObiettivo)) continue;
-        add(m.id,g,cod);
+        add(m.id,g,cod,false,sl.amb);
         // Le guardie di add() possono rifiutare in silenzio: verificare SEMPRE
         // che la A sia stata davvero inserita prima di dichiarare successo.
-        if(!gt(m.id,g).some(s=>s.tipo===cod)) continue;
+        if(!haSlot(m.id,g,sl)) continue;
         nextIdx=(idx+1)%n;
         assegnato=true; break;
       }
@@ -998,14 +1001,13 @@ export function validazioneGlobale(ctx: Ctx){
     if(cf(g,"N")<1)          probs.push(`G${g}: notte mancante${imp(g,"N",1)}`);
   }
   for(const g of giorniArr){
-    for(const cod of ambMancanti(g))
-      probs.push(`${DF[ctx.dw(g)]} ${g}: ${cod==="Ap"?"ambulatorio pomeriggio":"ambulatorio"} mancante`);
+    for(const sl of ambMancanti(g))
+      probs.push(`${DF[ctx.dw(g)]} ${g}: ${ctx.slotLbl(sl)} mancante`);
   }
   // RETE DI SICUREZZA: una A AUTOMATICA su un medico non abilitato non è mai valida.
   for(const m of medici){
-    if(m.ambulatorio) continue;
     for(const g of giorniArr)
-      if(gt(m.id,g).some(s=>!s.man&&isAmbT(s.tipo)))
+      if(gt(m.id,g).some(s=>!s.man&&isAmbT(s.tipo)&&!ctx.abilitatoAmb(m,ambIdDi(s))))
         probs.push(`${m.nome.split(" ").pop()}: ambulatorio G${g} a medico non abilitato`);
   }
   // Controllo finale dei weekend liberi (dopo le notti), con obiettivo per-medico.

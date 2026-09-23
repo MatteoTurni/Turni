@@ -26,10 +26,13 @@ const mediciTest = (): Medico[] => [
 ];
 
 const dft = () => JSON.parse(JSON.stringify(REGOLE_DEFAULT));
+// Ambulatorio storico "A" con le fasce date per giorno della settimana.
+const conFasce = (giorni: Record<number,string>) =>
+  mergeRegole({ ...dft(), ambulatori:[{ id:"A", nome:"Ambulatorio", sigla:"A", giorni }] } as any);
 const chi = (T:TurniMese, medici:Medico[], g:number, cod:string) =>
   medici.filter(m=>(T[m.id]?.[g]?.t||[]).some(s=>s.tipo===cod));
 
-beforeEach(()=>{ setSalt(0); setAmbRotStart(0); setPrevContext(null); setRegole(dft()); });
+beforeEach(()=>{ setSalt(0); setAmbRotStart(0); setPrevContext(null, 2026, 5); setRegole(dft()); });
 afterEach(()=>{ setRegole(dft()); });
 
 describe("codice Ap", () => {
@@ -40,11 +43,10 @@ describe("codice Ap", () => {
   });
 });
 
-describe("mergeRegole: fasceAmb", () => {
-  it("campo assente → {} (tutto mattina); valori non validi scartati", () => {
-    expect(mergeRegole({ ...dft(), fasceAmb: undefined as any }).fasceAmb).toEqual({});
-    const r = mergeRegole({ ...dft(), fasceAmb: { 1:"P", 2:"MP", 3:"M", 4:"boh", 7:"P" } as any });
-    expect(r.fasceAmb).toEqual({ 1:"P", 2:"MP" });
+describe("mergeRegole: fasce del vecchio formato (v0.3.35)", () => {
+  it("fasceAmb converte nei giorni dell'ambulatorio \"A\"; valori non validi → mattina", () => {
+    const r = mergeRegole({ giorniAmb:[1,2,3,4], fasceAmb: { 1:"P", 2:"MP", 3:"M", 4:"boh", 7:"P" } } as any);
+    expect(r.ambulatori[0].giorni).toEqual({ 1:"P", 2:"MP", 3:"M", 4:"M" });
   });
 });
 
@@ -52,8 +54,8 @@ describe("fabbisogno: gli slot d'ambulatorio seguono la fascia", () => {
   it("mattina+pomeriggio conta 2 slot per giorno", () => {
     const anno=2026, mese=5, nd=dimOf(anno,mese);   // giugno 2026 (2/6 festivo di martedì)
     const a1 = dettaglioFabbisogno(anno, mese, nd, mergeRegole(dft())).a;
-    const a2 = dettaglioFabbisogno(anno, mese, nd, mergeRegole({ ...dft(), fasceAmb:{1:"MP"} })).a;
-    const aP = dettaglioFabbisogno(anno, mese, nd, mergeRegole({ ...dft(), fasceAmb:{1:"P"} })).a;
+    const a2 = dettaglioFabbisogno(anno, mese, nd, conFasce({1:"MP"})).a;
+    const aP = dettaglioFabbisogno(anno, mese, nd, conFasce({1:"P"})).a;
     expect(a2).toBe(2*a1);
     expect(aP).toBe(a1);
   });
@@ -63,7 +65,7 @@ describe("generazione con ambulatorio di pomeriggio", () => {
   const anno=2026, mese=5;
 
   it("solo pomeriggio: ogni martedì feriale ha una Ap (a un abilitato) e nessuna A", () => {
-    setRegole(mergeRegole({ ...dft(), giorniAmb:[1], fasceAmb:{1:"P"} }));
+    setRegole(conFasce({1:"P"}));
     const nd=dimOf(anno,mese), medici=mediciTest();
     const r = generaMigliorTentativo(anno, mese, nd, medici, {}, 3000);
     expect(r.ok).toBe(true);
@@ -80,7 +82,7 @@ describe("generazione con ambulatorio di pomeriggio", () => {
   });
 
   it("mattina + pomeriggio: A e Ap presenti, di norma a medici diversi", () => {
-    setRegole(mergeRegole({ ...dft(), giorniAmb:[1], fasceAmb:{1:"MP"} }));
+    setRegole(conFasce({1:"MP"}));
     const nd=dimOf(anno,mese), medici=mediciTest();
     const r = generaMigliorTentativo(anno, mese, nd, medici, {}, 3000);
     expect(r.ok).toBe(true);
@@ -96,7 +98,7 @@ describe("generazione con ambulatorio di pomeriggio", () => {
   });
 
   it("la Ap manuale viene rispettata e non duplicata", () => {
-    setRegole(mergeRegole({ ...dft(), giorniAmb:[1], fasceAmb:{1:"MP"} }));
+    setRegole(conFasce({1:"MP"}));
     const nd=dimOf(anno,mese), medici=mediciTest();
     expect(dowOf(anno,mese,9)).toBe(1);
     const T: TurniMese = { "5": { "9": { t:[{tipo:"Ap",sott:false,man:true}] } } };
@@ -107,7 +109,7 @@ describe("generazione con ambulatorio di pomeriggio", () => {
   });
 
   it("calcAmbRotNext conta anche le Ap automatiche", () => {
-    setRegole(mergeRegole({ ...dft(), giorniAmb:[1], fasceAmb:{1:"P"} }));
+    setRegole(conFasce({1:"P"}));
     const nd=dimOf(anno,mese), medici=mediciTest();   // abilitati: ids 2,5,6,8 → indici 0..3
     const T: TurniMese = { "6": { "23": { t:[{tipo:"Ap",sott:false,man:false}] } } };
     expect(dowOf(anno,mese,23)).toBe(1);

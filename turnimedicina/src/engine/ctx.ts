@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, codiciAmb } from "./turni";
+import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
@@ -159,7 +159,7 @@ export function makeCtx(
     }
   };
 
-  const add = (id:number,g:number,tipo:string,man=false) => {
+  const add = (id:number,g:number,tipo:string,man=false,amb?:string) => {
     const c=gt(id,g);
     if(c.some(s=>s.tipo===tipo)) return;
     // GUARDIE DI SICUREZZA (solo inserimenti AUTOMATICI; i manuali sono inviolabili).
@@ -192,7 +192,7 @@ export function makeCtx(
         if(!canConsec(id,g)) return;
       }
     }
-    st(id,g,[...c,{tipo,sott:false,man}]);
+    st(id,g,[...c,{tipo,sott:false,man,...(amb ? {amb} : {})}]);
   };
 
   const haX = (id:number,g:number) => gt(id,g).some(s=>s.tipo==="X");
@@ -226,17 +226,25 @@ export function makeCtx(
   // la notte PREFESTIVA (il giorno dopo è domenica o festivo infrasettimanale).
   const isNotteFest = (g:number) => isWk(g) || (g+1<=ndim && isSp(g+1));
   const isFer= (g:number) => !isWk(g);
-  // Giorni di ambulatorio dal pannello Regole (era il martedì hardcoded).
-  const AMB_DW = new Set(REG.giorniAmb ?? [1]);
-  const isAmb= (g:number) => AMB_DW.has(dw(g));
-  // Slot d'ambulatorio richiesti nel giorno g (v0.3.35): [] se non è un giorno
-  // d'ambulatorio feriale, altrimenti ["A"], ["Ap"] o ["A","Ap"] secondo la
-  // fascia scelta nelle Regole per quel giorno della settimana.
-  const ambCodici = (g:number): string[] =>
-    (isAmb(g)&&!isH(g)) ? codiciAmb(REG.fasceAmb?.[dw(g)]) : [];
-  // Slot d'ambulatorio del giorno g ancora scoperti (nessun medico ha il codice).
-  const ambMancanti = (g:number): string[] =>
-    ambCodici(g).filter(c=>!medici.some(m=>gt(m.id,g).some(s=>s.tipo===c)));
+  // AMBULATORI (v0.3.36): più ambulatori, ciascuno coi suoi giorni, fasce e
+  // abilitati. Uno SLOT = (ambulatorio, codice A|Ap) da coprire in un giorno.
+  const AMBS = REG.ambulatori ?? [];
+  // Slot richiesti nel giorno g: [] nei festivi e nei giorni senza ambulatorio.
+  const ambSlots = (g:number): SlotAmb[] => isH(g) ? [] : slotAmbGiorno(AMBS, dw(g));
+  // Il giorno g ha almeno un ambulatorio (festivi esclusi)?
+  const isAmb = (g:number) => ambSlots(g).length>0;
+  // Il medico `id` copre lo slot in g?
+  const haSlot = (id:number, g:number, sl:SlotAmb) =>
+    gt(id,g).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb);
+  // Slot del giorno g ancora scoperti.
+  const ambMancanti = (g:number): SlotAmb[] =>
+    ambSlots(g).filter(sl=>!medici.some(m=>haSlot(m.id,g,sl)));
+  // Nome leggibile di uno slot, per i messaggi.
+  const slotLbl = (sl:SlotAmb) => {
+    const a = AMBS.find(x=>x.id===sl.amb);
+    const nome = a ? (AMBS.length>1 ? `ambulatorio ${a.nome}` : "ambulatorio") : "ambulatorio";
+    return nome + (sl.cod==="Ap" ? " (pomeriggio)" : "");
+  };
 
   // Fabbisogni giornalieri dal pannello Regole.
   const FB  = REG.fabb;
@@ -447,7 +455,10 @@ export function makeCtx(
   const mdc = att.filter(m=>m.stato==="MDC");
   const mr  = att.filter(m=>m.stato==="MR");
   const mrMdc = [...mr,...mdc];
-  const ambilitati = medici.filter(m=>m.ambulatorio);
+  // Abilitati ad ALMENO un ambulatorio, nell'ordine dei medici: è la lista su
+  // cui gira il cursore di rotazione (unico per tutti gli ambulatori, perché
+  // l'equità si misura sul TOTALE degli ambulatori fatti).
+  const ambilitati = medici.filter(m=>abilitatoQualche(m,AMBS));
 
   const giorniArr = Array.from({length:ndim},(_,i)=>i+1);
   const feriali = giorniArr.filter(g=>isFer(g));
@@ -740,7 +751,7 @@ export function makeCtx(
 
   return {
     ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
-    dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambCodici, ambMancanti, nmn, npn, SPEC, cf,
+    dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,

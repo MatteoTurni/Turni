@@ -45,17 +45,38 @@ describe("regole", () => {
     expect(mergeRegole(null)).toEqual(REGOLE_DEFAULT);
   });
 
-  it("giorniAmb: assente → default martedì; presente → sanitizzato", () => {
-    // Salvataggi pre-v0.3.8 senza il campo → default [1]
-    expect(mergeRegole({ maxNotti: 4 } as any).giorniAmb).toEqual([1]);
-    // Presente e valido → conservato (ordinato, dedup)
-    expect(mergeRegole({ giorniAmb: [2, 1, 2] } as any).giorniAmb).toEqual([1, 2]);
-    // Vuoto è LEGITTIMO: nessun ambulatorio
-    expect(mergeRegole({ giorniAmb: [] } as any).giorniAmb).toEqual([]);
+  it("vecchi giorniAmb (senza ambulatori) → un unico ambulatorio \"A\" di mattina", () => {
+    const giorni = (s: any) => mergeRegole(s).ambulatori.map(a => a.giorni);
+    // Salvataggi pre-v0.3.8 senza il campo → default martedì
+    expect(giorni({ maxNotti: 4 })).toEqual([{ 1: "M" }]);
+    // Presente e valido → conservato (dedup)
+    expect(giorni({ giorniAmb: [2, 1, 2] })).toEqual([{ 1: "M", 2: "M" }]);
+    // Vuoto è LEGITTIMO: l'ambulatorio resta ma senza giorni
+    expect(giorni({ giorniAmb: [] })).toEqual([{}]);
     // Valori fuori range (weekend, negativi, non interi) scartati
-    expect(mergeRegole({ giorniAmb: [5, 6, -1, 1.5, 3] } as any).giorniAmb).toEqual([3]);
+    expect(giorni({ giorniAmb: [5, 6, -1, 1.5, 3] })).toEqual([{ 3: "M" }]);
     // Tipo sbagliato → default
-    expect(mergeRegole({ giorniAmb: "martedì" } as any).giorniAmb).toEqual([1]);
+    expect(giorni({ giorniAmb: "martedì" })).toEqual([{ 1: "M" }]);
+    // fasceAmb v0.3.35 → conservate
+    expect(giorni({ giorniAmb: [1, 3], fasceAmb: { 1: "MP", 3: "P" } })).toEqual([{ 1: "MP", 3: "P" }]);
+    // I campi vecchi non sopravvivono al merge
+    const r = mergeRegole({ giorniAmb: [1] } as any);
+    expect("giorniAmb" in r).toBe(false);
+    expect(r.ambulatori[0]).toMatchObject({ id: "A", sigla: "A" });
+  });
+
+  it("ambulatori presenti → sanificati (id unici, sigla di ripiego, giorni validi)", () => {
+    const r = mergeRegole({ ambulatori: [
+      { id: "d", nome: "Diabetologia", sigla: "", giorni: { 1: "M", 5: "M", 2: "boh" } },
+      { id: "d", nome: "Doppione", sigla: "X", giorni: {} },
+      { nome: "senza id" },
+      { id: "c", nome: " ", sigla: "car", giorni: { 4: "P" } },
+    ] } as any);
+    expect(r.ambulatori).toEqual([
+      { id: "d", nome: "Diabetologia", sigla: "DIA", giorni: { 1: "M" } },
+      { id: "c", nome: "Ambulatorio", sigla: "car", giorni: { 4: "P" } },
+    ]);
+    expect(mergeRegole({ ambulatori: [] } as any).ambulatori).toEqual([]);
   });
 });
 

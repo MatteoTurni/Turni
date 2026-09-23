@@ -10,7 +10,8 @@ function mulberry32(seed:number){let a=seed>>>0;return()=>{a|=0;a=(a+0x6D2B79F5)
 const medici:Medico[] = JSON.parse(fs.readFileSync("scen_amb.json","utf8")).medici;
 const ab=medici.filter(m=>m.ambulatorio); const nome=(m:Medico)=>m.nome.split(" ").pop()!;
 const GA = (process.argv[3]||"1").split(",").map(Number);
-const REG={...JSON.parse(JSON.stringify(REGOLE_DEFAULT)),maxConsec:5,giorniAmb:GA};
+const REG={...JSON.parse(JSON.stringify(REGOLE_DEFAULT)),maxConsec:5,
+  ambulatori:[{id:"A",nome:"Ambulatorio",sigla:"A",giorni:Object.fromEntries(GA.map(d=>[d,"M"]))}]};
 const MESI=+(process.argv[2]||"12");
 const tot:Record<string,number>={}; for(const m of ab) tot[nome(m)]=0;
 let rot=0, anno=2026, mese=8;

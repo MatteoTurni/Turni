@@ -1,18 +1,31 @@
 import { useState } from "react";
-import type { Medico, Stato } from "../engine/types";
+import type { Medico, Stato, Ambulatorio } from "../engine/types";
+import { abilitatoAmb } from "../engine/turni";
 
 // ─── DOC MODAL ────────────────────────────────────────────────────────────────
 // Creazione/modifica di un medico. `doc` senza id = nuovo medico; l'attribuzione
 // dell'id e l'inserimento nella lista sono compito del chiamante (onSalva).
 export type DocDraft = Omit<Medico, "id"> & { id?: number };
 
-export function DocModal({ doc, onSalva, onClose }: {
+export function DocModal({ doc, ambulatori, onSalva, onClose }: {
   doc: DocDraft;
+  ambulatori: Ambulatorio[];
   onSalva: (f: DocDraft) => void;
   onClose: () => void;
 }){
   const isN = !doc.id;
-  const [f,setF] = useState<DocDraft>({...doc});
+  // Abilitazioni materializzate (il vecchio flag diventa la lista esplicita).
+  const [f,setF] = useState<DocDraft>(()=>{
+    const attivi = ambulatori.filter(a=>abilitatoAmb({...doc,id:0} as Medico,a.id)).map(a=>a.id);
+    // id di ambulatori non più esistenti: si conservano ma non contano.
+    const orfani = (doc.ambulatori??[]).filter(id=>!ambulatori.some(a=>a.id===id));
+    return {...doc, ambulatori:[...attivi,...orfani], ambulatorio: attivi.length>0};
+  });
+  const togAmb = (id:string) => setF(p=>{
+    const cur = p.ambulatori ?? [];
+    const ids = cur.includes(id) ? cur.filter(x=>x!==id) : [...cur,id];
+    return {...p, ambulatori:ids, ambulatorio: ids.some(x=>ambulatori.some(a=>a.id===x))};
+  });
   const inp: React.CSSProperties = {width:"100%",background:"#030810",border:"1px solid #1e3a5f",color:"#e2f0ff",borderRadius:"7px",padding:"7px 10px",fontSize:"12px",fontFamily:"monospace",boxSizing:"border-box"};
   const salva = () => {
     if(!f.nome?.trim()) return;
@@ -43,16 +56,21 @@ export function DocModal({ doc, onSalva, onClose }: {
             <option value="MPS">MPS — Pronto Soccorso</option>
           </select>
         </div>
-        <div style={{marginBottom:"16px",display:"flex",alignItems:"center",gap:"10px"}}>
-          <input
-            id="amb-check" type="checkbox"
-            checked={!!f.ambulatorio}
-            onChange={e=>setF(p=>({...p,ambulatorio:e.target.checked}))}
-            style={{width:"16px",height:"16px",accentColor:"#10b981",cursor:"pointer"}}
-          />
-          <label htmlFor="amb-check" style={{color:"#34d399",fontSize:"11px",fontFamily:"monospace",cursor:"pointer",userSelect:"none"}}>
-            Abilitato turni ambulatorio
-          </label>
+        <div style={{marginBottom:"16px"}}>
+          <label style={{color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace",display:"block",marginBottom:"5px"}}>Abilitato agli ambulatori</label>
+          {ambulatori.length===0 && <div style={{color:"#3d5878",fontSize:"10px",fontFamily:"monospace"}}>Nessun ambulatorio configurato (pannello Regole).</div>}
+          {ambulatori.map(a=>(
+            <div key={a.id} style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"5px"}}>
+              <input id={"amb-"+a.id} type="checkbox"
+                checked={(f.ambulatori??[]).includes(a.id)}
+                disabled={f.stato==="MPS"}
+                onChange={()=>togAmb(a.id)}
+                style={{width:"16px",height:"16px",accentColor:"#10b981",cursor:"pointer"}}/>
+              <label htmlFor={"amb-"+a.id} style={{color:"#34d399",fontSize:"11px",fontFamily:"monospace",cursor:"pointer",userSelect:"none"}}>
+                {a.nome} <span style={{color:"#6ee7b7",fontWeight:700}}>({a.sigla})</span>
+              </label>
+            </div>
+          ))}
         </div>
         <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}>
           <button onClick={onClose} style={{background:"#0d1117",color:"#2d5a8a",border:"1px solid #1e293b",borderRadius:"7px",padding:"8px 14px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>Annulla</button>

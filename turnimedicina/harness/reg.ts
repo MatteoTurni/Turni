@@ -64,7 +64,7 @@ function scenari(): ScenCfg[] {
            regole:{ notteLiberoNotte:true } });
   S.push({ nome:"giu26-ripEst", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ riposoEsteso:true } });
   S.push({ nome:"giu26-wk3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ wkTarget:3 } });
-  S.push({ nome:"giu26-amb3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ giorniAmb:[0,2,4] } });
+  S.push({ nome:"giu26-amb3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ ambulatori:[{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:{ 0:"M", 2:"M", 4:"M" } }] } });
   S.push({ nome:"giu26-fabbAlto", anno:2026, mese:5, medici:mediciBase(), ex:{},
            regole:{ fabb:{ fer:{mMin:3,mMax:3,pMin:2,pMax:2}, sab:{mMin:2,mMax:2,pMin:1,pMax:1}, fest:{mMin:1,mMax:1,pMin:1,pMax:1} } as any } });
   {

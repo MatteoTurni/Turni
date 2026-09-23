@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Medico, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
+import type { Medico, Regole, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
 import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
-import { vt, SPEC, isAmbT, codiciAmb, FASCE_AMB } from "./engine/turni";
-import { REGOLE_DEFAULT, setRegole, getRegole } from "./engine/regole";
+import { vt, SPEC, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
+import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
+import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
 import { generaParallelo } from "./generaParallelo";
@@ -71,7 +72,13 @@ export default function App(){
   const editabile = puoModificare();
   const remotoOk  = useRef(!remotoConfigurato());
   const applicaRemoto = (r: NonNullable<Awaited<ReturnType<typeof caricaRemoto>>>, ancheData=true) => {
-    if(r.regole){ const m = { ...getRegole(), ...r.regole }; setRegole(m); setRegoleState(m); saveRegole(m); }
+    if(r.regole){
+      // Regole remote salvate prima della v0.3.36 (giorniAmb/fasceAmb, niente
+      // ambulatori): si convertono loro, non si tengono gli ambulatori locali.
+      const base: Partial<Regole> = { ...getRegole(), ...r.regole };
+      if(!Array.isArray(r.regole.ambulatori) && (r.regole.giorniAmb || r.regole.fasceAmb)) delete base.ambulatori;
+      const m = mergeRegole(base); setRegole(m); setRegoleState(m); saveRegole(m);
+    }
     if(r.ambRot) saveAmbRot(r.ambRot);
     if(r.stato){
       if(ancheData && r.stato.anno!=null) setAnno(r.stato.anno);
@@ -252,7 +259,8 @@ export default function App(){
       const ambN=cntAmb(m.id), psN=cntPS(m.id), pm=cntPerm(m.id);
       const permTxt=PERM.filter(k=>pm.det[k]).map(k=>`${k}${pm.det[k]}`).join("·");
       const mps=m.stato==="MPS";
-      out.push(`${m.nome} [${m.stato}]${m.ambulatorio?" · AMB":""}  matr. ${m.codice||"—"}`);
+      const abAmb=abilitatoQualche(m,regole.ambulatori);
+      out.push(`${m.nome} [${m.stato}]${abAmb?" · AMB":""}  matr. ${m.codice||"—"}`);
       const straN=cntStra(m.id), alpiN=cntALPI(m.id);
       out.push(`  Turni: ${mps?`${tot}`:`${tot} / ${m.obiettivo}`}`);
       out.push(`  Reparto: M ${r.m} · P ${r.p} · N ${r.n}`);
@@ -260,7 +268,7 @@ export default function App(){
       out.push(`  PS: ${psN}${alpiN>0?` (di cui ALPI ${alpiN})`:""}`);
       out.push(`  Festivi lavorati: ${r.wk}`);
       if(!mps) out.push(`  Weekend liberi: ${wkLib}`);
-      if(m.ambulatorio) out.push(`  Ambulatorio: ${ambN}`);
+      if(abAmb || ambN>0) out.push(`  Ambulatorio: ${ambN}`);
       out.push(`  Permessi: ${pm.tot>0?`${pm.tot} (${permTxt})`:"0"}`);
       out.push("");
     }
@@ -331,13 +339,11 @@ export default function App(){
   // Cluster causali ancora ATTUALI: almeno una cella del cluster è tuttora
   // sotto-minimo, oppure uno dei suoi ambulatori è tuttora scoperto. Se
   // l'utente sistema a mano quei giorni, il cluster sparisce da sé.
-  // Slot d'ambulatorio richiesti nel giorno g (A e/o Ap secondo la fascia).
-  const ambCodiciApp = (g:number): string[] => {
-    const d = dowOf(anno,mese,g);
-    return (regole.giorniAmb ?? [1]).includes(d) && !metaG(g).h ? codiciAmb(regole.fasceAmb?.[d]) : [];
-  };
-  const ambMancaApp = (g:number) =>
-    ambCodiciApp(g).some(c=>!medici.some(m=>gT(m.id,g).some(s=>s.tipo===c)));
+  // Slot d'ambulatorio richiesti nel giorno g: (ambulatorio, A|Ap).
+  const ambSlotsApp = (g:number) => metaG(g).h ? [] : slotAmbGiorno(regole.ambulatori, dowOf(anno,mese,g));
+  const chiSlot = (g:number, sl:{amb:string;cod:string}) =>
+    medici.find(m=>gT(m.id,g).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb));
+  const ambMancaApp = (g:number) => ambSlotsApp(g).some(sl=>!chiSlot(g,sl));
   const causVis = !diagCaus ? [] : diagCaus.cluster.filter(cl=>
     cl.celle.some(c=>cfApp(c.g,c.f)<minDi(c.g,c.f)) || cl.ambGiorni.some(ambMancaApp));
 
@@ -620,7 +626,7 @@ export default function App(){
                           onMouseLeave={editabile ? e=>e.currentTarget.style.background=bg : undefined}>
                           <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
                             {hX && <span style={{color:KC.X.t,fontWeight:700,fontSize:"11px",fontFamily:"monospace"}}>/</span>}
-                            {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={s.man}/>)}
+                            {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={s.man} lbl={etichettaTurno(s,regole.ambulatori)}/>)}
                           </div>
                         </td>
                       );
@@ -628,7 +634,7 @@ export default function App(){
                     <td style={{background:ov?"#1a0606":un?"#061a06":"#122036",border:"1px solid #1e3a5f",padding:"2px 5px",textAlign:"center",fontWeight:700,fontSize:"12px",color:ov?"#f87171":un?"#4ade80":"#e2f0ff",fontFamily:"monospace"}}>{tot}</td>
                     <td style={{background:"#122036",border:"1px solid #1e3a5f",padding:"2px 5px",textAlign:"center",color:"#4b7aad",fontSize:"11px",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":med.obiettivo}</td>
                     <td style={{background:"#141033",border:"1px solid #1e3a5f",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:wkLib>=2?"#a78bfa":wkLib===1?"#7c3aed":"#4b5563",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":wkLib}</td>
-                    <td style={{background:"#0a1a12",border:"1px solid #1e3a5f",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:med.ambulatorio?ambN>0?"#34d399":"#065f46":"#1f2937",fontFamily:"monospace"}}>{med.ambulatorio?ambN:"—"}</td>
+                    <td style={{background:"#0a1a12",border:"1px solid #1e3a5f",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:(abilitatoQualche(med,regole.ambulatori)||ambN>0)?ambN>0?"#34d399":"#065f46":"#1f2937",fontFamily:"monospace"}}>{(abilitatoQualche(med,regole.ambulatori)||ambN>0)?ambN:"—"}</td>
                   </tr>
                 );
               })}
@@ -636,14 +642,16 @@ export default function App(){
                 <td colSpan={2} style={{...TH,textAlign:"left",padding:"4px 8px",fontSize:"8px",color:"#3d5878"}}>Copertura M·P·N</td>
                 {giorni.map(g=>{
                   const mt=metaG(g);
-                  // Giorno d'ambulatorio FERIALE (segue regole.giorniAmb, quindi
-                  // anche giorni diversi dal martedì se configurati): un
-                  // quadratino per slot (A mattina / Ap pomeriggio) con il codice
-                  // del medico assegnato, o "A?"/"Ap?" se manca. undefined =
-                  // giorno normale, niente quadratino.
-                  const ambCod = ambCodiciApp(g);
-                  const ambSlot = ambCod.length ? ambCod.map(cod=>({cod,
-                    med: medici.find(m=>gT(m.id,g).some(s=>s.tipo===cod))?.codice ?? null})) : undefined;
+                  // Giorno d'ambulatorio FERIALE (segue regole.ambulatori): un
+                  // quadratino per slot (ambulatorio × mattina/pomeriggio) con il
+                  // codice del medico assegnato, o "sigla?" se manca. undefined =
+                  // giorno senza ambulatori, niente quadratino.
+                  const sls = ambSlotsApp(g);
+                  const ambSlot = sls.length ? sls.map(sl=>{
+                    const a = regole.ambulatori.find(x=>x.id===sl.amb);
+                    return { cod: sl.cod, sigla: etichettaTurno({tipo:sl.cod,amb:sl.amb}, regole.ambulatori),
+                             nome: a?.nome ?? "Ambulatorio", med: chiSlot(g,sl)?.codice ?? null };
+                  }) : undefined;
                   return (
                     <td key={g} style={{background:"#0b1626",border:"1px solid #1e3a5f",padding:"3px 1px",textAlign:"center",verticalAlign:"top"}}>
                       <CovDots mc={cfApp(g,"M")} pc={cfApp(g,"P")} nc={cfApp(g,"N")} sp={mt.sp} sat={mt.sat} fabb={regole.fabb}
@@ -685,9 +693,15 @@ export default function App(){
 
           <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #1e3a5f",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
             <span style={{color:"#3d5878",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
-            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["A","Ambulatorio"],["Ap","Ambulatorio pom."],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
+            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
               <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
                 <Badge tipo={tipo} man/><span style={{color:"#4b7aad",fontSize:"8px"}}>{desc}</span>
+              </div>
+            ))}
+            {regole.ambulatori.map(a=>(
+              <div key={a.id} style={{display:"flex",alignItems:"center",gap:"3px"}}>
+                <Badge tipo="A" man lbl={a.sigla}/><Badge tipo="Ap" man lbl={a.sigla+"p"}/>
+                <span style={{color:"#4b7aad",fontSize:"8px"}}>{a.nome} (matt./pom.)</span>
               </div>
             ))}
             <span style={{color:"#3d5878",fontSize:"8px",marginLeft:"8px"}}>pieno=manuale · semitrasparente=auto</span>
@@ -725,7 +739,8 @@ export default function App(){
                   {/* intestazione: nome + badge + azioni */}
                   <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap",paddingBottom:"7px",marginBottom:"7px",borderBottom:"1px solid #16304f"}}>
                     <span style={{fontWeight:700,color:"#e2eeff",fontSize:"11px",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nome}</span>
-                    {m.ambulatorio&&<span style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>AMB</span>}
+                    {regole.ambulatori.filter(x=>abilitatoAmb(m,x.id)).map(x=>
+                      <span key={x.id} title={"Abilitato: "+x.nome} style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>{x.sigla}</span>)}
                     <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"3px",padding:"1px 6px",fontSize:"9px",fontWeight:700}}>{m.stato}</span>
                     <button onClick={()=>setEditDoc(m)} style={{background:"#1e3a5f",color:"#60a5fa",border:"1px solid #2f5a8a",borderRadius:"4px",padding:"2px 7px",cursor:"pointer",fontSize:"10px"}}>✏</button>
                     <button onClick={()=>eliminaDoc(m)}
@@ -759,7 +774,7 @@ export default function App(){
                   </div>
                   <div style={RIGA}><span style={{color:"#e879f9"}}>▦ Festivi lav.</span><b style={{color:"#e879f9"}}>{r.wk}</b></div>
                   {m.stato!=="MPS"&&<div style={RIGA}><span style={{color:"#a78bfa"}}>🗓 Wk liberi</span><b style={{color:"#a78bfa"}}>{wkLib}</b></div>}
-                  {m.ambulatorio&&<div style={RIGA}><span style={{color:"#34d399"}}>🏥 Ambulatorio</span><b style={{color:"#34d399"}}>{ambN}</b></div>}
+                  {(abilitatoQualche(m,regole.ambulatori)||ambN>0)&&<div style={RIGA}><span style={{color:"#34d399"}}>🏥 Ambulatorio</span><b style={{color:"#34d399"}}>{ambN}</b></div>}
                   <div style={RIGA}>
                     <span style={{color:pm.tot>0?"#fbbf24":"#3d5878"}}>📋 Permessi</span>
                     <b style={{color:pm.tot>0?"#fbbf24":"#3d5878"}}>{pm.tot}{pm.tot>0&&<span style={{color:"#a16207",fontWeight:400}}> {permTxt}</span>}</b>
@@ -853,59 +868,10 @@ export default function App(){
             </div>
 
             <div style={BOX}>
-              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>GIORNI DI AMBULATORIO</div>
-              <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginBottom:"8px"}}>
-                {[0,1,2,3,4].map(d=>{
-                  const on = regole.giorniAmb.includes(d);
-                  return (
-                    <button key={d}
-                      onClick={()=>updRegole({...regole,giorniAmb:
-                        (on ? regole.giorniAmb.filter(x=>x!==d) : [...regole.giorniAmb,d]).sort((a,b)=>a-b)})}
-                      style={{background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
-                              border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
-                              padding:"7px 13px",cursor:"pointer",fontSize:"11px",fontWeight:700,
-                              fontFamily:"monospace"}}>
-                      {DF[d]}
-                    </button>
-                  );
-                })}
-              </div>
-              {regole.giorniAmb.length>0 && (
-                <div style={{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"8px"}}>
-                  {regole.giorniAmb.map(d=>{
-                    const cur = regole.fasceAmb?.[d] ?? "M";
-                    const LBLF: Record<string,string> = { M:"Mattina", P:"Pomeriggio", MP:"Mattina + pomeriggio" };
-                    return (
-                      <div key={d} style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
-                        <span style={{...LBL,color:"#34d399",fontWeight:700,minWidth:"80px"}}>{DF[d]}</span>
-                        {FASCE_AMB.map(f=>{
-                          const on = cur===f;
-                          return (
-                            <button key={f}
-                              onClick={()=>{
-                                const fa = {...(regole.fasceAmb||{})};
-                                if(f==="M") delete fa[d]; else fa[d]=f;
-                                updRegole({...regole,fasceAmb:fa});
-                              }}
-                              style={{background:on?"#052e16":"#081120",color:on?"#34d399":"#3d5878",
-                                      border:`1px solid ${on?"#059669":"#1e3a5f"}`,borderRadius:"6px",
-                                      padding:"4px 9px",cursor:"pointer",fontSize:"10px",fontWeight:700,
-                                      fontFamily:"monospace"}}>
-                              {LBLF[f]}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div style={{...LBL,fontSize:"9px",lineHeight:1.6}}>
-                Nei giorni selezionati (se non festivi) viene generato l'ambulatorio con la solita
-                rotazione fra i medici abilitati: turno A se di mattina, Ap se di pomeriggio,
-                entrambi (di norma a due medici diversi) se mattina + pomeriggio.
-                Nessun giorno selezionato = nessun ambulatorio. I festivi restano sempre esclusi.
-              </div>
+              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>AMBULATORI</div>
+              <AmbulatoriPanel ambulatori={regole.ambulatori} medici={medici}
+                onAmbulatori={amb=>updRegole({...regole,ambulatori:amb})}
+                onMedici={setMedici}/>
             </div>
 
             <div style={BOX}>
@@ -1022,10 +988,9 @@ export default function App(){
               {RIGA("M","Mattine (minimo di copertura)", fab.m, 1, "#60a5fa")}
               {RIGA("P","Pomeriggi (minimo di copertura)", fab.p, 1, "#a78bfa")}
               {RIGA("N","Notti (una per giorno)", fab.n, 2, "#4ade80")}
-              {RIGA("A",`Ambulatori (${regole.giorniAmb.length?regole.giorniAmb.map(d=>{
-                const f=regole.fasceAmb?.[d];
-                return DF[d].toLowerCase()+(f==="P"?" pom.":f==="MP"?" mat.+pom.":"");
-              }).join(", ")+" non festivi":"nessun giorno"})`, fab.a, 1, "#34d399")}
+              {RIGA("A",`Ambulatori (${regole.ambulatori.some(a=>Object.keys(a.giorni).length)
+                ? regole.ambulatori.filter(a=>Object.keys(a.giorni).length).map(a=>a.sigla).join(", ")+" · feriali"
+                : "nessuno"})`, fab.a, 1, "#34d399")}
 
               <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a5f"}}>
                 <span style={{color:"#8fb3d9",fontSize:"11px"}}>Totale lordo</span>
@@ -1061,10 +1026,10 @@ export default function App(){
       })()}
 
       {cella   && <CellModal medico={medici.find(x=>x.id===cella.id)} giorno={cella.g} anno={anno} mese={mese}
-                             esistenti={gT(cella.id,cella.g)}
+                             esistenti={gT(cella.id,cella.g)} ambulatori={regole.ambulatori}
                              onSalva={(t)=>sT(cella.id,cella.g,t)}
                              onClose={()=>setCella(null)}/>}
-      {editDoc && <DocModal doc={editDoc} onSalva={salvaDoc} onClose={()=>setEditDoc(null)}/>}
+      {editDoc && <DocModal doc={editDoc} ambulatori={regole.ambulatori} onSalva={salvaDoc} onClose={()=>setEditDoc(null)}/>}
     </div>
   );
 }

@@ -4,8 +4,8 @@
 // un Web Worker senza modifiche (basta importare da questo file).
 export * from "./types";
 export { MESI, DL, DF, calcPasqua, holSet, isHol, isHolLocale, dowOf, dimOf, isSabN, isDomN, isFestivo, mkKey } from "./date";
-export { isMatt, isPom, isNot, vt, SPEC, cloneT, cloneTDeep, pulisciT, AMB, isAmbT, codiciAmb, FASCE_AMB } from "./turni";
-export { REGOLE_DEFAULT, mergeRegole, setRegole, getRegole } from "./regole";
+export { isMatt, isPom, isNot, vt, SPEC, cloneT, cloneTDeep, pulisciT, AMB, isAmbT, codiciAmb, FASCE_AMB, AMB_STORICO, ambIdDi, abilitatoAmb, abilitatoQualche, slotAmbGiorno, etichettaTurno, type SlotAmb } from "./turni";
+export { REGOLE_DEFAULT, mergeRegole, setRegole, getRegole, siglaDaNome } from "./regole";
 export { ENG, setPrevContext, setAmbRotStart, setSalt, mkRng, shuf } from "./state";
 export { makeCtx, type Ctx } from "./ctx";
 export { validazioneGlobale, riequilibraWeekendLiberi, riparaBuchi } from "./fasi";

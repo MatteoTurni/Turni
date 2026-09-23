@@ -1,5 +1,5 @@
 import type { Medico, Turno, TurniMese, Regole } from "./types";
-import { vt, isMatt, isPom, isNot, codiciAmb } from "./turni";
+import { vt, isMatt, isPom, isNot, slotAmbGiorno } from "./turni";
 import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 
 // ─── BILANCIO DEL MESE ────────────────────────────────────────────────────────
@@ -147,8 +147,8 @@ export function dettaglioFabbisogno(anno: number, mese: number, nd: number, r: R
     const fs = sp ? r.fabb.fest : isSabN(dw) ? r.fabb.sab : r.fabb.fer;
     m += fs.mMin;
     p += fs.pMin;
-    // giorno d'ambulatorio feriale: 1 slot (A o Ap) o 2 (A+Ap) secondo la fascia
-    if ((r.giorniAmb ?? [1]).includes(dw) && !h) a += codiciAmb(r.fasceAmb?.[dw]).length;
+    // giorno feriale: uno slot per ogni (ambulatorio, fascia) previsto quel giorno
+    if (!h) a += slotAmbGiorno(r.ambulatori ?? [], dw).length;
   }
   const n = nd;                    // una notte per ogni giorno del mese
   return { m, p, n, a, vt: m + p + 2 * n + a };

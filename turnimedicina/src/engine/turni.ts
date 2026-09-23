@@ -1,4 +1,4 @@
-import type { Turno, TurniMese, FasciaAmb } from "./types";
+import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio } from "./types";
 
 // ─── UTILITY TURNI ────────────────────────────────────────────────────────────
 // I turni associati (M+P oppure A+P) NON sono un tipo a sé: sono sempre
@@ -27,6 +27,46 @@ export function isAmbT(t:string){ return AMB.includes(t); }
 /** Codici d'ambulatorio richiesti da una fascia (assente → "M", storico). */
 export function codiciAmb(f?: FasciaAmb|null): string[] {
   return f==="P" ? ["Ap"] : f==="MP" ? ["A","Ap"] : ["A"];
+}
+
+// ── PIÙ AMBULATORI (v0.3.36) ──────────────────────────────────────────────────
+// Ogni A/Ap porta l'id del suo ambulatorio (Turno.amb). Le A/Ap senza id
+// (salvataggi precedenti) appartengono all'ambulatorio storico "A".
+export const AMB_STORICO = "A";
+/** Ambulatorio di appartenenza di un turno A/Ap. */
+export function ambIdDi(s: Turno): string { return s.amb ?? AMB_STORICO; }
+/** Il medico è abilitato all'ambulatorio `ambId`? Senza la lista `ambulatori`
+ *  (medici salvati prima della v0.3.36) vale il vecchio flag, per l'ambulatorio
+ *  storico "A". */
+export function abilitatoAmb(m: Medico, ambId: string): boolean {
+  if(m.stato==="MPS") return false;
+  if(Array.isArray(m.ambulatori)) return m.ambulatori.includes(ambId);
+  return !!m.ambulatorio && ambId===AMB_STORICO;
+}
+/** Il medico è abilitato ad almeno uno degli ambulatori dati? */
+export function abilitatoQualche(m: Medico, ambulatori: Ambulatorio[]): boolean {
+  return ambulatori.some(a=>abilitatoAmb(m,a.id));
+}
+/** Uno slot d'ambulatorio da coprire in un giorno. */
+export interface SlotAmb { amb: string; cod: string; }
+/** Slot richiesti in un giorno della settimana (festivi esclusi dal chiamante):
+ *  per ambulatorio, nell'ordine della lista, prima la A poi la Ap. */
+export function slotAmbGiorno(ambulatori: Ambulatorio[], dw: number): SlotAmb[] {
+  const out: SlotAmb[] = [];
+  for(const a of ambulatori){
+    const f = a.giorni?.[dw];
+    if(!f) continue;
+    for(const cod of codiciAmb(f)) out.push({ amb:a.id, cod });
+  }
+  return out;
+}
+/** Etichetta di un turno per tabellone/Excel: per A/Ap la sigla del suo
+ *  ambulatorio (pomeriggio: sigla + "p"); ambulatorio sconosciuto → A/Ap. */
+export function etichettaTurno(s: Turno, ambulatori: Ambulatorio[]): string {
+  if(!isAmbT(s.tipo)) return s.tipo;
+  const a = ambulatori.find(x=>x.id===ambIdDi(s));
+  if(!a) return s.tipo;
+  return a.sigla + (s.tipo==="Ap" ? "p" : "");
 }
 
 // ─── ESCLUSIONI ───────────────────────────────────────────────────────────────
@@ -86,7 +126,7 @@ export function cloneTDeep(src: TurniMese): TurniMese {
     for(const g in gsrc){
       const c = gsrc[g];
       if(!c || !Array.isArray(c.t)) continue;
-      gi[g] = { t: c.t.map(s=>({ tipo:s.tipo, sott:!!s.sott, man:!!s.man })) };
+      gi[g] = { t: c.t.map(s=>({ tipo:s.tipo, sott:!!s.sott, man:!!s.man, ...(s.amb ? { amb:s.amb } : {}) })) };
     }
     out[id] = gi;
   }

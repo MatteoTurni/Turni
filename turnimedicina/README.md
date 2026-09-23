@@ -1,4 +1,30 @@
-# TurniMedicina 0.3.35
+# TurniMedicina 0.3.36
+
+## Novità 0.3.36 — più ambulatori, ciascuno coi suoi abilitati
+
+Il pannello **Regole → Ambulatori** sostituisce "Giorni di ambulatorio": ora è
+un elenco di ambulatori (aggiungi / elimina), ognuno con
+
+- **nome** e **sigla** (quella che compare in tabellone ed Excel: `DIA` di
+  mattina, `DIAp` di pomeriggio);
+- **giorni e fascia**: per ogni giorno feriale —, Mattina, Pomeriggio o
+  Mattina + pomeriggio;
+- **medici abilitati**, modificabili anche dalla scheda del medico (una
+  casella per ambulatorio).
+
+Il generatore assegna ogni ambulatorio solo ai suoi abilitati. L'equità è
+misurata sul **totale** degli ambulatori fatti (chi è abilitato a più
+ambulatori non ne fa di più), con un unico cursore di rotazione fra mesi.
+Due ambulatori nella stessa fascia dello stesso giorno vanno a medici diversi.
+Un ambulatorio senza abilitati resta scoperto ed è segnalato col suo nome.
+
+Dati: ogni A/Ap porta l'id del suo ambulatorio (`Turno.amb`); le abilitazioni
+stanno su `Medico.ambulatori`. **Compatibilità**: le regole salvate prima
+(giorniAmb/fasceAmb) diventano l'ambulatorio "Ambulatorio" (sigla `A`); i
+medici col vecchio flag vi risultano abilitati; le A/Ap già in tabellone gli
+appartengono. A regole di default l'impronta deterministica (`harness/det.ts`)
+è identica alla 0.3.35. Test: `piuAmbulatori.test.ts`.
+
 
 ## Novità 0.3.35 — ambulatorio anche di pomeriggio
 

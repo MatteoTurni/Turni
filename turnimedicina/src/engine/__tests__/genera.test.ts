@@ -249,9 +249,13 @@ describe("rotazione ambulatorio", () => {
   });
 });
 
-describe("giorni di ambulatorio configurabili (regole.giorniAmb)", () => {
+// Un solo ambulatorio storico ("A") nei giorni dati, di mattina.
+const conGiorniAmb = (gg:number[]) => ({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)),
+  ambulatori:[{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:Object.fromEntries(gg.map(d=>[d,"M"])) }] });
+
+describe("giorni di ambulatorio configurabili", () => {
   it("con martedì+mercoledì la A viene generata su ENTRAMBI i giorni feriali", () => {
-    setRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), giorniAmb:[1,2] });
+    setRegole(conGiorniAmb([1,2]));
     const anno=2026, mese=5, nd=dimOf(anno,mese);   // giugno 2026 (2/6 festivo di martedì)
     const medici = mediciTest();
     const r = generaMigliorTentativo(anno, mese, nd, medici, {}, 3000);
@@ -272,7 +276,7 @@ describe("giorni di ambulatorio configurabili (regole.giorniAmb)", () => {
   });
 
   it("calcAmbRotNext segue i giorni configurati: una A del mercoledì fa avanzare l'indice", () => {
-    setRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), giorniAmb:[1,2] });
+    setRegole(conGiorniAmb([1,2]));
     const anno=2026, mese=5, nd=dimOf(anno,mese);
     const medici = mediciTest();                       // abilitati: ids 2,5,6,8 → indici 0..3
     // Mercoledì 24 giugno 2026: A automatica a id 8 (idx 3) → next = 0.
@@ -284,8 +288,8 @@ describe("giorni di ambulatorio configurabili (regole.giorniAmb)", () => {
     expect(calcAmbRotNext(T, medici, anno, mese, nd, 1)).toBe(1);
   });
 
-  it("con giorniAmb vuoto non viene generata NESSUNA A e la validazione non protesta", () => {
-    setRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), giorniAmb:[] });
+  it("senza giorni d'ambulatorio non viene generata NESSUNA A e la validazione non protesta", () => {
+    setRegole(conGiorniAmb([]));
     const anno=2026, mese=5, nd=dimOf(anno,mese);
     const medici = mediciTest();
     const r = generaMigliorTentativo(anno, mese, nd, medici, {}, 3000);

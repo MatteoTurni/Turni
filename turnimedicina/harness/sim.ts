@@ -7,6 +7,7 @@ import type { Medico, TurniMese, Regole } from "../src/engine/types";
 import { dimOf, dowOf, isHol, isFestivo, mkKey } from "../src/engine/date";
 import { SPEC, isMatt, isPom, isNot, vt } from "../src/engine/turni";
 import { setRegole, REGOLE_DEFAULT, getRegole, mergeRegole } from "../src/engine/regole";
+import { abilitatoAmb, ambIdDi, slotAmbGiorno } from "../src/engine/turni";
 import { ENG, setSalt, setAmbRotStart, setPrevContext } from "../src/engine/state";
 import { generaMigliorTentativo, misuraTabellone } from "../src/engine/genera";
 import * as fs from "node:fs";
@@ -153,9 +154,11 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
     if(P>fx.pMax && Pa>0) V.push(`g${g}: pomeriggi ${P}>${fx.pMax}`);
     if(N>1){ const na=medici.reduce((q,m)=>q+cell(T,m.id,g).filter(s=>s.tipo==="N"&&!s.man).length,0); if(na>0) V.push(`g${g}: ${N} notti`); }
     for(const m of medici){
-      if(cell(T,m.id,g).some(s=>s.tipo==="A"&&!s.man)){
-        if(!m.ambulatorio) V.push(`g${g}: A auto a non abilitato ${m.nome}`);
-        if(!(R.giorniAmb??[1]).includes(dow) || isHol(anno,mese,g)) V.push(`g${g}: A auto in giorno non-ambulatorio`);
+      for(const s of cell(T,m.id,g)){
+        if(!((s.tipo==="A"||s.tipo==="Ap")&&!s.man)) continue;
+        if(!abilitatoAmb(m,ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto a non abilitato ${m.nome}`);
+        const slots = isHol(anno,mese,g) ? [] : slotAmbGiorno(R.ambulatori??[],dow);
+        if(!slots.some(sl=>sl.cod===s.tipo&&sl.amb===ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto fuori dai giorni/fasce d'ambulatorio`);
       }
     }
   }
@@ -280,7 +283,7 @@ function scenari(): ScenCfg[] {
   // 12) obiettivo 3 weekend liberi
   S.push({ nome:"giu26-wk3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ wkTarget:3 } });
   // 13) ambulatorio 3 giorni a settimana
-  S.push({ nome:"giu26-amb3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ giorniAmb:[0,2,4] } });
+  S.push({ nome:"giu26-amb3", anno:2026, mese:5, medici:mediciBase(), ex:{}, regole:{ ambulatori:[{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:{ 0:"M", 2:"M", 4:"M" } }] } });
   // 14) fabbisogno alto (3 mattine, 2 pomeriggi minimi nei feriali)
   S.push({ nome:"giu26-fabbAlto", anno:2026, mese:5, medici:mediciBase(), ex:{},
            regole:{ fabb:{ fer:{mMin:3,mMax:3,pMin:2,pMax:2}, sab:{mMin:2,mMax:2,pMin:1,pMax:1}, fest:{mMin:1,mMax:1,pMin:1,pMax:1} } as any } });

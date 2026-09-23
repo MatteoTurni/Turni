@@ -37,15 +37,26 @@ describe("dettaglioFabbisogno", () => {
   it("il totale coincide con fabbisognoLordo", () => {
     expect(dettaglioFabbisogno(2026, 7, 31, R).vt).toBe(fabbisognoLordo(2026, 7, 31, R));
   });
-  it("giorniAmb configurabile: mar+mer raddoppia, vuoto azzera", () => {
+  it("giorni d'ambulatorio configurabili: mar+mer raddoppia, vuoto azzera", () => {
     // Luglio 2026: 4 martedì + 5 mercoledì, tutti non festivi → 9 A
-    const r2 = { ...R, giorniAmb: [1, 2] };
+    const r2 = { ...R, ambulatori: [{ id:"A", nome:"A", sigla:"A", giorni:{ 1:"M" as const, 2:"M" as const } }] };
     expect(dettaglioFabbisogno(2026, 6, 31, r2).a).toBe(9);
     expect(dettaglioFabbisogno(2026, 6, 31, r2).vt).toBe(160);
-    // Nessun giorno di ambulatorio → a = 0
-    const r0 = { ...R, giorniAmb: [] };
+    // Nessun ambulatorio → a = 0
+    const r0 = { ...R, ambulatori: [] };
     expect(dettaglioFabbisogno(2026, 6, 31, r0).a).toBe(0);
     expect(dettaglioFabbisogno(2026, 6, 31, r0).vt).toBe(151);
+  });
+});
+
+describe("più ambulatori", () => {
+  it("ogni ambulatorio conta i suoi slot, anche nello stesso giorno", () => {
+    // Luglio 2026: 4 martedì, 5 giovedì (tutti feriali)
+    const r = { ...R, ambulatori: [
+      { id:"a", nome:"Uno", sigla:"U", giorni:{ 1:"M" as const } },          // 4
+      { id:"b", nome:"Due", sigla:"D", giorni:{ 1:"MP" as const, 3:"P" as const } }, // 8 + 5
+    ] };
+    expect(dettaglioFabbisogno(2026, 6, 31, r).a).toBe(17);
   });
 });
 

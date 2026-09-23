@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, CellaScoperta, CausaVincolo, CausaCluster, DiagnosiCausale } from "./types";
 import { DF, dowOf } from "./date";
-import { cloneT, isEscl, isAmbT } from "./turni";
+import { cloneT, isEscl, isAmbT, abilitatoAmb, type SlotAmb } from "./turni";
 import { ENG, mkRng } from "./state";
 import { getRegole, setRegole } from "./regole";
 import { makeCtx } from "./ctx";
@@ -156,14 +156,14 @@ export function diagnosiCausale(
       }
       // Ambulatori della finestra ancora senza A (obbligo, salvo ambOff).
       // Uno slot per codice: A (mattina) e/o Ap (pomeriggio) secondo le Regole.
-      const daA: { g: number; cod: string }[] = [];
+      const daA: { g: number; sl: SlotAmb }[] = [];
       if (!mod.ambOff) {
         for (let g = lo; g <= hi; g++)
-          for (const cod of ctx.ambMancanti(g)) daA.push({ g, cod });
+          for (const sl of ctx.ambMancanti(g)) daA.push({ g, sl });
       }
-      const puoA = (m: Medico, g: number, cod: string) => {
-        const pom = cod === "Ap";
-        if (!m.ambulatorio || m.stato === "MPS" || ctx.haX(m.id, g)) return false;
+      const puoA = (m: Medico, g: number, sl: SlotAmb) => {
+        const cod = sl.cod, pom = cod === "Ap";
+        if (!abilitatoAmb(m, sl.amb) || ctx.haX(m.id, g)) return false;
         if (ctx.escluso(m.id, g, pom ? "P" : "M")) return false;
         if (ctx.gt(m.id, g).some(s => ["L", "ANA", "per11", "104"].includes(s.tipo))) return false;
         if (ctx.haN(m.id, g) || !ctx.canConsec(m.id, g)) return false;
@@ -172,13 +172,16 @@ export function diagnosiCausale(
         // Come nella fase: ammesso solo l'altro slot d'ambulatorio dello stesso giorno.
         return tt.length === 0 || (tt.every(s => isAmbT(s.tipo) && s.tipo !== cod) && ctx.canAssDist(m.id, g));
       };
-      const bloccati = daA.filter(x => !meds.some(m => puoA(m, x.g, x.cod)));
+      const bloccati = daA.filter(x => !meds.some(m => puoA(m, x.g, x.sl)));
       if (bloccati.length) {
         const ambBloccati = [...new Set(bloccati.map(x => x.g))];
-        const ambMotivi = bloccati.map(({ g, cod }) => {
-          const det = meds.filter(m => m.ambulatorio)
-            .map(m => `${m.nome.split(" ").pop()}: ${motivoNoA(ctx, m, g, cod)}`).join("; ");
-          return `Ambulatorio${cod === "Ap" ? " pomeridiano" : ""} di ${gL(g)} senza abilitati disponibili — ${det}`;
+        const ambMotivi = bloccati.map(({ g, sl }) => {
+          const abil = meds.filter(m => abilitatoAmb(m, sl.amb));
+          const det = abil.length
+            ? abil.map(m => `${m.nome.split(" ").pop()}: ${motivoNoA(ctx, m, g, sl.cod)}`).join("; ")
+            : "nessun medico abilitato";
+          const lbl = ctx.slotLbl(sl);
+          return `${lbl[0].toUpperCase()}${lbl.slice(1)} di ${gL(g)} senza abilitati disponibili — ${det}`;
         });
         return { ok: false, ambBloccati, ambMotivi };
       }
@@ -191,13 +194,13 @@ export function diagnosiCausale(
       const piazza = (i: number): boolean => {
         if (scaduto() || solves >= 6) return false;
         if (i >= daA.length) { solves++; return risolviCluster(ctx, cells, rng, nodi); }
-        const { g, cod } = daA[i];
+        const { g, sl } = daA[i];
         for (const m of meds) {
-          if (!puoA(m, g, cod)) continue;
-          ctx.add(m.id, g, cod);
-          if (!ctx.gt(m.id, g).some(s => s.tipo === cod && !s.man)) continue;
+          if (!puoA(m, g, sl)) continue;
+          ctx.add(m.id, g, sl.cod, false, sl.amb);
+          if (!ctx.haSlot(m.id, g, sl)) continue;
           if (piazza(i + 1)) return true;
-          ctx.st(m.id, g, ctx.gt(m.id, g).filter(s => !(s.tipo === cod && !s.man)));
+          ctx.st(m.id, g, ctx.gt(m.id, g).filter(s => !(s.tipo === sl.cod && !s.man)));
         }
         return false;
       };
