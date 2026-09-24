@@ -45,7 +45,13 @@ massimo è 1 per fascia, quindi niente pomeriggi salvo un «2» di un MPS. In
 negli scenari di prova). Totale posti mancanti invariato: è il fabbisogno
 massimo del pannello Regole a limitare, non l'MDC.
 
-Test: `analisi038.test.ts`. Harness: `harness/equita.ts`; gli scenari sono ora
+Regole della notte (`harness/nottiregole.ts`): `riequilibraNotti` provato con
+tutte le combinazioni di max notti (3-6), notti di fila (1-3), notte-libero-
+notte, riposo esteso e mattina dopo la notte, su 5 scenari (anche con notti
+del mese precedente e notti manuali): 600 prove, 425 notti spostate, 0
+violazioni nuove, copertura identica, manuali intatti.
+
+Test: `analisi038.test.ts`. Harness: `harness/equita.ts`, `harness/nottiregole.ts`; gli scenari sono ora
 in `harness/scenari.ts`, condivisi.
 
 ## Novità 0.3.37 — analisi di generazione e diagnosi
