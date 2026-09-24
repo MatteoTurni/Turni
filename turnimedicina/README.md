@@ -23,17 +23,28 @@ il pomeriggio seguito dalla mattina il giorno dopo, e la compattazione cercava
 di eliminarlo. Per il reparto è un passaggio di consegne utile: peso 0.
 
 **Equilibrio mattine / pomeriggi fra gli MR** (`riequilibraMP`, MDC e ML
-esclusi) — IN VALUTAZIONE. Due MR che lavorano lo stesso giorno feriale, uno
+esclusi). Due MR che lavorano lo stesso giorno feriale, uno
 di mattina e l'altro di pomeriggio, si scambiano la fascia (A conta come
 mattina, Ap come pomeriggio) se avvicina entrambi alla quota di mattine della
 squadra: copertura, carichi e giorni lavorati identici. Scambio rifiutato se
 viola regole, peggiora copertura/weekend/punteggio (blocchi di mattine
-compresi) o spezza la continuità. Solo in generazione: "Completa obiettivi"
-resta quello della 0.3.37. Verifica sul tabellone finale (`harness/finale.ts`,
+compresi) o spezza la continuità. Solo in generazione. Verifica sul tabellone finale (`harness/finale.ts`,
 18 scenari × 4, 0.3.37 / senza scambio / con scambio): violazioni 0/0/0, buchi
 e weekend invariati, scarto M/P 8,96 / 8,75 / 6,73, forbice della quota di
 mattine fra MR 32% / 32% / 25%, continuità M→M 97,7 / 97,7 / 97,9%, giorni
 isolati 9,3 / 9,5 / 9,6 al mese.
+
+**"Completa obiettivi": fascia scelta per equilibrio.** Nessun turno viene
+spostato; cambia solo la SCELTA al momento di assegnare. Prima ogni MR
+riceveva solo mattine nella prima passata (i pomeriggi venivano dopo, per chi
+restava indietro). Ora a ogni turno di un MR si sceglie la fascia in cui è più
+indietro rispetto alla quota di mattine della squadra (poi l'altra, se non ci
+sono posti legali), e i pomeriggi si danno di preferenza attaccati ad altri
+giorni lavorati. Ordine dei medici, ML, MDC e passate successive invariati.
+Tabellone finale (72 mesi, con scambio): scarto M/P 6,73 → 6,00, forbice
+della quota di mattine 25% → 22%, giorni isolati 9,6 → 7,7 al mese, punti
+sotto obiettivo degli MR 13,3 → 12,4; continuità M→M 97,9 → 97,7%, blocchi di
+mattine 2,30 → 2,26; errori, buchi, weekend invariati.
 
 Provato anche "a monte" (tetto alle mattine di ciascuno dentro "Completa
 obiettivi", notti scelte prima per numero di notti): da solo riduce poco lo

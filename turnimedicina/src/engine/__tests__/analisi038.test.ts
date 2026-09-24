@@ -3,7 +3,7 @@ import type { Medico, TurniMese } from "../types";
 import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../regole";
 import { ENG, setSalt, setAmbRotStart } from "../state";
 import { makeCtx } from "../ctx";
-import { quoteNotti, scartoNotti, riequilibraNotti, riequilibraMP } from "../genera";
+import { quoteNotti, scartoNotti, riequilibraNotti, riequilibraMP, completaObiettivi } from "../genera";
 
 // ── v0.3.38: equità delle notti fra gli MR e dei turni mancanti ──────────────
 
@@ -83,5 +83,20 @@ describe("riequilibraMP: equilibrio mattine/pomeriggi fra gli MR", () => {
     for (const g of giorni) { put(T, 1, g, "M", true); put(T, 3, g, "M"); put(T, 2, g, "P"); }
     const c = makeCtx(2026, 5, 30, medici, T);
     expect(riequilibraMP(2026, 5, 30, medici, c)).toBe(0);
+  });
+});
+
+describe("Completa obiettivi: fascia scelta per equilibrio mattine/pomeriggi", () => {
+  it("un MR con solo mattine riceve pomeriggi, uno con soli pomeriggi riceve mattine", () => {
+    const medici = [med(1, "MR", 12), med(2, "MR", 12)];
+    const T: TurniMese = {};
+    for (const g of [2, 3, 4, 5]) put(T, 1, g, "M", true);      // 1: 4 mattine
+    for (const g of [2, 3, 4, 5]) put(T, 2, g, "P", true);      // 2: 4 pomeriggi
+    const o = completaObiettivi(2026, 5, 30, medici, T);
+    const c = makeCtx(2026, 5, 30, medici, o.turni);
+    const conta = (id: number, t: string) => c.giorniArr.filter(g => c.gt(id, g).some(x => x.tipo === t)).length;
+    expect(c.cnt(1)).toBe(12);
+    expect(c.cnt(2)).toBe(12);
+    expect(Math.abs(conta(1, "M") - conta(2, "M"))).toBeLessThanOrEqual(2);
   });
 });

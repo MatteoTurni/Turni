@@ -1336,21 +1336,58 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   // ── M: privilegia sequenze di mattine consecutive ──
   // ML per primo (v0.3.37): la mattina è l'unico turno che può fare, gli
   // altri possono completare con pomeriggi e notti.
+  // EQUILIBRIO MATTINE/POMERIGGI ALL'ASSEGNAZIONE (v0.3.38): per gli MR, a
+  // ogni turno si sceglie la fascia in cui il medico è più indietro rispetto
+  // alla squadra (quota di mattine degli MR), poi l'altra se la prima non ha
+  // posti legali. Nessun turno già assegnato viene spostato.
+  const mr = mrMdc.filter(m=>m.stato==="MR");
+  const conta = (id:number) => { let M=0,P=0; for(let g=1; g<=ndim; g++){ const sh=gt(id,g); if(sh.some(s=>s.tipo==="M"||s.tipo==="A")) M++; if(sh.some(s=>s.tipo==="P"||s.tipo==="Ap")) P++; } return {M,P}; };
+  const lavora = (id:number,g:number) => g>=1 && g<=ndim && ctx.lavoraGiorno(id,g);
+  const candMatt = (m:Medico, giorniM:number[]) => {
+    const cand = giorniM.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
+    cand.sort((a,b)=>{
+      const ca=(haMR(m.id,a-1)||haMR(m.id,a+1))?0:1;
+      const cb=(haMR(m.id,b-1)||haMR(m.id,b+1))?0:1;
+      return ca-cb || a-b;
+    });
+    return cand;
+  };
+  const candPom = (m:Medico) => {
+    const cand = feriali.filter(g=>{
+      if(haP(m.id,g)||haN(m.id,g)) return false;
+      if(cf(g,"P")>=npn(g).mx) return false;
+      if(haM(m.id,g)) return canR(m,g,"ASS") && canAssSett(m.id,g) && canAssDist(m.id,g);
+      return !haQ(m.id,g) && canR(m,g,"P");
+    });
+    // prima i giorni attaccati ad altri giorni lavorati (niente giorni isolati)
+    cand.sort((a,b)=>{
+      const ca=(haM(m.id,a)||lavora(m.id,a-1)||lavora(m.id,a+1))?0:1;
+      const cb=(haM(m.id,b)||lavora(m.id,b-1)||lavora(m.id,b+1))?0:1;
+      return ca-cb || a-b;
+    });
+    return cand;
+  };
   for(const m of [...byL(ml), ...byL(mrMdc)]){
-    let progress=true;
     // Per l'ML anche il SABATO non festivo: è una sua mattina possibile, e non
     // ha weekend liberi da difendere (fuori dall'equità weekend).
     const giorniM = m.stato==="ML" ? mattineML : feriali;
-    while(cnt(m.id)<m.obiettivo && progress){
-      progress=false;
-      const cand = giorniM.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
+    while(cnt(m.id)<m.obiettivo){
+      if(m.stato==="MR"){
+        const tot = mr.reduce((q,x)=>{ const c=conta(x.id); return {M:q.M+c.M, T:q.T+c.M+c.P}; },{M:0,T:0});
+        const R = tot.T ? tot.M/tot.T : 0.5;
+        const me = conta(m.id);
+        const vuoleP = me.M+me.P>0 && me.M/(me.M+me.P) > R;
+        const cM = candMatt(m, giorniM), cP = candPom(m);
+        const [f, cand] = vuoleP ? (cP.length ? ["P",cP] : ["M",cM]) : (cM.length ? ["M",cM] : ["P",cP]);
+        if(!cand.length) break;
+        const c0 = cnt(m.id);
+        add(m.id,cand[0],f as "M"|"P");
+        if(cnt(m.id)===c0) break;          // inserimento rifiutato dalle guardie di add
+        continue;
+      }
+      const cand = candMatt(m, giorniM);
       if(cand.length===0) break;
-      cand.sort((a,b)=>{
-        const ca=(haMR(m.id,a-1)||haMR(m.id,a+1))?0:1;
-        const cb=(haMR(m.id,b-1)||haMR(m.id,b+1))?0:1;
-        return ca-cb || a-b;
-      });
-      add(m.id,cand[0],"M"); progress=true;
+      add(m.id,cand[0],"M");
     }
   }
 
