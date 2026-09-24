@@ -451,10 +451,11 @@ function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici
  *  iso (v0.3.28): giorni di lavoro ISOLATI (libero-lavoro-libero, notte
  *  esclusa) — il frammento che più spezza il ritmo di un tabellone.
  *  quickPM (v0.3.28): "rientri rapidi" P→M (pomeriggio e mattina il giorno
- *  dopo): legali ma faticosi; a parità di tutto il resto meglio pochi.
- *  Entrambi pesano MENO di sforo(40) e wkScarto(60): l'organicità non deve
+ *  dopo). Peso 0 dalla v0.3.38: per il reparto il P→M è un passaggio di
+ *  consegne utile, non un difetto; il conteggio resta per le misure.
+ *  iso pesa MENO di sforo(40) e wkScarto(60): l'organicità non deve
  *  mai comprare frammentazione in cambio di equità weekend o sfori. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:4 };
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0 };
 
 /** Ordine di preferenza fra tabelloni: duro, poi scarto weekend, poi soft.
  *  Lo stesso metro usato da registra(), prova() e generaParallelo. */
@@ -463,20 +464,14 @@ export function cmpMis(a:{s:number;wkScarto:number;soft:number}, b:{s:number;wkS
 }
 
 // ── EQUITÀ NOTTI (v0.3.38) ────────────────────────────────────────────────
-// Prima il punteggio usava la varianza delle notti su MR+MDC. Due difetti:
-//  1) l'MDC (che può fare la notte solo accanto a un «3» di un MPS) stava
-//     quasi sempre a 0 e sporcava la media;
-//  2) chi è in ferie mezzo mese veniva spinto verso la media di chi c'è tutto
-//     il mese, cioè a fare le stesse notti in metà dei giorni.
-// Ora: notti degli MR contro una quota proporzionale ai giorni in cui ciascuno
-// può fare la notte (esclusi L, ANA, 104, per11, X, Xn). Senza assenze la
-// quota è la media e il termine coincide con la varianza fra gli MR.
-const NON_DISP_N = ["X","Xn","ANA","per11","104","L"];
+// Prima il punteggio usava la varianza delle notti su MR+MDC: l'MDC (che può
+// fare la notte solo accanto a un «3» di un MPS) stava quasi sempre a 0 e
+// sporcava il confronto. Ora conta solo fra gli MR, con la stessa quota per
+// tutti (la media): le ferie non spostano la quota, per scelta del reparto.
 export function quoteNotti(c: ReturnType<typeof makeCtx>): Map<number, number> {
-  const disp = c.mr.map(m=>{ let d=0; for(let g=1; g<=c.ndim; g++) if(!c.gt(m.id,g).some(s=>NON_DISP_N.includes(s.tipo))) d++; return d; });
-  const tot  = c.mr.reduce((q,m)=>q+c.cntN(m.id),0);
-  const dTot = disp.reduce((a,b)=>a+b,0);
-  return new Map(c.mr.map((m,i)=>[m.id, dTot>0 ? tot*disp[i]/dTot : 0]));
+  const tot = c.mr.reduce((q,m)=>q+c.cntN(m.id),0);
+  const media = c.mr.length ? tot/c.mr.length : 0;
+  return new Map(c.mr.map(m=>[m.id, media]));
 }
 export function scartoNotti(c: ReturnType<typeof makeCtx>): number {
   if(c.mr.length<2) return 0;
@@ -1029,9 +1024,7 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
           if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
         if(!ok || continuita(g)<cont0){ c.rollback(m0); continue; }
         const nx=misura();
-        // Rientri rapidi P→M ininfluenti (scelta del reparto): tolti dal confronto.
-        const soft=(x:MisuraTab)=>x.soft-x.quickPM*PESI.quickPM;
-        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && soft(nx)<=soft(cur)
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.soft<=cur.soft
            && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; scambi++; break outer; }
         c.rollback(m0);
       }

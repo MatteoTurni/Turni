@@ -5,34 +5,35 @@
 **Notti fra gli MR.** La fase notti sceglie prima il medico "meno vincolante"
 (serve a coprire le notti difficili) e solo a parità quello con meno notti; il
 punteggio misurava la varianza su MR+MDC, con l'MDC quasi sempre a 0 (fa la
-notte solo accanto a un «3» di un MPS) e senza tener conto delle ferie. Esito:
-fra MR presenti tutto il mese capitava 3 contro 5 notti. Ora:
-- il punteggio confronta le notti dei soli MR con una **quota proporzionale ai
-  giorni disponibili** (esclusi L, ANA, 104, per11, X, Xn): chi è via mezzo
-  mese ha mezza quota (`scartoNotti`);
+notte solo accanto a un «3» di un MPS). Esito: fra MR presenti tutto il mese
+capitava 3 contro 5 notti. Ora:
+- il punteggio confronta le notti dei soli MR con la stessa quota per tutti
+  (la media; le ferie non la spostano, per scelta del reparto) (`scartoNotti`);
 - un passaggio di rifinitura (`riequilibraNotti`) sposta una notte automatica
   da chi è sopra quota a chi è sotto, direttamente o con uno scambio (il
   ricevente cede la sua M/P di quel giorno); ogni mossa rispetta tutte le
-  regole e si tiene solo se copertura, weekend liberi ed equità weekend non
-  peggiorano.
+  regole e si tiene solo se copertura, weekend liberi ed equilibrio weekend
+  non peggiorano.
+Tabellone finale (18 scenari × 4): forbice di notti fra MR presenti tutto il
+mese 1,17 → 0,75 per mese; `harness/nottiregole.ts` (tutte le combinazioni
+delle regole della notte, 600 prove): 0 violazioni nuove, copertura identica.
 
-Misurato (`harness/equita.ts` su `harness/sim.ts`, 18 scenari × 3): scarto
-massimo di notti fra MR presenti tutto il mese da 21,3 a 11,3 (somma delle
-medie per scenario: quasi ovunque 1, il minimo aritmetico), scarto dalla quota
-proporzionale da 74 a 51. Buchi 71 → 71, weekend liberi mancanti 35 → 34,
-giorni isolati 307 → 283, violazioni 0. Carico weekend fuori forchetta 54 → 58
-(in una seconda serie 54 → 41: oscillazione fra serie, la mossa non può
-peggiorarlo). La generazione di base (`det.ts`)
-produce tabelloni identici: cambia solo la scelta fra i tentativi.
+**Rientri rapidi P→M neutri.** Dalla 0.3.28 il punteggio penalizzava (peso 4)
+il pomeriggio seguito dalla mattina il giorno dopo, e la compattazione cercava
+di eliminarlo. Per il reparto è un passaggio di consegne utile: peso 0.
 
 **Equilibrio mattine / pomeriggi fra gli MR** (`riequilibraMP`, MDC e ML
-esclusi) — IN LAVORAZIONE, misure da rifare. Due MR che lavorano lo stesso
-giorno feriale, uno di mattina e l'altro di pomeriggio, si scambiano la fascia
-(A conta come mattina, Ap come pomeriggio) se avvicina entrambi alla quota di
-mattine della squadra: copertura, carichi e giorni lavorati identici. Scambio
-rifiutato se viola regole, peggiora copertura/weekend/punteggio (blocchi di
-mattine compresi) o spezza la continuità. Solo in generazione: "Completa
-obiettivi" resta quello della 0.3.37 e non rimaneggia i turni.
+esclusi) — IN VALUTAZIONE. Due MR che lavorano lo stesso giorno feriale, uno
+di mattina e l'altro di pomeriggio, si scambiano la fascia (A conta come
+mattina, Ap come pomeriggio) se avvicina entrambi alla quota di mattine della
+squadra: copertura, carichi e giorni lavorati identici. Scambio rifiutato se
+viola regole, peggiora copertura/weekend/punteggio (blocchi di mattine
+compresi) o spezza la continuità. Solo in generazione: "Completa obiettivi"
+resta quello della 0.3.37. Verifica sul tabellone finale (`harness/finale.ts`,
+18 scenari × 4, 0.3.37 / senza scambio / con scambio): violazioni 0/0/0, buchi
+e weekend invariati, scarto M/P 8,96 / 8,75 / 6,73, forbice della quota di
+mattine fra MR 32% / 32% / 25%, continuità M→M 97,7 / 97,7 / 97,9%, giorni
+isolati 9,3 / 9,5 / 9,6 al mese.
 
 Provato anche "a monte" (tetto alle mattine di ciascuno dentro "Completa
 obiettivi", notti scelte prima per numero di notti): da solo riduce poco lo
@@ -55,7 +56,7 @@ notte, riposo esteso e mattina dopo la notte, su 5 scenari (anche con notti
 del mese precedente e notti manuali): 600 prove, 425 notti spostate, 0
 violazioni nuove, copertura identica, manuali intatti.
 
-Test: `analisi038.test.ts`. Harness: `harness/equita.ts`, `harness/nottiregole.ts`, `harness/mp.ts`, `harness/continuita.ts`; gli scenari sono ora
+Test: `analisi038.test.ts`. Harness: `harness/equita.ts`, `harness/nottiregole.ts`, `harness/mp.ts`, `harness/continuita.ts`, `harness/finale.ts`; gli scenari sono ora
 in `harness/scenari.ts`, condivisi.
 
 ## Novità 0.3.37 — analisi di generazione e diagnosi

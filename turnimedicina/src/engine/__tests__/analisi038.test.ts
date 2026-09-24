@@ -18,7 +18,7 @@ const med = (id: number, stato: Medico["stato"], obiettivo: number): Medico =>
 beforeEach(() => { setSalt(0); setAmbRotStart(0); ENG.PREV = null; setRegole(dft()); });
 afterEach(() => { setRegole(dft()); });
 
-describe("scartoNotti: solo MR, quota proporzionale ai giorni disponibili", () => {
+describe("scartoNotti: solo MR, stessa quota per tutti", () => {
   it("l'MDC (e l'ML) non entrano nel conto", () => {
     const medici = [med(1, "MR", 25), med(2, "MR", 25), med(3, "MDC", 21), med(4, "ML", 25)];
     const T: TurniMese = {};
@@ -27,17 +27,17 @@ describe("scartoNotti: solo MR, quota proporzionale ai giorni disponibili", () =
     const c = makeCtx(2026, 5, 30, medici, T);
     expect(scartoNotti(c)).toBe(0);                  // 4 e 4: equo, anche se l'MDC ne ha 0
   });
-  it("chi è assente mezzo mese ha mezza quota", () => {
+  it("le ferie non cambiano la quota (media fra gli MR)", () => {
     const medici = [med(1, "MR", 25), med(2, "MR", 25)];
     const T: TurniMese = {};
-    for (let g = 16; g <= 30; g++) put(T, 2, g, "L", true);  // 2 presente 15 giorni su 30
+    for (let g = 16; g <= 30; g++) put(T, 2, g, "L", true);
     for (const g of [1, 5, 9, 13, 17, 21]) put(T, 1, g, "N");
     for (const g of [3, 7, 11]) put(T, 2, g, "N");
     const c = makeCtx(2026, 5, 30, medici, T);
     const q = quoteNotti(c);
-    expect(q.get(1)).toBeCloseTo(6);
-    expect(q.get(2)).toBeCloseTo(3);
-    expect(scartoNotti(c)).toBeCloseTo(0);
+    expect(q.get(1)).toBeCloseTo(4.5);
+    expect(q.get(2)).toBeCloseTo(4.5);
+    expect(scartoNotti(c)).toBeCloseTo(2.25);
   });
 });
 
