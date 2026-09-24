@@ -63,6 +63,7 @@ for(const r of runs){
   add("punti oltre obiettivo", c.att.reduce((q,m)=>q+Math.max(0,c.cnt(m.id)-m.obiettivo),0));
   const tMR = c.mr.map(m=>c.cnt(m.id)); add("totali MR: forbice", pieni.length>1 ? Math.max(...pieni.map(m=>c.cnt(m.id)))-Math.min(...pieni.map(m=>c.cnt(m.id))) : 0);
   const pP = pieni.map(m=>{ let k=0; for(let g=1;g<=nd;g++) if(c.gt(m.id,g).some(s=>s.tipo==="P"||s.tipo==="Ap")) k++; return k; }); add("pomeriggi MR: forbice", pP.length>1 ? Math.max(...pP)-Math.min(...pP) : 0);
+  add("MDC sotto obiettivo", c.mdc.reduce((q,m)=>q+Math.max(0,m.obiettivo-c.cnt(m.id)),0));
   add("ML sotto obiettivo", c.ml.reduce((q,m)=>q+Math.max(0,m.obiettivo-c.cnt(m.id)),0));
 }
 if(process.env.DUMP) fs.writeFileSync(process.env.DUMP, JSON.stringify({ scen: runs.map(r=>r.scen), ...A }));
