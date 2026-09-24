@@ -78,7 +78,7 @@ describe("Completa obiettivi: i turni mancanti si dividono in modo equo", () => 
 });
 
 describe("riequilibraMP: equilibrio mattine/pomeriggi fra gli MR", () => {
-  const giorni = [1, 3, 5, 8, 10, 12];
+  const giorni = [2, 4, 9, 11, 16, 18];   // mar e gio: nessuna mattina adiacente (ven→lun conta come blocco)
   it("tutte mattine a uno e tutti pomeriggi all'altro → metà e metà, copertura identica", () => {
     const medici = [med(1, "MR", 25), med(2, "MR", 25)];
     const T: TurniMese = {};
@@ -94,7 +94,7 @@ describe("riequilibraMP: equilibrio mattine/pomeriggi fra gli MR", () => {
   it("MDC, ML e turni manuali non vengono scambiati", () => {
     const medici = [med(1, "MR", 25), med(2, "MDC", 21), med(3, "MR", 25)];
     const T: TurniMese = {};
-    for (const g of giorni) { put(T, 1, g, "M", true); put(T, 3, g, "M"); put(T, 2, g, "P"); put(T, 3, g + 14, "P", true); }
+    for (const g of giorni) { put(T, 1, g, "M", true); put(T, 3, g, "M"); put(T, 2, g, "P"); }
     const c = makeCtx(2026, 5, 30, medici, T);
     expect(riequilibraMP(2026, 5, 30, medici, c)).toBe(0);
   });

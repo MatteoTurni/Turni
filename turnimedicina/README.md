@@ -42,15 +42,24 @@ non la fascia: a giugno un MR faceva 1 mattina e 11 pomeriggi, un altro 8 e 3.
 Ora due MR che lavorano lo stesso giorno feriale, uno di mattina e l'altro di
 pomeriggio, si scambiano la fascia (A conta come mattina, Ap come pomeriggio):
 copertura, carichi e giorni lavorati identici. Lo scambio si tiene solo se
-regole, weekend e rientri rapidi P→M non peggiorano e al più una striscia di
-mattine si spezza. Gira in generazione e alla fine di "Completa obiettivi".
-Misurato (`harness/mp.ts`, tabellone completato): scarto dalla quota di
-mattine della squadra da 356 a 237 (-33%), forbice delle mattine fra MR
-presenti tutto il mese da 80 a 42 (somma sugli scenari); giugno: 1M/11P → 3M/9P
-e 8M/3P → 7M/4P. Il resto non si può scambiare senza spezzare i blocchi di
-mattine (regola "blocchi mattina") o creare rientri rapidi; inoltre dopo una
-notte la mattina è vietata per due giorni, quindi chi fa più notti fa per
-forza più pomeriggi. Buchi, weekend, violazioni invariati.
+regole, weekend, rientri rapidi P→M e punteggio (strisce di mattine comprese)
+non peggiorano: la CONTINUITÀ ha la precedenza sull'equilibrio. Gira in
+generazione e alla fine di "Completa obiettivi". Scarto dalla quota di
+mattine della squadra sul tabellone completato: 378 → 295 (-22%).
+
+Provato anche "a monte" (tetto alle mattine di ciascuno dentro "Completa
+obiettivi", notti scelte prima per numero di notti): da solo riduce poco lo
+squilibrio (mattine/pomeriggi -5%, notti 20,7 → 15,3 contro 11,3 del
+riequilibrio) e sulle notti toccherebbe il criterio che apre le notti
+difficili; combinato col riequilibrio non aggiunge nulla di misurabile. Non
+adottato.
+
+**Continuità del reparto** (`harness/continuita.ts`, 54 mesi, tabellone
+completato, 0.3.37 → 0.3.38): passaggio di consegne della mattina 97,4% →
+97,3%, del pomeriggio 45,1% → 44,2%, blocchi di mattine 2,20 → 2,21 giorni,
+giorni isolati 9,2 → 8,5 al mese, rientri rapidi P→M 11,9 → 10,4 al mese. La
+divisione equa dei mancanti sceglie, fra gli spostamenti legali, quello che
+crea meno giorni isolati e rientri rapidi.
 
 **MDC e pomeriggi.** Verificato che la possibilità dell'MDC di fare il
 pomeriggio accanto a un collega è usata correttamente: in generazione l'MDC
@@ -67,7 +76,7 @@ notte, riposo esteso e mattina dopo la notte, su 5 scenari (anche con notti
 del mese precedente e notti manuali): 600 prove, 425 notti spostate, 0
 violazioni nuove, copertura identica, manuali intatti.
 
-Test: `analisi038.test.ts`. Harness: `harness/equita.ts`, `harness/nottiregole.ts`, `harness/mp.ts`; gli scenari sono ora
+Test: `analisi038.test.ts`. Harness: `harness/equita.ts`, `harness/nottiregole.ts`, `harness/mp.ts`, `harness/continuita.ts`; gli scenari sono ora
 in `harness/scenari.ts`, condivisi.
 
 ## Novità 0.3.37 — analisi di generazione e diagnosi

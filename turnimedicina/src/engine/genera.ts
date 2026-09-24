@@ -977,7 +977,7 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
 // squadra: ogni MR dovrebbe fare mattine in proporzione ai suoi turni diurni
 // (A conta come mattina, Ap come pomeriggio). Ogni scambio passa da canR/add;
 // si tiene solo se copertura, regole, weekend, rientri rapidi P→M e il resto
-// del punteggio non peggiorano (tolleranza: una striscia di mattine).
+// del punteggio (strisce di mattine = continuità compresa) non peggiorano.
 export function scartoMP(c: ReturnType<typeof makeCtx>): Map<number, number> {
   const mp = c.mr.map(m=>{
     let M=0,P=0;
@@ -996,7 +996,6 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
   const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
   let cur=misura(); let scambi=0;
   const mdc0=mdcViolCount(ndim,medici,c);
-  const TOL = PESI.strisce;   // al più una striscia di mattine in più per scambio
   const solo=(id:number,g:number,f:"M"|"P")=>{
     const sh=c.gt(id,g);
     return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott ? sh[0] : null;
@@ -1019,7 +1018,7 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
           if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
         if(!ok){ c.rollback(m0); continue; }
         const nx=misura();
-        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.quickPM<=cur.quickPM && nx.soft<=cur.soft+TOL
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.quickPM<=cur.quickPM && nx.soft<=cur.soft
            && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; scambi++; break outer; }
         c.rollback(m0);
       }
@@ -1412,6 +1411,20 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     const pool = mrMdc;
     const def = (m:Medico) => m.obiettivo - cnt(m.id);
     const mdcSoloIn = (g:number,f:"M"|"P") => ctx.mdc.some(d=>(f==="M" ? haM(d.id,g) : haP(d.id,g)) && !mdcOk(d,g,f));   // anche con A/Ap
+    // Costo di CONTINUITÀ di un medico: giorni lavorati isolati (notti escluse)
+    // e rientri rapidi P→M. Fra gli spostamenti legali si sceglie quello che
+    // ne crea meno, così l'equità non frammenta i turni.
+    const lav = (id:number,g:number) => g>=1 && g<=ndim && ctx.lavoraGiorno(id,g);
+    const costo = (id:number) => {
+      let k=0;
+      for(let g=1; g<=ndim; g++){
+        const sh=gt(id,g); if(!sh.length || sh.some(s=>s.tipo==="N"||s.tipo==="3")) continue;
+        if(!ctx.lavoraGiorno(id,g)) continue;
+        if(g<ndim && !lav(id,g-1) && !lav(id,g+1)) k++;
+        if(g<ndim && sh.some(s=>s.tipo==="P"||s.tipo==="Ap") && gt(id,g+1).some(s=>s.tipo==="M"||s.tipo==="A")) k++;
+      }
+      return k;
+    };
     for(let guard=0; guard<300; guard++){
       const ric = pool.filter(m=>def(m)>0).sort((a,b)=>def(b)-def(a));
       const don = pool.slice().sort((a,b)=>def(a)-def(b));
@@ -1419,6 +1432,8 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
       outer:
       for(const r of ric) for(const d of don){
         if(d.id===r.id || def(r)-def(d)<2) continue;
+        let best: {g:number;f:"M"|"P";k:number}|null = null;
+        const k0 = costo(r.id)+costo(d.id);
         for(const g of feriali) for(const f of ["M","P"] as const){
           const sl = gt(d.id,g).find(s=>s.tipo===f && !s.man && !s.sott);
           if(!sl) continue;
@@ -1429,9 +1444,20 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
           const ok = altra ? (canR(r,g,"ASS") && canAssSett(r.id,g) && canAssDist(r.id,g)) : canR(r,g,f);
           if(ok && mdcOk(r,g,f)){
             add(r.id,g,f);
-            if(gt(r.id,g).some(s=>s.tipo===f && !s.man) && !mdcSoloIn(g,f)){ mossa=true; break outer; }
+            if(gt(r.id,g).some(s=>s.tipo===f && !s.man) && !mdcSoloIn(g,f)){
+              const k = costo(r.id)+costo(d.id)-k0;
+              if(!best || k<best.k) best={g,f,k};
+            }
           }
           ctx.rollback(m0);
+          if(best && best.k<0) break;
+        }
+        if(best){
+          const {g,f}=best;
+          const sl = gt(d.id,g).find(s=>s.tipo===f && !s.man && !s.sott)!;
+          ctx.st(d.id,g, gt(d.id,g).filter(s=>s!==sl));
+          add(r.id,g,f);
+          mossa=true; break outer;
         }
       }
       if(!mossa) break;
