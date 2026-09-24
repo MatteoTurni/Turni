@@ -1,4 +1,52 @@
-# TurniMedicina 0.3.37
+# TurniMedicina 0.3.38
+
+## Novità 0.3.38 — equità delle notti e dei turni mancanti
+
+**Notti fra gli MR.** La fase notti sceglie prima il medico "meno vincolante"
+(serve a coprire le notti difficili) e solo a parità quello con meno notti; il
+punteggio misurava la varianza su MR+MDC, con l'MDC quasi sempre a 0 (fa la
+notte solo accanto a un «3» di un MPS) e senza tener conto delle ferie. Esito:
+fra MR presenti tutto il mese capitava 3 contro 5 notti. Ora:
+- il punteggio confronta le notti dei soli MR con una **quota proporzionale ai
+  giorni disponibili** (esclusi L, ANA, 104, per11, X, Xn): chi è via mezzo
+  mese ha mezza quota (`scartoNotti`);
+- un passaggio di rifinitura (`riequilibraNotti`) sposta una notte automatica
+  da chi è sopra quota a chi è sotto, direttamente o con uno scambio (il
+  ricevente cede la sua M/P di quel giorno); ogni mossa rispetta tutte le
+  regole e si tiene solo se copertura, weekend liberi ed equità weekend non
+  peggiorano.
+
+Misurato (`harness/equita.ts` su `harness/sim.ts`, 18 scenari × 3): scarto
+massimo di notti fra MR presenti tutto il mese da 21,3 a 11,3 (somma delle
+medie per scenario: quasi ovunque 1, il minimo aritmetico), scarto dalla quota
+proporzionale da 74 a 51. Buchi 71 → 71, weekend liberi mancanti 35 → 34,
+giorni isolati 307 → 283, violazioni 0. Carico weekend fuori forchetta 54 → 58
+(in una seconda serie 54 → 41: oscillazione fra serie, la mossa non può
+peggiorarlo). La generazione di base (`det.ts`)
+produce tabelloni identici: cambia solo la scelta fra i tentativi.
+
+**"Completa obiettivi": i turni mancanti si dividono in modo equo.** Quando i
+posti feriali non bastano per tutti gli obiettivi, qualcuno resta sotto. Prima
+decideva l'ordine di riempimento (un medico alla volta fino all'obiettivo):
+a giugno un MR restava a -7 e un altro a -2, e l'MDC arrivava sempre a
+obiettivo. Ora un passaggio finale sposta una M o P feriale automatica da chi
+è più vicino all'obiettivo a chi ne è più lontano (differenza ≥ 2), stesso
+giorno e fascia: copertura invariata. MR più penalizzato: giugno -6 → -4,
+dicembre/luglio/aprile -3 → -1; la carenza si divide anche con l'MDC (giugno
+21/21 → 18/21). Esempio estremo (test): 3 MR, 42 posti → 14/14/14 invece di
+25/9/8.
+
+**MDC e pomeriggi.** Verificato che la possibilità dell'MDC di fare il
+pomeriggio accanto a un collega è usata correttamente: in generazione l'MDC
+non può coprire il minimo di un pomeriggio (1 medico: sarebbe solo), quindi
+fa mattine (dove il minimo è 2 e conta davvero); nei weekend e festivi il
+massimo è 1 per fascia, quindi niente pomeriggi salvo un «2» di un MPS. In
+"Completa obiettivi" l'MDC prende pomeriggi come secondo medico (3-5 al mese
+negli scenari di prova). Totale posti mancanti invariato: è il fabbisogno
+massimo del pannello Regole a limitare, non l'MDC.
+
+Test: `analisi038.test.ts`. Harness: `harness/equita.ts`; gli scenari sono ora
+in `harness/scenari.ts`, condivisi.
 
 ## Novità 0.3.37 — analisi di generazione e diagnosi
 
