@@ -139,7 +139,8 @@ export function makeCtx(
     if(x===y) return true;
     if(x.length!==y.length) return false;
     for(let i=0;i<x.length;i++){
-      if(x[i].tipo!==y[i].tipo || !!x[i].sott!==!!y[i].sott || !!x[i].man!==!!y[i].man) return false;
+      if(x[i].tipo!==y[i].tipo || !!x[i].sott!==!!y[i].sott || !!x[i].man!==!!y[i].man
+         || (x[i].amb??"")!==(y[i].amb??"")) return false;   // A/Ap: conta anche QUALE ambulatorio
     }
     return true;
   };
@@ -171,6 +172,11 @@ export function makeCtx(
       //    canR, questo chiude anche le aggiunte dirette delle fasi.
       const fEscl = fasciaDi(tipo);
       if(fEscl && escluso(id,g,fEscl)) return;
+      // 0b) UNA SOLA FASCIA ALLA VOLTA (v0.3.37): mai un secondo turno nella
+      //     stessa fascia (A + M, Ap + P, 1 + M...). Prima il controllo era
+      //     affidato a ogni singolo chiamante e lo "scambio compensato" del
+      //     riequilibrio weekend lo saltava: il fuzz ha trovato A+M e Ap+P.
+      if(fEscl && c.some(s=>fasciaDi(s.tipo)===fEscl)) return;
       // 1) Distanza associati: non creare una GIORNATA PIENA (mattina+pomeriggio,
       //    inclusi i codici PS 1/2) troppo vicina a un'altra. Copre anche il caso
       //    di una P automatica aggiunta a un "1" manuale (→ 1+P) e viceversa.
@@ -178,6 +184,10 @@ export function makeCtx(
       const assocPrima = c.some(s=>isMatt(s.tipo)) && c.some(s=>isPom(s.tipo));
       const assocDopo  = nc.some(s=>isMatt(s.tipo)) && nc.some(s=>isPom(s.tipo));
       if(assocDopo && !assocPrima && !canAssDist(id,g)) return;
+      // 1b) Tetto di giornate piene REALI (M+P di reparto/ambulatorio) per
+      //     settimana di calendario (v0.3.37): era solo una preferenza della
+      //     fase diurni, ora è una regola per ogni inserimento automatico.
+      if(assocDopo && !assocPrima && pienaReale(nc) && !canAssSett(id,g)) return;
       // 2) Riposo post-notte (Regola N): non aggiungere turni che rompono una notte adiacente.
       if(!SPEC.includes(tipo)){
         if(postN1(id,g)) return;                                 // g+1 di una notte: deve restare libero
@@ -343,6 +353,37 @@ export function makeCtx(
   const MAX_NOTTI = REG.maxNotti;
   const maxAssSett = REG.maxAssSett;
 
+  // ── MAX GIORNATE PIENE PER SETTIMANA (v0.3.37) ─────────────────────────────
+  // "Max turni associati / settimana" del pannello Regole. Prima valeva solo
+  // come PREFERENZA nella fase diurni, con settimane contate a blocchi di 7
+  // giorni dal giorno 1: impostato a 1, 4 tabelloni su 5 lo superavano senza
+  // alcun avviso. Ora è un vincolo di ogni inserimento automatico, sulla
+  // settimana di CALENDARIO lunedì–domenica (la prima settimana del mese
+  // include la coda del mese precedente). Si contano le giornate piene REALI
+  // (mattina + pomeriggio di reparto o d'ambulatorio): i codici PS 1/2, come
+  // già per haAss, non entrano nella quota.
+  const pienaReale = (sh:{tipo:string}[]) =>
+    sh.some(s=>isMatt(s.tipo)&&s.tipo!=="1") && sh.some(s=>isPom(s.tipo)&&s.tipo!=="2");
+  const DW1 = dw(1);
+  /** Indice della settimana di calendario (lun–dom) del giorno g, anche per g ≤ 0. */
+  const settDi = (g:number) => Math.floor((g - 1 + DW1) / 7);
+  /** Primo giorno (anche ≤ 0) della settimana di calendario di g. */
+  const inizioSett = (g:number) => 1 - DW1 + 7*settDi(g);
+  const assInSett = (id:number,g:number) => {
+    const da = inizioSett(g); let n = 0;
+    for(let k=da; k<da+7 && k<=ndim; k++){ if(k<1-TAIL) continue; if(pienaReale(gtB(id,k))) n++; }
+    return n;
+  };
+  /** Il medico può avere UN'ALTRA giornata piena nella settimana di g? */
+  const canAssSett = (id:number,g:number) => assInSett(id,g) < maxAssSett;
+  /** Aggiungere la fascia f in g creerebbe una NUOVA giornata piena reale? */
+  const creaPiena = (id:number,g:number,f:string) => {
+    const sh = gt(id,g);
+    if(f==="M") return !sh.some(s=>isMatt(s.tipo)) && sh.some(s=>isPom(s.tipo)&&s.tipo!=="2");
+    if(f==="P") return !sh.some(s=>isPom(s.tipo))  && sh.some(s=>isMatt(s.tipo)&&s.tipo!=="1");
+    return false;
+  };
+
   // ── MAX GIORNI CONSECUTIVI DI LAVORO ──────────────────────────────────────
   const MAX_CONSEC = REG.maxConsec;
   // Catena di continuità mattine: lunghezza-obiettivo dei blocchi. Cappata a
@@ -420,7 +461,11 @@ export function makeCtx(
       return canN(m.id,g);
     }
     if(haN(m.id,g)) return false;
-    if(f==="ASS"){ if(m.stato==="ML") return false; return canAss(m.id,g)&&canAssDist(m.id,g); }
+    // Già un turno in questa fascia (anche A/Ap o codici PS): non ne regge un altro.
+    if((f==="M" && haM(m.id,g)) || (f==="P" && haP(m.id,g))) return false;
+    if(f==="ASS"){ if(m.stato==="ML") return false; return canAss(m.id,g)&&canAssDist(m.id,g)&&canAssSett(m.id,g); }
+    // Tetto settimanale di giornate piene (v0.3.37): specchia la guardia di add().
+    if((f==="M"||f==="P") && creaPiena(m.id,g,f) && !canAssSett(m.id,g)) return false;
     // DISTANZA GIORNATE PIENE (v0.3.2): se aggiungere questa fascia COMPLETA la
     // giornata (l'altra metà è già presente, inclusi i codici PS 1/2 e la A),
     // il medico è eleggibile solo se rispetta la distanza. Specchia la guardia
@@ -754,6 +799,7 @@ export function makeCtx(
     dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
+    settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
     pesoSlot, wkPortatori: wkPortatoriL, wkCapacita, wkPavimento, wkQuota, byWkQuota,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,

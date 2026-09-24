@@ -1,10 +1,11 @@
 import type { Medico, TurniMese, CellaScoperta, CausaVincolo, CausaCluster, DiagnosiCausale } from "./types";
 import { DF, dowOf } from "./date";
-import { cloneT, isEscl, isAmbT, abilitatoAmb, type SlotAmb } from "./turni";
+import { cloneT, isAmbT, abilitatoAmb, type SlotAmb } from "./turni";
 import { ENG, mkRng } from "./state";
 import { getRegole, setRegole } from "./regole";
 import { makeCtx } from "./ctx";
-import { risolviCluster } from "./fasi";
+import { risolviCluster, ambAssegnabile } from "./fasi";
+import { calcolaBilancio } from "./bilancio";
 
 // ─── DIAGNOSI CAUSALE (v0.3.13) ───────────────────────────────────────────────
 // Le due diagnosi esistenti guardano gli ESTREMI del problema: quella STATICA
@@ -65,6 +66,11 @@ interface Mod {
 
 interface EsitoProva {
   ok: boolean;
+  /** Solo per ok=false: il fallimento è DIMOSTRATO (ogni ricerca ha esplorato
+   *  l'albero per intero, o l'ambulatorio non ha alcun abilitato disponibile).
+   *  false = tetto nodi, limite di risoluzioni o tempo esauriti: fallimento
+   *  solo PROBABILE, su cui non si possono fondare verdetti forti (v0.3.37). */
+  certo?: boolean;
   /** Medici che nella soluzione trovata perdono weekend liberi vs il tabellone attuale. */
   wk?: { nome: string; da: number; a: number }[];
   /** Giorni d'ambulatorio della finestra SENZA alcun abilitato disponibile. */
@@ -87,6 +93,12 @@ export function diagnosiCausale(
   const scaduto = () => Date.now() >= fineCorr;
   const fineTot = () => Date.now() >= t0 + maxMs;
   const REG0 = getRegole();
+  // Bilancio del mese negativo (v0.3.37): gli obiettivi sommati non coprono il
+  // fabbisogno. In quel caso QUALSIASI vincolo che liberi capacità (togliere
+  // l'ambulatorio, alzare il tetto notti...) "sblocca" una finestra, ma la
+  // causa vera è una sola: gli obiettivi. La sonda degli obiettivi va per
+  // prima e, se basta, apre il messaggio.
+  const bilancioNeg = !calcolaBilancio(anno, mese, ndim, medici, turni, REG0).ok;
   const gL = (g: number) => `${DF[dowOf(anno, mese, g)].slice(0, 3)} ${g}`;
   const cellaLbl = (c: CellaScoperta) => `${FL[c.f]} di ${gL(c.g)}`;
 
@@ -162,18 +174,8 @@ export function diagnosiCausale(
         for (let g = lo; g <= hi; g++)
           for (const sl of ctx.ambMancanti(g)) daA.push({ g, sl });
       }
-      const puoA = (m: Medico, g: number, sl: SlotAmb) => {
-        const cod = sl.cod, pom = cod === "Ap";
-        if (!abilitatoAmb(m, sl.amb) || ctx.haX(m.id, g)) return false;
-        if (pom && m.stato === "ML") return false;          // l'ML non fa pomeriggi
-        if (ctx.escluso(m.id, g, pom ? "P" : "M")) return false;
-        if (ctx.gt(m.id, g).some(s => ["L", "ANA", "per11", "104"].includes(s.tipo))) return false;
-        if (ctx.haN(m.id, g) || !ctx.canConsec(m.id, g)) return false;
-        if (pom ? !ctx.canPom(m.id, g) : !ctx.canMatt(m.id, g)) return false;
-        const tt = ctx.gt(m.id, g).filter(s => !isEscl(s.tipo) && !["L", "ANA", "per11", "104"].includes(s.tipo));
-        // Come nella fase: ammesso solo l'altro slot d'ambulatorio dello stesso giorno.
-        return tt.length === 0 || (tt.every(s => isAmbT(s.tipo) && s.tipo !== cod) && ctx.canAssDist(m.id, g));
-      };
+      // Stesso predicato della fase ambulatorio e della riparazione (vincoli duri).
+      const puoA = (m: Medico, g: number, sl: SlotAmb) => ambAssegnabile(ctx, m, g, sl);
       const bloccati = daA.filter(x => !meds.some(m => puoA(m, x.g, x.sl)));
       if (bloccati.length) {
         const ambBloccati = [...new Set(bloccati.map(x => x.g))];
@@ -185,17 +187,23 @@ export function diagnosiCausale(
           const lbl = ctx.slotLbl(sl);
           return `${lbl[0].toUpperCase()}${lbl.slice(1)} di ${gL(g)} senza abilitati disponibili — ${det}`;
         });
-        return { ok: false, ambBloccati, ambMotivi };
+        return { ok: false, certo: true, ambBloccati, ambMotivi };
       }
       // Piazzamento COMBINATORIO delle A (di solito 0-1 giorni, raram. 2): per
       // ogni assegnatario possibile si tenta il solve dell'intera finestra.
       // Così "l'assegnatario sbagliato della A" non maschera una finestra
       // risolvibile, e viceversa la A non viene sacrificata mai.
-      let solves = 0;
+      let solves = 0, incerto = false;
       const rng = mkRng(0xD1A6 + lo * 2654435761);
       const piazza = (i: number): boolean => {
-        if (scaduto() || solves >= 6) return false;
-        if (i >= daA.length) { solves++; return risolviCluster(ctx, cells, rng, nodi); }
+        if (scaduto() || solves >= 6) { incerto = true; return false; }
+        if (i >= daA.length) {
+          solves++;
+          const st = { tagliato: false };
+          const ok = risolviCluster(ctx, cells, rng, nodi, st);
+          if (!ok && st.tagliato) incerto = true;
+          return ok;
+        }
         const { g, sl } = daA[i];
         for (const m of meds) {
           if (!puoA(m, g, sl)) continue;
@@ -206,7 +214,7 @@ export function diagnosiCausale(
         }
         return false;
       };
-      if (!piazza(0)) return { ok: false };
+      if (!piazza(0)) return { ok: false, certo: !incerto };
       // Costo in weekend liberi della soluzione trovata vs il tabellone attuale.
       const wk: { nome: string; da: number; a: number }[] = [];
       for (const m of c0.mrMdc) {
@@ -256,6 +264,7 @@ export function diagnosiCausale(
     const dettagli: string[] = [];
     const haAmbFin = (() => { for (let g = lo; g <= hi; g++) if (c0.isAmb(g) && !c0.isH(g)) return true; return false; })();
 
+    const TUTTI: Mod = { ambOff: haAmbFin, relaxN: true, maxNotti: true, nottiConsec: true, maxConsec: true, obiettivo: true };
     const base = prova(lo, hi, {});
     if (base.ambMotivi) dettagli.push(...base.ambMotivi);
 
@@ -272,27 +281,54 @@ export function diagnosiCausale(
       if (base.wk && base.wk.length)
         dettagli.push(`Coprirla toglierebbe weekend liberi a: ${base.wk.map(w => `${w.nome} (${w.da}\u2192${w.a})`).join(", ")}.`);
     } else {
-      // Sonde a rilassamento singolo, in ordine di specificit\u00E0.
-      const sonde: [CausaVincolo, Mod][] = [
-        ["ambMove", { ambMove: true }],
-        ["ambOff", { ambOff: true }],
-        ["regN", { relaxN: true }],
-        ["maxNotti", { maxNotti: true }],
-        ["nottiConsec", { nottiConsec: true }],
-        ["maxConsec", { maxConsec: true }],
-        ["obiettivo", { obiettivo: true }],
-      ];
-      for (const [k, mod] of sonde) {
-        if (scaduto()) { completa = false; break; }
-        if ((k === "ambMove" || k === "ambOff") && !haAmbFin) continue;
-        if (k === "ambOff" && vincoli.includes("ambMove")) continue;  // implicato
-        if (k === "regN" && REG0.notteLiberoNotte && !REG0.riposoEsteso) continue; // gi\u00E0 attivo (e nessun riposo esteso da rilassare)
-        if (prova(lo, hi, mod).ok) vincoli.push(k);
+      // ── VERDETTO (v0.3.37) ─────────────────────────────────────────────────
+      // Prima si prova TUTTO rilassato. Se nemmeno così la finestra si copre,
+      // e il fallimento è DIMOSTRATO (albero esplorato per intero), il deficit
+      // è materiale ("struttura"). Prima questo verdetto — il più forte — era
+      // il RIPIEGO quando le sonde singole finivano il tempo: su un mese con
+      // obiettivi insufficienti la diagnosi affermava "mancano materialmente
+      // i medici" perché la sonda degli obiettivi (l'ultima) non era mai
+      // partita. Ora un'analisi non conclusa si dichiara tale.
+      const tutti = scaduto() ? { ok: false, certo: false } : prova(lo, hi, TUTTI);
+      let incompleta = false;
+      if (!tutti.ok) {
+        esito = tutti.certo ? "struttura" : "indeterminato";
+      } else {
+        // Sonde a rilassamento SINGOLO: il vincolo che da solo sblocca la
+        // finestra è la causa. Ordine: ambulatorio (il più specifico), poi i
+        // vincoli per cui ci sono INDIZI nel tabellone (medici ad obiettivo,
+        // al tetto notti), poi il resto — così, se il tempo stringe, si
+        // verificano per primi i sospettati più probabili.
+        const giorniFin: number[] = []; for (let g = lo; g <= hi; g++) giorniFin.push(g);
+        const presente = (m: Medico) => giorniFin.some(g => !c0.gt(m.id, g).some(s => s.man && ["L", "ANA", "per11", "104", "X"].includes(s.tipo)));
+        const attivi = [...c0.ml, ...c0.mrMdc].filter(presente);
+        const indizio: Partial<Record<CausaVincolo, boolean>> = {
+          obiettivo: attivi.some(m => c0.cnt(m.id) >= m.obiettivo),
+          maxNotti: c0.mrMdc.filter(presente).some(m => c0.cntN(m.id) >= REG0.maxNotti),
+        };
+        const sonde: [CausaVincolo, Mod][] = [
+          ["ambMove", { ambMove: true }],
+          ["ambOff", { ambOff: true }],
+          ["regN", { relaxN: true }],
+          ["maxNotti", { maxNotti: true }],
+          ["nottiConsec", { nottiConsec: true }],
+          ["maxConsec", { maxConsec: true }],
+          ["obiettivo", { obiettivo: true }],
+        ];
+        const rango = (k: CausaVincolo) =>
+          (k === "obiettivo" && bilancioNeg) ? -1
+          : (k === "ambMove" || k === "ambOff") ? 0 : indizio[k] ? 1 : 2;
+        sonde.sort((a, b) => rango(a[0]) - rango(b[0]));   // sort stabile: a pari rango resta l'ordine storico
+        for (const [k, mod] of sonde) {
+          if (scaduto()) { completa = false; incompleta = true; break; }
+          if ((k === "ambMove" || k === "ambOff") && !haAmbFin) continue;
+          if (k === "ambOff" && vincoli.includes("ambMove")) continue;  // implicato
+          if (k === "regN" && REG0.notteLiberoNotte && !REG0.riposoEsteso) continue; // gi\u00E0 attivo (e nessun riposo esteso da rilassare)
+          if (prova(lo, hi, mod).ok) vincoli.push(k);
+        }
+        if (vincoli.length) esito = "vincolo";
+        else esito = incompleta ? "indeterminato" : "combinazione";
       }
-
-      if (vincoli.length) esito = "vincolo";
-      else if (!scaduto() && prova(lo, hi, { ambOff: haAmbFin, relaxN: true, maxNotti: true, nottiConsec: true, maxConsec: true, obiettivo: true }).ok) esito = "combinazione";
-      else esito = "struttura";
 
       // NUCLEO: quale cella (o insieme minimo di celle), sacrificata, sblocca
       // tutto il resto? Candidate: solo celle NON già coperte da turni MANUALI
@@ -304,7 +340,6 @@ export function diagnosiCausale(
       // "struttura". Solo se sotto le regole piene non si trova nulla si
       // ripiega sui vincoli tutti rilassati (nucleoRilassato=true: il
       // messaggio deve qualificarlo).
-      const TUTTI: Mod = { ambOff: haAmbFin, relaxN: true, maxNotti: true, nottiConsec: true, maxConsec: true, obiettivo: true };
       const covMan = (g: number, f: "M" | "P" | "N") =>
         medici.reduce((n, m) => n + c0.gt(m.id, g).filter(s => s.man && s.tipo === f).length, 0);
       const candCells: CellaScoperta[] = [];
@@ -401,6 +436,10 @@ export function diagnosiCausale(
         for (const k of vincoli) dettagli.push(HINT[k]);
       } else if (esito === "combinazione") {
         parti.push("nessun vincolo da solo spiega il buco: solo rilassandone pi\u00F9 d'uno insieme la finestra si copre \u2014 giorni al limite, valuta di alleggerire i turni manuali");
+      } else if (esito === "indeterminato") {
+        parti.push(bilancioNeg
+          ? "la finestra non si copre cos\u00EC com'\u00E8 e l'analisi non si \u00E8 conclusa nel tempo disponibile; la causa pi\u00F9 probabile \u00E8 il bilancio negativo del mese (gli obiettivi dei medici non bastano: vedi sopra)"
+          : "la finestra non si copre cos\u00EC com'\u00E8, ma l'analisi non si \u00E8 conclusa nel tempo disponibile: non \u00E8 stato possibile stabilire quale vincolo la blocchi (controlla il Bilancio del mese e gli obiettivi dei medici disponibili)");
       } else {
         parti.push("incopribile anche ignorando TUTTI i vincoli del motore: in questi giorni mancano materialmente i medici (assenze, turni manuali, notti a cavallo del mese)");
       }

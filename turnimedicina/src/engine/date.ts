@@ -61,12 +61,41 @@ export function isHolLocale(m:number,d:number){
   return FESTIVI_LOCALI.has(`${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
 }
 
+// ── MEMO DI CALENDARIO (v0.3.37) ──────────────────────────────────────────────
+// dowOf/isHol/isFestivo sono funzioni PURE della data, ma costose (un oggetto
+// Date o due stringhe a ogni chiamata) e il motore le interroga milioni di
+// volte per gli stessi ~35 giorni: il profilo di un mese difficile le dava a
+// quasi metà del tempo di generazione. Si memorizza il risultato per data.
+// La chiave numerica copre anche i giorni "fuori mese" (d ≤ 0 o > fine mese)
+// che il motore chiede ai bordi: il risultato resta quello della funzione
+// originale, calcolata la prima volta. Le cache crescono di ~35 voci per mese
+// consultato: trascurabile.
+// Chiave univoca per m∈[0,15], d∈[-16,47]; fuori da lì si calcola senza cache.
+const inChiave = (m:number,d:number) => m>=0 && m<16 && d>=-16 && d<48;
+const kData = (y:number,m:number,d:number) => (y*16 + m)*64 + (d+16);
+const _dowCache = new Map<number,number>();
+const _holDCache = new Map<number,boolean>();
+const _isHol = (y:number,m:number,d:number) =>
+  holSet(y).has(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`) || isHolLocale(m,d);
 // Festivo "da calendario": nazionale OPPURE locale. Se la data locale cade di
 // domenica (es. 8 settembre 2030) non c'è doppio conteggio: è un OR booleano.
 export function isHol(y:number,m:number,d:number){
-  return holSet(y).has(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`) || isHolLocale(m,d);
+  if(!inChiave(m,d)) return _isHol(y,m,d);
+  const k = kData(y,m,d);
+  let v = _holDCache.get(k);
+  if(v===undefined){
+    v = _isHol(y,m,d);
+    _holDCache.set(k,v);
+  }
+  return v;
 }
-export function dowOf(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)%7; } // 0=Lun..6=Dom
+export function dowOf(y:number,m:number,d:number){  // 0=Lun..6=Dom
+  if(!inChiave(m,d)) return (new Date(y,m,d).getDay()+6)%7;
+  const k = kData(y,m,d);
+  let v = _dowCache.get(k);
+  if(v===undefined){ v = (new Date(y,m,d).getDay()+6)%7; _dowCache.set(k,v); }
+  return v;
+}
 export function dimOf(y:number,m:number)  { return new Date(y,m+1,0).getDate(); }
 export function isSabN(n:number)   { return n===5; }
 export function isDomN(n:number)   { return n===6; }

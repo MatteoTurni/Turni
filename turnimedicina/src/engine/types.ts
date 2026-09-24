@@ -115,14 +115,16 @@ export type CausaVincolo = "ambMove" | "ambOff" | "regN" | "maxNotti" | "nottiCo
  *                          rendono copribile: quelli sono la causa;
  *         "combinazione" = risolvibile solo rilassando più vincoli insieme;
  *         "struttura"    = incopribile anche senza alcun vincolo del motore
- *                          (deficit materiale: assenze/manuali).
+ *                          (deficit materiale: assenze/manuali) — DIMOSTRATO;
+ *         "indeterminato"= analisi non conclusa (tempo/tetto nodi): nessun
+ *                          verdetto forte (v0.3.37).
  *  nucleo: celle il cui SACRIFICIO sblocca tutto il resto della finestra — il
  *  "vero problema", che può non coincidere con le celle dichiarate scoperte. */
 export interface CausaCluster {
   lo: number; hi: number;
   celle: CellaScoperta[];        // buchi M/P/N analizzati nella finestra
   ambGiorni: number[];           // giorni d'ambulatorio SENZA A nella finestra
-  esito: "locale" | "vincolo" | "combinazione" | "struttura";
+  esito: "locale" | "vincolo" | "combinazione" | "struttura" | "indeterminato";
   vincoli: CausaVincolo[];
   nucleo: CellaScoperta[];
   /** false = le celle del nucleo sono ALTERNATIVE (ognuna da sola sblocca il

@@ -1,4 +1,93 @@
-# TurniMedicina 0.3.36
+# TurniMedicina 0.3.37
+
+## Novità 0.3.37 — analisi di generazione e diagnosi
+
+Revisione completa del motore di generazione e della diagnosi, con ogni
+intervento misurato su `harness/sim.ts` (18 scenari × 3 ripetizioni, stessi
+semi e stesso tempo, contro la 0.3.36; validatori indipendenti: 0 violazioni).
+
+**Risultati complessivi** (54 generazioni, verifica finale): buchi di copertura
+92 → 71, mesi perfetti 41 → 43, weekend liberi mancanti 39 → 35, tempo −21%,
+violazioni 0 → 0. Costo: sforo obiettivi 25 → 35 punti totali e penalità
+"soft" +2%, quasi tutti in `giu26-obj15` (obiettivi insufficienti: le celle in
+più coperte finiscono a chi è già a obiettivo, e un buco vale più di uno
+sforo). Nell'app la pagina non si congela più a fine generazione (da 5,8–8,7 s
+a ~0,04 s).
+
+**Verifica per ablazione**: ogni intervento della rifinitura è stato spento uno
+alla volta. Il tappabuchi vale 10 buchi su 71, l'ambulatorio mobile 2 (caso
+settembre con lunga assenza), `completaML` porta l'ML a 25/25 (senza: 15–23/25),
+`sistemaMdcAmb` evita l'MDC solo con l'ambulatorio. Due micro-ottimizzazioni e
+una modifica al punteggio dei tentativi, senza effetto misurabile, sono state
+tolte. La generazione di base (`harness/det.ts`) dà un'impronta IDENTICA alla
+0.3.36.
+
+Motore:
+- **Calendario memorizzato** (`date.ts`): giorno della settimana e festivi
+  venivano ricalcolati milioni di volte (quasi metà del tempo nei mesi
+  difficili). Generazione 2,2× più veloce, impronta deterministica IDENTICA.
+- **Tappabuchi finale** (`tappaBuchi`): la riparazione per finestre è
+  tutto-o-niente e lasciava giorni interi vuoti ai bordi del mese pur con
+  medici disponibili. Ora le celle coperibili si coprono una a una, senza mai
+  togliere weekend liberi a nessuno (quelle coperture restano all'ultima chance).
+- **Ambulatorio riassegnabile nella riparazione**: se il titolare della A è
+  l'unico che chiuderebbe un buco, `riparaBuchi` prova a spostare la A a un
+  altro abilitato (settembre con lunga assenza: 3 buchi → 0).
+- **"Max turni associati / settimana" è una regola vera**: prima era solo una
+  preferenza di una fase, con settimane a blocchi di 7 giorni dal giorno 1
+  (con limite 1, 4 tabelloni su 5 lo superavano). Ora vale per ogni
+  inserimento, su settimane lunedì–domenica, ed è segnalata in validazione.
+- Predicato unico `ambAssegnabile` per fase ambulatorio, riparazione e diagnosi.
+- Correzioni: `restore` ignorava l'ambulatorio di A/Ap; il "miglior parziale"
+  contava A/Ap e codici PS come copertura di reparto.
+
+Diagnosi:
+- **Mai più verdetti "strutturali" non verificati**: se il tempo finiva, la
+  diagnosi ripiegava su "mancano materialmente i medici" (falso con obiettivi
+  insufficienti). Il risolutore ora dice se il fallimento è dimostrato; se no
+  l'esito è "indeterminato".
+- **Bilancio del mese**: se gli obiettivi non bastano al fabbisogno, la
+  diagnosi lo dice con i numeri (nuovo riquadro) e la sonda degli obiettivi
+  va per prima.
+
+Interfaccia:
+- Rifinitura finale in un Web Worker (ripiego sul thread principale).
+- "Completa obiettivi" dice chi resta sotto obiettivo e perché, invece di
+  "completati!" in ogni caso.
+
+Collaudo a configurazioni casuali (`harness/fuzz.ts` + validatori indipendenti
+`harness/validatori.ts`): 180 configurazioni casuali di squadra, regole,
+assenze, esclusioni, manuali, mese precedente e ambulatori; generazione completa
++ "Completa obiettivi". Configurazioni con violazioni: 87 nella 0.3.36 → 3,
+tutte segnalate in validazione e strutturali (MDC unico abilitato disponibile
+per un ambulatorio di pomeriggio senza colleghi). Il fuzz ha trovato due
+difetti già presenti nella 0.3.36, ora corretti:
+- **Due turni nella stessa fascia** (ambulatorio + reparto: A+M, Ap+P): lo
+  "scambio compensato" del riequilibrio weekend saltava il controllo. Ora
+  `canR` e `add` rifiutano sempre un secondo turno nella stessa fascia.
+- **MDC da solo con l'ambulatorio**: la fase ambulatorio gira a tabellone
+  vuoto. Ora la rifinitura sposta l'ambulatorio a un altro abilitato non MDC
+  (`sistemaMdcAmb`); se l'unico abilitato libero è un MDC, l'ambulatorio resta
+  a lui e la validazione segnala l'MDC rimasto solo.
+
+ML e giorni consecutivi (`harness/mlconsec.ts`): con il tetto da 7 a 2 l'ML
+lavora gli stessi turni (sequenze fino a 6 giorni), mai segnalato; MR e MDC
+restano sempre entro il tetto.
+
+**ML fino all'obiettivo.** L'ML fa solo mattine non festive (lun–sab), quindi
+ogni mattina che perde è un turno che non recupera. Tre punti gliene toglievano:
+la compattazione (spostava la sua mattina "isolata", es. lunedì 1 giugno prima
+del festivo del 2: ML a 24/25 con la mattina libera), le fasi che davano il
+sabato ad altri prima di lui, e "Completa obiettivi", che serviva prima i meno
+carichi e non guardava i sabati. Ora la compattazione non gli toglie turni, un
+passaggio finale (`completaML`) gli dà le mattine libere o gliele fa cedere da
+un collega (mai manuali, copertura invariata, nessun MDC lasciato solo) e il
+pulsante 2 lo serve per primo. Vale anche per la variante "ultima chance"
+(`UC`) della rifinitura. Misurato: da 23-24/25 (e 15-23/25 con due ML)
+a 25/25 in tutti i casi di prova. Gli harness `sim.ts`/`stress.ts` ora esentano
+l'ML dal controllo dei consecutivi, come il motore.
+
+Test: `analisi037.test.ts`. Harness: `harness/multiamb.ts` (stress più ambulatori).
 
 ## Novità 0.3.36 — più ambulatori, ciascuno coi suoi abilitati
 

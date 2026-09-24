@@ -2,6 +2,7 @@ import type { Medico, TurniMese, Regole } from "./types";
 import { DF, dowOf, isSabN, isDomN, isFestivo } from "./date";
 import { isMatt, isPom, isNot, SPEC, escludeFascia } from "./turni";
 import { getRegole } from "./regole";
+import { calcolaBilancio } from "./bilancio";
 
 // ─── DIAGNOSI STATICA (v0.3.10) ───────────────────────────────────────────────
 // Certificati di IMPOSSIBILITÀ calcolati dai soli fatti IMMOVIBILI del mese:
@@ -23,7 +24,11 @@ import { getRegole } from "./regole";
 export interface CertCella  { g:number; f:"M"|"P"|"N"; disp:number; min:number; motivo:string }
 export interface CertGiorno { g:number; richiesti:number; max:number; nomi:string[]; motivo:string }
 export interface CertMese   { tipo:"notti"; richieste:number; capacita:number; motivo:string }
-export interface DiagnosiStatica { celle:CertCella[]; giorni:CertGiorno[]; mese:CertMese[] }
+/** Bilancio negativo del mese (v0.3.37): NON è un certificato (il motore può
+ *  sforare l'obiettivo di 1 con una notte), ma spiega la causa più comune dei
+ *  buchi nei mesi di ferie. */
+export interface AvvisoBilancio { servono:number; disponibili:number; motivo:string }
+export interface DiagnosiStatica { celle:CertCella[]; giorni:CertGiorno[]; mese:CertMese[]; bilancio?:AvvisoBilancio }
 
 const gLbl = (anno:number, mese:number, g:number) => `${DF[dowOf(anno,mese,g)].slice(0,3)} ${g}`;
 
@@ -173,5 +178,17 @@ export function diagnosiStatica(
       `Notti da generare: ${richieste}, capacità massima ${capNotti} (maxNotti ${REG.maxNotti}/medico${dett.length?"; "+dett.join(", "):""}) — almeno ${richieste-capNotti} nott${richieste-capNotti===1?"e resterà scoperta":"i resteranno scoperte"}` });
   }
 
-  return { celle, giorni, mese: mesi };
+  // ── BILANCIO DEL MESE (v0.3.37) ────────────────────────────────────────────
+  // Il motore non assegna turni automatici oltre l'obiettivo mensile (al più
+  // +1 per una notte, che vale 2). Se gli obiettivi sommati — al netto di
+  // assenze e turni PS — non arrivano al fabbisogno, una parte delle celle
+  // resterà scoperta qualunque cosa faccia la generazione: è la causa più
+  // comune dei buchi nei mesi di ferie, e prima la diagnosi non la nominava
+  // (la sonda causale degli obiettivi spesso non faceva in tempo a partire).
+  // Stessi numeri D/F del riquadro "Bilancio mese".
+  const b = calcolaBilancio(anno, mese, ndim, medici, turni, REG);
+  const bilancio: AvvisoBilancio | undefined = b.ok ? undefined : { servono:b.f, disponibili:b.d, motivo:
+    `Servono ${b.f} turni (notti \u00D72), gli obiettivi dei medici al netto di assenze e PS ne coprono ${b.d}: ne mancano ${b.f-b.d}. Il motore non supera gli obiettivi (salvo +1 per una notte): senza alzarli, circa ${b.f-b.d} turni resteranno scoperti.` };
+
+  return { celle, giorni, mese: mesi, ...(bilancio ? { bilancio } : {}) };
 }
