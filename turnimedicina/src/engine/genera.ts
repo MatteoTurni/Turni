@@ -976,8 +976,9 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
 // ML esclusi (vincoli propri). L'obiettivo è la quota di mattine della
 // squadra: ogni MR dovrebbe fare mattine in proporzione ai suoi turni diurni
 // (A conta come mattina, Ap come pomeriggio). Ogni scambio passa da canR/add;
-// si tiene solo se copertura, regole, weekend, rientri rapidi P→M e il resto
-// del punteggio (strisce di mattine = continuità compresa) non peggiorano.
+// si tiene solo se copertura, regole, weekend e il resto del punteggio
+// (strisce di mattine = continuità compresa) non peggiorano. I rientri rapidi
+// P→M non contano: per il reparto non sono un problema.
 export function scartoMP(c: ReturnType<typeof makeCtx>): Map<number, number> {
   const mp = c.mr.map(m=>{
     let M=0,P=0;
@@ -1000,6 +1001,10 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
     const sh=c.gt(id,g);
     return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott ? sh[0] : null;
   };
+  // Passaggi di consegne attorno a g (g-1→g, g→g+1): qualcuno della fascia f
+  // c'è anche il giorno dopo. Uno scambio non deve toglierne.
+  const stessi=(g1:number,g2:number,f:string)=>c.mr.concat(c.ml,c.mdc).some(m=>c.gt(m.id,g1).some(s=>s.tipo===f)&&c.gt(m.id,g2).some(s=>s.tipo===f));
+  const passaggi=(g:number)=>{ let k=0; for(const f of ["M","P"]){ if(c.feriali.includes(g-1)&&stessi(g-1,g,f)) k++; if(c.feriali.includes(g+1)&&stessi(g,g+1,f)) k++; } return k; };
   for(let iter=0; iter<60; iter++){
     if(scaduto()) break;
     const e=scartoMP(c);
@@ -1011,14 +1016,17 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
       if(a.id===b.id || e.get(a.id)!-e.get(b.id)!<=1) continue;   // lo scambio non ridurrebbe lo scarto
       for(const g of c.feriali){
         if(!solo(a.id,g,"M") || !solo(b.id,g,"P")) continue;
+        const pass0=passaggi(g);
         const m0=c.mark();
         c.st(a.id,g,[]); c.st(b.id,g,[]);
         let ok=false;
         if(c.canR(a,g,"P")){ c.add(a.id,g,"P");
           if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
-        if(!ok){ c.rollback(m0); continue; }
+        if(!ok || passaggi(g)<pass0){ c.rollback(m0); continue; }
         const nx=misura();
-        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.quickPM<=cur.quickPM && nx.soft<=cur.soft
+        // Rientri rapidi P→M ininfluenti (scelta del reparto): tolti dal confronto.
+        const soft=(x:MisuraTab)=>x.soft-x.quickPM*PESI.quickPM;
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && soft(nx)<=soft(cur)
            && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; scambi++; break outer; }
         c.rollback(m0);
       }
@@ -1411,9 +1419,9 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     const pool = mrMdc;
     const def = (m:Medico) => m.obiettivo - cnt(m.id);
     const mdcSoloIn = (g:number,f:"M"|"P") => ctx.mdc.some(d=>(f==="M" ? haM(d.id,g) : haP(d.id,g)) && !mdcOk(d,g,f));   // anche con A/Ap
-    // Costo di CONTINUITÀ di un medico: giorni lavorati isolati (notti escluse)
-    // e rientri rapidi P→M. Fra gli spostamenti legali si sceglie quello che
-    // ne crea meno, così l'equità non frammenta i turni.
+    // Costo di CONTINUITÀ di un medico: giorni lavorati isolati (notti
+    // escluse). Fra gli spostamenti legali si sceglie quello che ne crea meno,
+    // così l'equità non frammenta i turni.
     const lav = (id:number,g:number) => g>=1 && g<=ndim && ctx.lavoraGiorno(id,g);
     const costo = (id:number) => {
       let k=0;
@@ -1421,7 +1429,6 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
         const sh=gt(id,g); if(!sh.length || sh.some(s=>s.tipo==="N"||s.tipo==="3")) continue;
         if(!ctx.lavoraGiorno(id,g)) continue;
         if(g<ndim && !lav(id,g-1) && !lav(id,g+1)) k++;
-        if(g<ndim && sh.some(s=>s.tipo==="P"||s.tipo==="Ap") && gt(id,g+1).some(s=>s.tipo==="M"||s.tipo==="A")) k++;
       }
       return k;
     };
