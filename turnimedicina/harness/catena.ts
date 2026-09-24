@@ -6,7 +6,7 @@ import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../src/engine/regole";
 import { ENG, setSalt, setAmbRotStart } from "../src/engine/state";
 import { generaMigliorTentativo, completaObiettivi, continuitaScoperti } from "../src/engine/genera";
 import { makeCtx } from "../src/engine/ctx";
-import { squadraGennaio } from "./gennaio";
+import { squadraGennaio } from "./scenari";
 function mulberry32(seed:number){ let a=seed>>>0; return ()=>{ a|=0; a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
 const ms=+(process.argv[2]||2500), obj=process.argv[3]==="obj";
 const anno=2025, mese=0, nd=dimOf(anno,mese), D="LMMGVSD";
