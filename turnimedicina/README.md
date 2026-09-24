@@ -1,6 +1,6 @@
 # TurniMedicina 0.3.38
 
-## Novità 0.3.38 — equità delle notti e dei turni mancanti
+## Novità 0.3.38 — equità di notti e di mattine/pomeriggi fra gli MR
 
 **Notti fra gli MR.** La fase notti sceglie prima il medico "meno vincolante"
 (serve a coprire le notti difficili) e solo a parità quello con meno notti; il
