@@ -1367,27 +1367,43 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     });
     return cand;
   };
-  for(const m of [...byL(ml), ...byL(mrMdc)]){
+  // ML e MDC come prima (uno alla volta fino all'obiettivo, solo mattine). Gli
+  // MR A TURNO (v0.3.38): un turno alla volta a chi è più lontano dal suo
+  // obiettivo. Prima si riempiva un MR fino all'obiettivo e poi il successivo:
+  // nei mesi con posti insufficienti il primo arrivava a obiettivo (quasi solo
+  // pomeriggi, perché le mattine sono in gran parte di ML e MDC) e gli ultimi
+  // restavano indietro di 8-10 turni.
+  // Un turno a un MR: la fascia in cui è più indietro rispetto alla quota di
+  // mattine della squadra, altrimenti l'altra. false = nessun posto legale.
+  const assegnaMR = (m:Medico): boolean => {
+    const tot = mr.reduce((q,x)=>{ const c=conta(x.id); return {M:q.M+c.M, T:q.T+c.M+c.P}; },{M:0,T:0});
+    const R = tot.T ? tot.M/tot.T : 0.5;
+    const me = conta(m.id);
+    const vuoleP = me.M+me.P>0 && me.M/(me.M+me.P) > R;
+    const cM = candMatt(m, feriali), cP = candPom(m);
+    const [f, cand] = vuoleP ? (cP.length ? ["P",cP] : ["M",cM]) : (cM.length ? ["M",cM] : ["P",cP]);
+    if(!cand.length) return false;
+    const c0 = cnt(m.id);
+    add(m.id,cand[0],f as "M"|"P");
+    return cnt(m.id)!==c0;                 // false se le guardie di add rifiutano
+  };
+  for(const m of [...byL(ml), ...byL(mrMdc).filter(x=>x.stato!=="MR")]){
     // Per l'ML anche il SABATO non festivo: è una sua mattina possibile, e non
     // ha weekend liberi da difendere (fuori dall'equità weekend).
     const giorniM = m.stato==="ML" ? mattineML : feriali;
     while(cnt(m.id)<m.obiettivo){
-      if(m.stato==="MR"){
-        const tot = mr.reduce((q,x)=>{ const c=conta(x.id); return {M:q.M+c.M, T:q.T+c.M+c.P}; },{M:0,T:0});
-        const R = tot.T ? tot.M/tot.T : 0.5;
-        const me = conta(m.id);
-        const vuoleP = me.M+me.P>0 && me.M/(me.M+me.P) > R;
-        const cM = candMatt(m, giorniM), cP = candPom(m);
-        const [f, cand] = vuoleP ? (cP.length ? ["P",cP] : ["M",cM]) : (cM.length ? ["M",cM] : ["P",cP]);
-        if(!cand.length) break;
-        const c0 = cnt(m.id);
-        add(m.id,cand[0],f as "M"|"P");
-        if(cnt(m.id)===c0) break;          // inserimento rifiutato dalle guardie di add
-        continue;
-      }
       const cand = candMatt(m, giorniM);
       if(cand.length===0) break;
       add(m.id,cand[0],"M");
+    }
+  }
+  {
+    const fermi = new Set<number>();
+    for(let guard=0; guard<5000; guard++){
+      const pool = byL(mr).filter(m=>!fermi.has(m.id) && cnt(m.id)<m.obiettivo)
+        .sort((a,b)=>(b.obiettivo-cnt(b.id))-(a.obiettivo-cnt(a.id)));
+      if(!pool.length) break;
+      if(!assegnaMR(pool[0])) fermi.add(pool[0].id);
     }
   }
 

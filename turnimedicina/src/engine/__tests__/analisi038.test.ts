@@ -100,3 +100,16 @@ describe("Completa obiettivi: fascia scelta per equilibrio mattine/pomeriggi", (
     expect(Math.abs(conta(1, "M") - conta(2, "M"))).toBeLessThanOrEqual(2);
   });
 });
+
+describe("Completa obiettivi: MR serviti a turno", () => {
+  it("posti per 42 turni e 3 MR da 25: 14/14/14, non 25/9/8", () => {
+    setRegole(mergeRegole({ ...dft(), fabb: { fer: { mMin: 1, mMax: 1, pMin: 1, pMax: 1 },
+      sab: { mMin: 0, mMax: 0, pMin: 0, pMax: 0 }, fest: { mMin: 0, mMax: 0, pMin: 0, pMax: 0 } } }));
+    const medici = [med(1, "MR", 25), med(2, "MR", 25), med(3, "MR", 25)];
+    const o = completaObiettivi(2026, 5, 30, medici, {});
+    const c = makeCtx(2026, 5, 30, medici, o.turni);
+    const n = medici.map(m => c.cnt(m.id));
+    expect(n.reduce((a, b) => a + b, 0)).toBe(42);
+    expect(Math.max(...n) - Math.min(...n)).toBeLessThanOrEqual(1);
+  });
+});

@@ -1,4 +1,23 @@
-# TurniMedicina 0.3.38
+# TurniMedicina 0.3.39
+
+## Novità 0.3.39 — "Completa obiettivi": MR serviti a turno
+
+Caso segnalato (gennaio 2026 vuoto): dopo "Completa obiettivi" un MR aveva 11
+pomeriggi e 27/27 turni, un altro 5 pomeriggi e 17/27. Causa: gli MR venivano
+riempiti uno alla volta fino all'obiettivo; nei mesi in cui i posti feriali
+non bastano (e le mattine sono in gran parte di ML e MDC) il primo servito
+prendeva quasi tutti i pomeriggi liberi e gli ultimi restavano indietro.
+Ora, dopo ML e MDC (invariati), gli MR ricevono UN turno alla volta, a chi è
+più lontano dal suo obiettivo, con la fascia scelta per equilibrio
+mattine/pomeriggi. Nessun turno viene spostato.
+
+Misurato: gennaio (`harness/gennaio.ts`, 4 generazioni) forbice dei
+pomeriggi fra MR 8,5 → 3,0, dei totali 8,0 → 1,5, turni assegnati identici.
+Tabellone finale (`harness/finale.ts`, 72 mesi): forbice dei totali MR
+3,4 → 1,2, dei pomeriggi 4,2 → 2,3, scarto M/P 6,0 → 4,5; errori, buchi,
+weekend invariati; consegne P→M 43% → 40%, continuità M→M 97,7 → 97,6%.
+Configurazioni casuali (180): 0 violazioni nuove. Test in `analisi038.test.ts`.
+
 
 ## Novità 0.3.38 — equità di notti e di mattine/pomeriggi fra gli MR
 
