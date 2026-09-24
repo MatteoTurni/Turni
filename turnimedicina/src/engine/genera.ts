@@ -96,14 +96,19 @@ export function generaCoperturaMinima(
   // ── BEST-EFFORT ────────────────────────────────────────────────────────────
   // Conserviamo sempre la configurazione col punteggio più alto incontrata
   // (copia PIENA: deve sopravvivere ai rollback dell'undo-log).
-  // Stessa metrica di copertura di scoreCopertura/cf (v0.3.37): contano SOLO
-  // i turni di reparto M/P/N. Prima si contavano anche A/Ap e i codici PS
-  // 1/2/3, che non coprono il fabbisogno: un parziale con l'ambulatorio al
-  // posto di una mattina di reparto sembrava completo quanto uno vero.
   const scoreOf = () => {
     let s=0;
-    for(let g=1;g<=ndim;g++)
-      s += Math.min(ctx.cf(g,"M"),ctx.nmn(g).mn)+Math.min(ctx.cf(g,"P"),ctx.npn(g).mn)+Math.min(ctx.cf(g,"N"),1);
+    for(let g=1;g<=ndim;g++){
+      let m=0,p=0,n=0;
+      for(const med of medici){
+        for(const sh of ctx.gt(med.id,g)){
+          if(["M","A","1"].includes(sh.tipo)) m++;
+          else if(["P","2","Ap"].includes(sh.tipo)) p++;
+          else if(["N","3"].includes(sh.tipo)) n++;
+        }
+      }
+      s += Math.min(m,ctx.nmn(g).mn)+Math.min(p,ctx.npn(g).mn)+Math.min(n,1);
+    }
     return s;
   };
   let bestSnap = ctx.snapshot(), bestScore = scoreOf();
@@ -1078,6 +1083,9 @@ export function rifinituraFinale(
   if(bestM.buchi>0){
     try{
       const r = generaConUltimaChance(anno, mese, ndim, medici, ex, Math.max(1200, msUC));
+      // Anche la variante rispetta la priorità dell'ML sulle sue mattine
+      // (scambi 1 a 1 o posti liberi: copertura e regole invariate).
+      if(medici.some(m=>m.stato==="ML")) completaML(makeCtx(anno, mese, ndim, medici, r.turni));
       const mUC = misuraTabellone(anno, mese, ndim, medici, r.turni);
       if(mUC.buchi < bestM.buchi){                 // copre STRETTAMENTE di più
         alternativaUC = costruisciAlternativa(anno, mese, ndim, medici, bestT, r.turni, r.problemi);

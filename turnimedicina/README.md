@@ -6,11 +6,21 @@ Revisione completa del motore di generazione e della diagnosi, con ogni
 intervento misurato su `harness/sim.ts` (18 scenari × 3 ripetizioni, stessi
 semi e stesso tempo, contro la 0.3.36; validatori indipendenti: 0 violazioni).
 
-**Risultati complessivi** (54 generazioni): buchi di copertura 92 → 71, mesi
-perfetti 41 → 44, weekend liberi mancanti 39 → 34, tempo −36%, violazioni 0 → 0.
-Unico costo: sforo obiettivi 25 → 33 punti totali (le celle in più coperte
-includono notti, che valgono 2). Nell'app la pagina non si congela più a fine
-generazione (da 5,8–8,7 s a ~0,04 s).
+**Risultati complessivi** (54 generazioni, verifica finale): buchi di copertura
+92 → 71, mesi perfetti 41 → 43, weekend liberi mancanti 39 → 35, tempo −21%,
+violazioni 0 → 0. Costo: sforo obiettivi 25 → 35 punti totali e penalità
+"soft" +2%, quasi tutti in `giu26-obj15` (obiettivi insufficienti: le celle in
+più coperte finiscono a chi è già a obiettivo, e un buco vale più di uno
+sforo). Nell'app la pagina non si congela più a fine generazione (da 5,8–8,7 s
+a ~0,04 s).
+
+**Verifica per ablazione**: ogni intervento della rifinitura è stato spento uno
+alla volta. Il tappabuchi vale 10 buchi su 71, l'ambulatorio mobile 2 (caso
+settembre con lunga assenza), `completaML` porta l'ML a 25/25 (senza: 15–23/25),
+`sistemaMdcAmb` evita l'MDC solo con l'ambulatorio. Due micro-ottimizzazioni e
+una modifica al punteggio dei tentativi, senza effetto misurabile, sono state
+tolte. La generazione di base (`harness/det.ts`) dà un'impronta IDENTICA alla
+0.3.36.
 
 Motore:
 - **Calendario memorizzato** (`date.ts`): giorno della settimana e festivi
@@ -56,8 +66,9 @@ difetti già presenti nella 0.3.36, ora corretti:
   "scambio compensato" del riequilibrio weekend saltava il controllo. Ora
   `canR` e `add` rifiutano sempre un secondo turno nella stessa fascia.
 - **MDC da solo con l'ambulatorio**: la fase ambulatorio gira a tabellone
-  vuoto. Ora la rifinitura sposta l'ambulatorio a un altro abilitato
-  (`sistemaMdcAmb`) e la validazione segnala l'MDC rimasto solo.
+  vuoto. Ora la rifinitura sposta l'ambulatorio a un altro abilitato non MDC
+  (`sistemaMdcAmb`); se l'unico abilitato libero è un MDC, l'ambulatorio resta
+  a lui e la validazione segnala l'MDC rimasto solo.
 
 ML e giorni consecutivi (`harness/mlconsec.ts`): con il tetto da 7 a 2 l'ML
 lavora gli stessi turni (sequenze fino a 6 giorni), mai segnalato; MR e MDC
@@ -71,7 +82,8 @@ sabato ad altri prima di lui, e "Completa obiettivi", che serviva prima i meno
 carichi e non guardava i sabati. Ora la compattazione non gli toglie turni, un
 passaggio finale (`completaML`) gli dà le mattine libere o gliele fa cedere da
 un collega (mai manuali, copertura invariata, nessun MDC lasciato solo) e il
-pulsante 2 lo serve per primo. Misurato: da 23-24/25 (e 15-23/25 con due ML)
+pulsante 2 lo serve per primo. Vale anche per la variante "ultima chance"
+(`UC`) della rifinitura. Misurato: da 23-24/25 (e 15-23/25 con due ML)
 a 25/25 in tutti i casi di prova. Gli harness `sim.ts`/`stress.ts` ora esentano
 l'ML dal controllo dei consecutivi, come il motore.
 

@@ -432,7 +432,8 @@ export function sistemaMdcAmb(ctx: Ctx): number {
       const m0 = mark();
       st(m.id,g, gt(m.id,g).filter(x=>x!==s));
       let ok = false;
-      for(const x of byL(medici.filter(x=>x.id!==m.id && ambAssegnabile(ctx,x,g,sl)))){
+      // Un altro MDC resterebbe solo allo stesso modo: si cerca fra gli altri.
+      for(const x of byL(medici.filter(x=>x.id!==m.id && x.stato!=="MDC" && ambAssegnabile(ctx,x,g,sl)))){
         add(x.id,g,sl.cod,false,sl.amb);
         if(haSlot(x.id,g,sl)){ ok = true; break; }
       }

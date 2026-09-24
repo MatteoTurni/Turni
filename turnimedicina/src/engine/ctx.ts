@@ -42,10 +42,6 @@ export function makeCtx(
   wkTargetOverride?: number | Record<number,number> | null, relaxN?: boolean,
 ){
   const REG = getRegole();
-  // Insiemi costanti per i controlli più caldi (Set: niente array ricreati a
-  // ogni chiamata dentro canR/lavoraGiorno, che il solver invoca milioni di volte).
-  const SPEC_S  = new Set(SPEC);
-  const ASSENZE = new Set(["L","ANA","per11","104"]);
 
   // ── REGOLA CONFIGURABILE notte→libero→notte (v0.3.11) ──────────────────────
   // Con REG.notteLiberoNotte attiva, la semantica di relaxN (a g+2 dopo una
@@ -344,8 +340,8 @@ export function makeCtx(
     // una Notte, non solo un Pomeriggio. Resta fermo il vincolo g+1 libero e M vietata a g+2.
     if(postN1(id,g)||(!relaxN&&postN2(id,g))) return false;
     if(hasAnteN(id,g)) return false;                               // ANA/L/per11/X/104 in g+1 bloccano la Notte in g
-    if(g+1<=ndim){ const sh1=gt(id,g+1); if(sh1.some(s=>!SPEC_S.has(s.tipo))) return false; }      // g+1 libero
-    if(g+2<=ndim){ const sh2=gt(id,g+2); if(sh2.some(s=>!SPEC_S.has(s.tipo)&&violaG2(s.tipo))) return false; } // g+2 max P (o N se relaxN; NULLA col riposo esteso)
+    if(g+1<=ndim){ const sh1=gt(id,g+1); if(sh1.some(s=>!SPEC.includes(s.tipo))) return false; }      // g+1 libero
+    if(g+2<=ndim){ const sh2=gt(id,g+2); if(sh2.some(s=>!SPEC.includes(s.tipo)&&violaG2(s.tipo))) return false; } // g+2 max P (o N se relaxN; NULLA col riposo esteso)
     return true;
   };
 
@@ -394,7 +390,7 @@ export function makeCtx(
   // MAX_CONSEC (un blocco più lungo del massimo di giorni lavorabili di fila
   // sarebbe comunque irrealizzabile). 0 = catena disattivata.
   const BLOCCO_M = Math.max(0, Math.min(REG.blocchiMattina ?? 0, MAX_CONSEC));
-  const lavoraGiorno = (id:number,g:number) => g<=ndim && gtB(id,g).some(s=>!SPEC_S.has(s.tipo));
+  const lavoraGiorno = (id:number,g:number) => g<=ndim && gtB(id,g).some(s=>!SPEC.includes(s.tipo));
   const runConsec = (id:number,g:number) => {
     let n=1;
     for(let k=g-1;k>=1-TAIL && lavoraGiorno(id,k);k--) n++;
@@ -453,7 +449,7 @@ export function makeCtx(
     if(m.stato==="MPS") return false;
     // ESCLUSIONI: per l'associato basta che sia esclusa una delle due fasce.
     if(f==="ASS" ? esclusoAss(m.id,g) : escluso(m.id,g,f as "M"|"P"|"N")) return false;
-    if(gt(m.id,g).some(s=>s.man&&ASSENZE.has(s.tipo))) return false;
+    if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
     // OBIETTIVO RAGGIUNTO: un medico già ad obiettivo non riceve altri turni
     // AUTOMATICI (i turni manuali restano intatti).
     if(cnt(m.id) >= m.obiettivo) return false;
