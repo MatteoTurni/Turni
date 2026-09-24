@@ -113,3 +113,17 @@ describe("Completa obiettivi: MR serviti a turno", () => {
     expect(Math.max(...n) - Math.min(...n)).toBeLessThanOrEqual(1);
   });
 });
+
+describe("Completa obiettivi: MDC alla pari degli MR", () => {
+  it("con posti insufficienti l'MDC non ha più la precedenza sugli MR", () => {
+    setRegole(mergeRegole({ ...dft(), fabb: { fer: { mMin: 2, mMax: 2, pMin: 1, pMax: 1 },
+      sab: { mMin: 0, mMax: 0, pMin: 0, pMax: 0 }, fest: { mMin: 0, mMax: 0, pMin: 0, pMax: 0 } } }));
+    const medici = [med(1, "MR", 25), med(2, "MR", 25), med(3, "MDC", 21)];
+    const o = completaObiettivi(2026, 5, 30, medici, {});
+    const c = makeCtx(2026, 5, 30, medici, o.turni);
+    const man = medici.map(m => m.obiettivo - c.cnt(m.id));
+    // senza precedenza l'MDC non arriva a obiettivo mentre gli MR restano sotto
+    expect(man[2]).toBeGreaterThan(0);
+    expect(man[2]).toBeGreaterThanOrEqual(Math.min(man[0], man[1]));
+  });
+});

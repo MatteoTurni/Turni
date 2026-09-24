@@ -1367,12 +1367,12 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     });
     return cand;
   };
-  // ML e MDC come prima (uno alla volta fino all'obiettivo, solo mattine). Gli
-  // MR A TURNO (v0.3.38): un turno alla volta a chi è più lontano dal suo
-  // obiettivo. Prima si riempiva un MR fino all'obiettivo e poi il successivo:
-  // nei mesi con posti insufficienti il primo arrivava a obiettivo (quasi solo
-  // pomeriggi, perché le mattine sono in gran parte di ML e MDC) e gli ultimi
-  // restavano indietro di 8-10 turni.
+  // ML come prima (per primo, solo mattine, fino all'obiettivo). MR e MDC A
+  // TURNO (v0.3.39): un turno alla volta a chi è più lontano dal suo
+  // obiettivo, MDC alla pari degli MR. Prima si riempiva un medico fino
+  // all'obiettivo e poi il successivo (MDC per primo): nei mesi con posti
+  // insufficienti i primi arrivavano a obiettivo e gli ultimi restavano
+  // indietro di 8-10 turni.
   // Un turno a un MR: la fascia in cui è più indietro rispetto alla quota di
   // mattine della squadra, altrimenti l'altra. false = nessun posto legale.
   const assegnaMR = (m:Medico): boolean => {
@@ -1387,7 +1387,7 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
     add(m.id,cand[0],f as "M"|"P");
     return cnt(m.id)!==c0;                 // false se le guardie di add rifiutano
   };
-  for(const m of [...byL(ml), ...byL(mrMdc).filter(x=>x.stato!=="MR")]){
+  for(const m of byL(ml)){
     // Per l'ML anche il SABATO non festivo: è una sua mattina possibile, e non
     // ha weekend liberi da difendere (fuori dall'equità weekend).
     const giorniM = m.stato==="ML" ? mattineML : feriali;
@@ -1400,10 +1400,22 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   {
     const fermi = new Set<number>();
     for(let guard=0; guard<5000; guard++){
-      const pool = byL(mr).filter(m=>!fermi.has(m.id) && cnt(m.id)<m.obiettivo)
+      const pool = byL(mrMdc).filter(m=>!fermi.has(m.id) && cnt(m.id)<m.obiettivo)
         .sort((a,b)=>(b.obiettivo-cnt(b.id))-(a.obiettivo-cnt(a.id)));
       if(!pool.length) break;
-      if(!assegnaMR(pool[0])) fermi.add(pool[0].id);
+      const m = pool[0];
+      let ok: boolean;
+      if(m.stato==="MDC"){
+        // l'MDC in questa passata fa mattine (dove il minimo è 2: mai solo);
+        // i pomeriggi da secondo medico li riceve nelle passate successive
+        const cM = candMatt(m, feriali), c0 = cnt(m.id);
+        if(cM.length) add(m.id,cM[0],"M");
+        ok = cnt(m.id)!==c0;
+      } else ok = assegnaMR(m);
+      // Chi non ha posti ora può averne dopo (l'MDC trova un collega da
+      // affiancare quando un MR prende una mattina): a ogni assegnazione
+      // riuscita tutti rientrano nel giro.
+      if(ok) fermi.clear(); else fermi.add(m.id);
     }
   }
 
