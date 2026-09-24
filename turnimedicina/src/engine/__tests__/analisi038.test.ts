@@ -3,6 +3,7 @@ import type { Medico, TurniMese } from "../types";
 import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../regole";
 import { ENG, setSalt, setAmbRotStart } from "../state";
 import { makeCtx } from "../ctx";
+import { catenaContinuita } from "../fasi";
 import { quoteNotti, scartoNotti, riequilibraNotti, riequilibraMP, completaObiettivi } from "../genera";
 
 // ── v0.3.38: equità delle notti fra gli MR e dei turni mancanti ──────────────
@@ -125,5 +126,27 @@ describe("Completa obiettivi: MDC alla pari degli MR", () => {
     // senza precedenza l'MDC non arriva a obiettivo mentre gli MR restano sotto
     expect(man[2]).toBeGreaterThan(0);
     expect(man[2]).toBeGreaterThanOrEqual(Math.min(man[0], man[1]));
+  });
+});
+
+describe("Catena di continuità (v0.3.40): una sola catena agganciata all'ML", () => {
+  it("parte dall'ultima mattina dell'ML, passa le consegne e accompagna il rientro", () => {
+    // giugno 2026: ML di mattina 3-5, assente 8-12 e 15-16, rientra il 17 (6-7 e 13-14 weekend).
+    const medici = [med(1, "MR", 25), med(2, "MR", 25), med(3, "MR", 25), med(4, "ML", 25)];
+    const T: TurniMese = {};
+    for (const g of [3, 4, 5, 17, 18, 19]) put(T, 4, g, "M", true);
+    for (const g of [8, 9, 10, 11, 12, 15, 16]) put(T, 4, g, "L", true);
+    const c = makeCtx(2026, 5, 30, medici, T);
+    catenaContinuita(c);
+    const mat = (id: number, g: number) => c.gt(id, g).some(x => x.tipo === "M");
+    const mr = [1, 2, 3];
+    // dentro i tratti senza ML ogni feriale ha qualcuno che c'era anche ieri
+    for (const g of [9, 10, 11, 12, 16]) {
+      expect(mr.some(id => mat(id, g) && mat(id, g - 1))).toBe(true);   // continuità piena
+    }
+    // rientro: chi faceva il 16 accompagna l'ML il 17
+    expect(mr.some(id => mat(id, 16) && mat(id, 17))).toBe(true);
+    // mai oltre il minimo feriale (2 mattine)
+    for (let g = 1; g <= 30; g++) if (c.isFer(g)) expect(c.cf(g, "M")).toBeLessThanOrEqual(2);
   });
 });

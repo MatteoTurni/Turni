@@ -1,4 +1,37 @@
-# TurniMedicina 0.3.39
+# TurniMedicina 0.3.40
+
+## Novità 0.3.40 — continuità delle mattine nei giorni senza ML
+
+La regola "Continuità mattine (blocchi)" ora segue l'idea del reparto: nei
+giorni in cui l'ML non fa la mattina (assenze, domeniche, festivi) UNA SOLA
+CATENA di blocchi dà continuità. Il primo blocco parte dall'ultima mattina
+dell'ML (lo affianca), ogni blocco dura ~N giorni e il successivo inizia
+nell'ultimo giorno del precedente (passaggio di consegne), l'ultimo accompagna
+la prima mattina dell'ML al rientro. Se il portatore si ferma all'improvviso,
+entra di preferenza chi ha fatto la mattina o il pomeriggio del giorno prima;
+se nessuno può, la catena riparte appena possibile. Prima: due corsie
+sfalsate, aggancio all'ML e passaggio di consegne solo "se c'era spazio".
+
+È un VALORE AGGIUNTO, mai un vincolo:
+- la catena usa solo le mattine MINIME dei feriali (ML + catena ai bordi,
+  uscente + entrante ai cambi): non aggiunge turni; weekend e festivi restano
+  alla loro fase, la catena si adatta a chi vi fa la mattina;
+- nel punteggio un passaggio senza continuità pesa poco (8, 4 se c'è almeno
+  il pomeriggio del giorno prima), solo con la regola accesa;
+- una rifinitura (`rifinisciContinuita`) sposta o scambia una mattina a favore
+  di chi dà continuità SOLO se nient'altro peggiora: copertura, regole,
+  weekend liberi, carico weekend, ogni altro termine del punteggio ed
+  equilibrio mattine/pomeriggi fra gli MR.
+
+Misurato (`harness/finale.ts`, 18 scenari × 4, tabellone completato, 0.3.39 →
+0.3.40): nei giorni senza ML continuità piena 33% → 42%, nessuna continuità
+50% → 42%; violazioni 0, buchi 1,32 → 1,22, carico weekend 1,01 → 0,99,
+equilibrio M/P 4,18 → 4,06; weekend liberi mancanti 0,68 → 0,71 (solo nello
+scenario con obiettivi insufficienti, dove il nuovo tabellone copre più celle:
+buchi 14 → 12,5), giorni isolati 7,7 → 8,0 al mese. Esempio del reparto
+(gennaio 2025, ML assente 8-9, 15-18, 20-21; `harness/catena.ts`): continuità
+piena 11/19 → 14/19 passaggi.
+
 
 ## Novità 0.3.39 — "Completa obiettivi": MR e MDC serviti a turno
 

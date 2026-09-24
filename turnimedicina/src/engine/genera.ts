@@ -455,7 +455,7 @@ function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici
  *  consegne utile, non un difetto; il conteggio resta per le misure.
  *  iso pesa MENO di sforo(40) e wkScarto(60): l'organicità non deve
  *  mai comprare frammentazione in cambio di equità weekend o sfori. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0 };
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0, cont:8 };
 
 /** Ordine di preferenza fra tabelloni: duro, poi scarto weekend, poi soft.
  *  Lo stesso metro usato da registra(), prova() e generaParallelo. */
@@ -477,6 +477,32 @@ export function scartoNotti(c: ReturnType<typeof makeCtx>): number {
   if(c.mr.length<2) return 0;
   const q = quoteNotti(c);
   return c.mr.reduce((s,m)=>{ const d=c.cntN(m.id)-q.get(m.id)!; return s+d*d; },0) / c.mr.length;
+}
+
+// ── CONTINUITÀ NEI GIORNI SENZA ML (v0.3.40) ─────────────────────────────
+// Giorno "scoperto" = nessun ML fa la mattina (assenza, domenica, festivo;
+// tutto il mese se in squadra non c'è un ML). Per ogni giorno scoperto — e
+// per il giorno di rientro dell'ML — si guarda il passaggio dal giorno prima:
+//   piena  = chi fa la mattina oggi l'ha fatta anche ieri (M→M);
+//   minima = chi fa la mattina oggi ieri ha fatto il pomeriggio (P→M);
+//   nessuna = medico nuovo.
+// Nel giorno dopo l'ultima mattina dell'ML conta chi lo affiancava (M→M con
+// l'ML presente ieri); al rientro, chi affianca l'ML oggi. Solo misura:
+// entra nel punteggio SOFT come preferenza, mai come vincolo.
+export function continuitaScoperti(c: ReturnType<typeof makeCtx>) {
+  const mlM = (g:number) => c.ml.some(m=>c.gtB(m.id,g).some(s=>s.tipo==="M"));
+  const scoperto = (g:number) => !mlM(g);
+  const altri = c.att.filter(m=>m.stato!=="ML");
+  let piena=0, minima=0, nessuna=0;
+  for(let g=2; g<=c.ndim; g++){
+    if(!scoperto(g) && !scoperto(g-1)) continue;          // ML ieri e oggi: la continuità è sua
+    const oggi = altri.filter(m=>c.gt(m.id,g).some(s=>s.tipo==="M"));
+    if(!oggi.length) continue;                            // nessuna mattina "di catena" da giudicare
+    if(oggi.some(m=>c.gtB(m.id,g-1).some(s=>s.tipo==="M"))) piena++;
+    else if(oggi.some(m=>c.gtB(m.id,g-1).some(s=>s.tipo==="P"))) minima++;
+    else nessuna++;
+  }
+  return { piena, minima, nessuna };
 }
 
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
@@ -562,6 +588,10 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // la selezione fra tentativi e le riparazioni non premiano tabelloni
   // frammentati. Attivo solo con la catena accesa (BLOCCO_M>0): con
   // blocchiMattina=0 il punteggio resta byte per byte quello storico.
+  // Continuità nei giorni senza ML (v0.3.40): solo con la regola accesa.
+  // Un passaggio senza continuità pesa 1, uno solo pomeriggio→mattina 0,5.
+  let contPen = 0;
+  if(c.BLOCCO_M>0){ const cs = continuitaScoperti(c); contPen = cs.nessuna + 0.5*cs.minima; }
   let strisceM = 0;
   if(c.BLOCCO_M>0){
     for(const m2 of c.att){
@@ -612,8 +642,8 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const P = PESI;
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
-             + lavIso*P.iso + quickPM*P.quickPM;
-  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM };
+             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont;
+  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -1035,6 +1065,63 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CONTINUITÀ NEI GIORNI SENZA ML — rifinitura (v0.3.40)
+// ═══════════════════════════════════════════════════════════════════════════
+// Per ogni passaggio senza continuità (giorno senza ML, o rientro dell'ML) si
+// prova a dare la mattina a chi l'ha fatta il giorno prima (o, in mancanza,
+// il pomeriggio): spostandola da un collega se chi dà continuità quel giorno è
+// libero, o scambiando la fascia se ha il pomeriggio. VALORE AGGIUNTO: la
+// mossa si tiene SOLO se nient'altro peggiora — copertura, regole, weekend
+// liberi, carico weekend e ogni altro termine del punteggio restano uguali o
+// migliori; migliora solo la continuità.
+export function rifinisciContinuita(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
+  if(c.BLOCCO_M<=0) return 0;
+  const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
+  let cur=misura(); let mosse=0;
+  const altro=(x:MisuraTab)=>x.soft - x.contPen*PESI.cont;
+  const mdc0=mdcViolCount(ndim,medici,c);
+  const mlM=(g:number)=>c.ml.some(m=>c.gtB(m.id,g).some(s=>s.tipo==="M"));
+  // Anche l'equilibrio mattine/pomeriggi fra gli MR (fuori dal punteggio) non
+  // deve peggiorare.
+  const sbilMP=()=>[...scartoMP(c).values()].reduce((q,v)=>q+Math.abs(v),0);
+  let mp0=sbilMP();
+  const soloAuto=(id:number,g:number,t:string)=>{ const sh=c.gt(id,g); return sh.length===1 && sh[0].tipo===t && !sh[0].man && !sh[0].sott ? sh[0] : null; };
+  for(let iter=0; iter<60; iter++){
+    if(scaduto()) break;
+    let mossa=false;
+    outer:
+    for(let g=2; g<=ndim; g++){
+      if(mlM(g) && mlM(g-1)) continue;
+      const oggi=c.mrMdc.filter(m=>c.gt(m.id,g).some(s=>s.tipo==="M"));
+      if(oggi.some(m=>c.gtB(m.id,g-1).some(s=>s.tipo==="M"))) continue;            // già piena
+      const giaMin = oggi.some(m=>c.gtB(m.id,g-1).some(s=>s.tipo==="P"));
+      const cand=c.mrMdc.filter(m=>!oggi.includes(m) && (c.gtB(m.id,g-1).some(s=>s.tipo==="M") || (!giaMin && c.gtB(m.id,g-1).some(s=>s.tipo==="P"))));
+      for(const d of cand) for(const a of oggi){
+        const slotA=soloAuto(a.id,g,"M"); if(!slotA) continue;
+        const m0=c.mark();
+        let ok=false;
+        if(c.gt(d.id,g).length===0){
+          c.st(a.id,g,[]);
+          if(c.canR(d,g,"M") && c.mdcOk(d,g,"M")){ c.add(d.id,g,"M"); ok=c.gt(d.id,g).some(s=>s.tipo==="M"); }
+        } else if(soloAuto(d.id,g,"P")){
+          c.st(a.id,g,[]); c.st(d.id,g,[]);
+          if(c.canR(d,g,"M") && c.mdcOk(d,g,"M")){ c.add(d.id,g,"M");
+            if(c.gt(d.id,g).some(s=>s.tipo==="M") && c.canR(a,g,"P") && c.mdcOk(a,g,"P")){ c.add(a.id,g,"P"); ok=c.gt(a.id,g).some(s=>s.tipo==="P"); } }
+        }
+        if(!ok){ c.rollback(m0); continue; }
+        const nx=misura();
+        const mp1=sbilMP();
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.contPen<cur.contPen && altro(nx)<=altro(cur)+1e-9
+           && mp1<=mp0+1e-9 && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mp0=mp1; mosse++; mossa=true; break outer; }
+        c.rollback(m0);
+      }
+    }
+    if(!mossa) break;
+  }
+  return mosse;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMPATTATORE DEI DIURNI FERIALI (v0.3.28) — rifinitura di ORGANICITÀ
 // ═══════════════════════════════════════════════════════════════════════════
 // Problema misurato dall'harness multi-scenario: anche nei mesi facili il
@@ -1228,6 +1315,17 @@ export function rifinituraFinale(
     const c = makeCtx(anno, mese, ndim, medici, copia);
     if(conDeadline(Date.now()+capMs(800), ()=>riequilibraMP(anno, mese, ndim, medici, c))>0){ bestT = copia; bestM = misura(copia); }
   }catch(_){ /* si tiene il best già trovato */ }
+
+  // ── CONTINUITÀ NEI GIORNI SENZA ML (v0.3.40) ────────────────────────────
+  // Valore aggiunto: rifinisciContinuita tiene una mossa solo se nient'altro
+  // del punteggio peggiora.
+  {
+    try{
+      const copia = cloneT(bestT);
+      const c = makeCtx(anno, mese, ndim, medici, copia);
+      if(conDeadline(Date.now()+capMs(800), ()=>rifinisciContinuita(anno, mese, ndim, medici, c))>0){ bestT = copia; bestM = misura(copia); }
+    }catch(_){ /* si tiene il best già trovato */ }
+  }
 
   // ── ML FINO ALL'OBIETTIVO (v0.3.37) ─────────────────────────────────────
   // Ultimo ritocco: l'ML fa solo mattine, e ogni mattina che un collega gli ha
