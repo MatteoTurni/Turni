@@ -966,6 +966,70 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// EQUILIBRIO MATTINE / POMERIGGI FRA GLI MR (v0.3.38)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le fasi e "Completa obiettivi" guardano il TOTALE di ciascun medico, non la
+// fascia: misurato, a giugno un MR faceva 1 mattina e 11 pomeriggi e un altro
+// 8 e 3. Qui due MR che lavorano lo stesso giorno feriale, uno di mattina e
+// l'altro di pomeriggio, si SCAMBIANO la fascia: copertura, carichi e giorni
+// lavorati restano identici, cambia solo il rapporto M/P di ciascuno. MDC e
+// ML esclusi (vincoli propri). L'obiettivo è la quota di mattine della
+// squadra: ogni MR dovrebbe fare mattine in proporzione ai suoi turni diurni
+// (A conta come mattina, Ap come pomeriggio). Ogni scambio passa da canR/add;
+// si tiene solo se copertura, regole, weekend, rientri rapidi P→M e il resto
+// del punteggio non peggiorano (tolleranza: una striscia di mattine).
+export function scartoMP(c: ReturnType<typeof makeCtx>): Map<number, number> {
+  const mp = c.mr.map(m=>{
+    let M=0,P=0;
+    for(let g=1; g<=c.ndim; g++){
+      const sh=c.gt(m.id,g);
+      if(sh.some(s=>s.tipo==="M"||s.tipo==="A")) M++;
+      if(sh.some(s=>s.tipo==="P"||s.tipo==="Ap")) P++;
+    }
+    return {M,P};
+  });
+  const tM=mp.reduce((q,x)=>q+x.M,0), tT=mp.reduce((q,x)=>q+x.M+x.P,0);
+  const R = tT>0 ? tM/tT : 0;
+  return new Map(c.mr.map((m,i)=>[m.id, mp[i].M - R*(mp[i].M+mp[i].P)]));
+}
+export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
+  const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
+  let cur=misura(); let scambi=0;
+  const mdc0=mdcViolCount(ndim,medici,c);
+  const TOL = PESI.strisce;   // al più una striscia di mattine in più per scambio
+  const solo=(id:number,g:number,f:"M"|"P")=>{
+    const sh=c.gt(id,g);
+    return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott ? sh[0] : null;
+  };
+  for(let iter=0; iter<60; iter++){
+    if(scaduto()) break;
+    const e=scartoMP(c);
+    const piuM=[...c.mr].sort((a,z)=>e.get(z.id)!-e.get(a.id)!);
+    const piuP=[...c.mr].sort((a,z)=>e.get(a.id)!-e.get(z.id)!);
+    let mossa=false;
+    outer:
+    for(const a of piuM) for(const b of piuP){
+      if(a.id===b.id || e.get(a.id)!-e.get(b.id)!<=1) continue;   // lo scambio non ridurrebbe lo scarto
+      for(const g of c.feriali){
+        if(!solo(a.id,g,"M") || !solo(b.id,g,"P")) continue;
+        const m0=c.mark();
+        c.st(a.id,g,[]); c.st(b.id,g,[]);
+        let ok=false;
+        if(c.canR(a,g,"P")){ c.add(a.id,g,"P");
+          if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
+        if(!ok){ c.rollback(m0); continue; }
+        const nx=misura();
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.quickPM<=cur.quickPM && nx.soft<=cur.soft+TOL
+           && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; scambi++; break outer; }
+        c.rollback(m0);
+      }
+    }
+    if(!mossa) break;
+  }
+  return scambi;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMPATTATORE DEI DIURNI FERIALI (v0.3.28) — rifinitura di ORGANICITÀ
 // ═══════════════════════════════════════════════════════════════════════════
 // Problema misurato dall'harness multi-scenario: anche nei mesi facili il
@@ -1150,6 +1214,15 @@ export function rifinituraFinale(
       if(conDeadline(Date.now()+capMs(1200), ()=>compattaTurni(anno, mese, ndim, medici, c))) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
+
+  // ── EQUILIBRIO MATTINE / POMERIGGI FRA GLI MR (v0.3.38) ─────────────────
+  // Scambi di fascia nello stesso giorno: riequilibraMP garantisce da sé che
+  // copertura, regole, weekend e rientri rapidi non peggiorino.
+  try{
+    const copia = cloneT(bestT);
+    const c = makeCtx(anno, mese, ndim, medici, copia);
+    if(conDeadline(Date.now()+capMs(800), ()=>riequilibraMP(anno, mese, ndim, medici, c))>0){ bestT = copia; bestM = misura(copia); }
+  }catch(_){ /* si tiene il best già trovato */ }
 
   // ── ML FINO ALL'OBIETTIVO (v0.3.37) ─────────────────────────────────────
   // Ultimo ritocco: l'ML fa solo mattine, e ogni mattina che un collega gli ha
@@ -1364,6 +1437,9 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
       if(!mossa) break;
     }
   }
+
+  // Equilibrio mattine/pomeriggi fra gli MR sul tabellone completato.
+  riequilibraMP(anno, mese, ndim, medici, ctx);
 
   // ESITO LEGGIBILE (v0.3.37): chi resta sotto obiettivo e se il motivo è
   // strutturale (mattine e pomeriggi feriali già al MASSIMO del pannello
