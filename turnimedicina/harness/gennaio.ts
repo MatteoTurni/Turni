@@ -26,7 +26,8 @@ const anno=2026, mese=0, nd=dimOf(anno,mese);
 const tot = { rngP:0, rngTot:0 };
 for(let s=0; s<semi; s++){
   setRegole(mergeRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)))); ENG.PREV=null; setSalt(0); setAmbRotStart(s%4);
-  const medici = squadraGennaio();
+  const OBJ = +(process.env.OBJ || 27);
+  const medici = squadraGennaio().map(m=>m.stato==="MR" ? { ...m, obiettivo: OBJ } : m);
   const mr0 = Math.random; (Math as any).random = mulberry32(1000+s);
   let r; try{ r = generaMigliorTentativo(anno,mese,nd,medici,{},ms); } finally { (Math as any).random = mr0; }
   const o = completaObiettivi(anno,mese,nd,medici,r.turni);
@@ -34,6 +35,6 @@ for(let s=0; s<semi; s++){
   const righe = c.mr.map(m=>{ let M=0,P=0; for(let g=1;g<=nd;g++){ const sh=c.gt(m.id,g); if(sh.some(x=>x.tipo==="M"||x.tipo==="A")) M++; if(sh.some(x=>x.tipo==="P"||x.tipo==="Ap")) P++; } return { n:m.nome.split(" ").pop(), M, P, N:c.cntN(m.id), t:c.cnt(m.id) }; });
   const P = righe.map(x=>x.P), T = righe.map(x=>x.t);
   tot.rngP += Math.max(...P)-Math.min(...P); tot.rngTot += Math.max(...T)-Math.min(...T);
-  console.log(`seme ${s}: `+righe.map(x=>`${x.n} ${x.M}M/${x.P}P/${x.N}N=${x.t}`).join("  ")+`  | MDC ${c.cnt(8)}/21 ML ${c.cnt(4)}`);
+  console.log(`seme ${s}: `+righe.map(x=>`${x.n} ${x.M}M/${x.P}P/${x.N}N=${x.t}`).join("  ")+`  | MDC ${c.cnt(8)}/21 ML ${c.cnt(4)} | posti feriali liberi ${o.postiLiberi}`);
 }
 console.log(`media forbice pomeriggi ${(tot.rngP/semi).toFixed(1)}, forbice totali ${(tot.rngTot/semi).toFixed(1)}`);
