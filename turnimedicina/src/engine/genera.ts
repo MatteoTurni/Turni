@@ -977,8 +977,10 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
 // squadra: ogni MR dovrebbe fare mattine in proporzione ai suoi turni diurni
 // (A conta come mattina, Ap come pomeriggio). Ogni scambio passa da canR/add;
 // si tiene solo se copertura, regole, weekend e il resto del punteggio
-// (strisce di mattine = continuità compresa) non peggiorano. I rientri rapidi
-// P→M non contano: per il reparto non sono un problema.
+// (strisce di mattine comprese) non peggiorano e se non spezza la continuità
+// (chi lavora un giorno fa la mattina del successivo). I rientri rapidi P→M
+// non sono penalizzati qui: per il reparto sono continuità. Solo in
+// generazione: "Completa obiettivi" non rimaneggia i turni.
 export function scartoMP(c: ReturnType<typeof makeCtx>): Map<number, number> {
   const mp = c.mr.map(m=>{
     let M=0,P=0;
@@ -1001,10 +1003,13 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
     const sh=c.gt(id,g);
     return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott ? sh[0] : null;
   };
-  // Passaggi di consegne attorno a g (g-1→g, g→g+1): qualcuno della fascia f
-  // c'è anche il giorno dopo. Uno scambio non deve toglierne.
-  const stessi=(g1:number,g2:number,f:string)=>c.mr.concat(c.ml,c.mdc).some(m=>c.gt(m.id,g1).some(s=>s.tipo===f)&&c.gt(m.id,g2).some(s=>s.tipo===f));
-  const passaggi=(g:number)=>{ let k=0; for(const f of ["M","P"]){ if(c.feriali.includes(g-1)&&stessi(g-1,g,f)) k++; if(c.feriali.includes(g+1)&&stessi(g,g+1,f)) k++; } return k; };
+  // CONTINUITÀ attorno a g (g-1→g, g→g+1): chi lavora un giorno feriale (di
+  // mattina o di pomeriggio) fa la mattina del giorno feriale dopo. È il
+  // filo che il reparto considera continuità (anche P→M); uno scambio non
+  // deve spezzarne nessuno.
+  const tutti = [...c.mr, ...c.ml, ...c.mdc];
+  const filo=(g1:number,g2:number)=>tutti.some(m=>c.gt(m.id,g1).some(s=>s.tipo==="M"||s.tipo==="P") && c.gt(m.id,g2).some(s=>s.tipo==="M"));
+  const continuita=(g:number)=>(c.feriali.includes(g-1)&&filo(g-1,g)?1:0)+(c.feriali.includes(g+1)&&filo(g,g+1)?1:0);
   for(let iter=0; iter<60; iter++){
     if(scaduto()) break;
     const e=scartoMP(c);
@@ -1016,13 +1021,13 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
       if(a.id===b.id || e.get(a.id)!-e.get(b.id)!<=1) continue;   // lo scambio non ridurrebbe lo scarto
       for(const g of c.feriali){
         if(!solo(a.id,g,"M") || !solo(b.id,g,"P")) continue;
-        const pass0=passaggi(g);
+        const cont0=continuita(g);
         const m0=c.mark();
         c.st(a.id,g,[]); c.st(b.id,g,[]);
         let ok=false;
         if(c.canR(a,g,"P")){ c.add(a.id,g,"P");
           if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
-        if(!ok || passaggi(g)<pass0){ c.rollback(m0); continue; }
+        if(!ok || continuita(g)<cont0){ c.rollback(m0); continue; }
         const nx=misura();
         // Rientri rapidi P→M ininfluenti (scelta del reparto): tolti dal confronto.
         const soft=(x:MisuraTab)=>x.soft-x.quickPM*PESI.quickPM;
@@ -1406,73 +1411,6 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
       }
     }
   }
-
-  // ── EQUITÀ DEI MANCANTI (v0.3.38) ─────────────────────────────────────────
-  // Quando i posti feriali non bastano per tutti gli obiettivi (mese con più
-  // obiettivi che fabbisogno massimo), qualcuno resta sotto. Le passate sopra
-  // decidono CHI in base all'ordine e ai vincoli del momento: misurato, a
-  // giugno un MR restava a -7 e un altro a -2. Qui una M o P feriale
-  // automatica passa da chi è più vicino all'obiettivo a chi ne è più lontano
-  // (almeno 2 punti di differenza), stesso giorno e stessa fascia: copertura
-  // invariata, ogni inserimento passa da canR e add, nessun MDC lasciato solo.
-  {
-    const pool = mrMdc;
-    const def = (m:Medico) => m.obiettivo - cnt(m.id);
-    const mdcSoloIn = (g:number,f:"M"|"P") => ctx.mdc.some(d=>(f==="M" ? haM(d.id,g) : haP(d.id,g)) && !mdcOk(d,g,f));   // anche con A/Ap
-    // Costo di CONTINUITÀ di un medico: giorni lavorati isolati (notti
-    // escluse). Fra gli spostamenti legali si sceglie quello che ne crea meno,
-    // così l'equità non frammenta i turni.
-    const lav = (id:number,g:number) => g>=1 && g<=ndim && ctx.lavoraGiorno(id,g);
-    const costo = (id:number) => {
-      let k=0;
-      for(let g=1; g<=ndim; g++){
-        const sh=gt(id,g); if(!sh.length || sh.some(s=>s.tipo==="N"||s.tipo==="3")) continue;
-        if(!ctx.lavoraGiorno(id,g)) continue;
-        if(g<ndim && !lav(id,g-1) && !lav(id,g+1)) k++;
-      }
-      return k;
-    };
-    for(let guard=0; guard<300; guard++){
-      const ric = pool.filter(m=>def(m)>0).sort((a,b)=>def(b)-def(a));
-      const don = pool.slice().sort((a,b)=>def(a)-def(b));
-      let mossa=false;
-      outer:
-      for(const r of ric) for(const d of don){
-        if(d.id===r.id || def(r)-def(d)<2) continue;
-        let best: {g:number;f:"M"|"P";k:number}|null = null;
-        const k0 = costo(r.id)+costo(d.id);
-        for(const g of feriali) for(const f of ["M","P"] as const){
-          const sl = gt(d.id,g).find(s=>s.tipo===f && !s.man && !s.sott);
-          if(!sl) continue;
-          if(f==="M" ? haM(r.id,g) : haP(r.id,g)) continue;
-          const m0 = ctx.mark();
-          ctx.st(d.id,g, gt(d.id,g).filter(s=>s!==sl));
-          const altra = f==="M" ? haP(r.id,g) : haM(r.id,g);
-          const ok = altra ? (canR(r,g,"ASS") && canAssSett(r.id,g) && canAssDist(r.id,g)) : canR(r,g,f);
-          if(ok && mdcOk(r,g,f)){
-            add(r.id,g,f);
-            if(gt(r.id,g).some(s=>s.tipo===f && !s.man) && !mdcSoloIn(g,f)){
-              const k = costo(r.id)+costo(d.id)-k0;
-              if(!best || k<best.k) best={g,f,k};
-            }
-          }
-          ctx.rollback(m0);
-          if(best && best.k<0) break;
-        }
-        if(best){
-          const {g,f}=best;
-          const sl = gt(d.id,g).find(s=>s.tipo===f && !s.man && !s.sott)!;
-          ctx.st(d.id,g, gt(d.id,g).filter(s=>s!==sl));
-          add(r.id,g,f);
-          mossa=true; break outer;
-        }
-      }
-      if(!mossa) break;
-    }
-  }
-
-  // Equilibrio mattine/pomeriggi fra gli MR sul tabellone completato.
-  riequilibraMP(anno, mese, ndim, medici, ctx);
 
   // ESITO LEGGIBILE (v0.3.37): chi resta sotto obiettivo e se il motivo è
   // strutturale (mattine e pomeriggi feriali già al MASSIMO del pannello

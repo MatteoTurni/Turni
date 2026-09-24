@@ -19,7 +19,7 @@ for(const r of runs){
   setRegole(mergeRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), ...(sc.regole||{}) } as any));
   ENG.PREV = sc.prevT ? { ndim: sc.mese===0?dimOf(sc.anno-1,11):dimOf(sc.anno,sc.mese-1), T: sc.prevT } : null;
   const nd = dimOf(sc.anno,sc.mese);
-  const T = completaObiettivi(sc.anno,sc.mese,nd,sc.medici,r.turni).turni;
+  const T = process.env.GEN ? r.turni : completaObiettivi(sc.anno,sc.mese,nd,sc.medici,r.turni).turni;   // GEN=1: tabellone generato
   const c = makeCtx(sc.anno,sc.mese,nd,sc.medici,T);
   if(APPLICA){
     const m0 = misuraTabellone(sc.anno,sc.mese,nd,sc.medici,c.T);

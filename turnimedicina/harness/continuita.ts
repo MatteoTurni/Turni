@@ -1,6 +1,6 @@
 // CONTINUITÀ DEL REPARTO su tabelloni di sim.ts: passaggi di consegne fra
 // giorni feriali consecutivi (qualcuno della mattina di g è di mattina anche a
-// g+1; idem pomeriggio), strisce di mattine, lunghezza media dei blocchi,
+// g+1; oppure chi lavora g, di mattina o di pomeriggio, fa la mattina di g+1), strisce di mattine, lunghezza media dei blocchi,
 // giorni isolati, rientri rapidi P→M. Uso: node continuita.cjs <sim.json> [obj]
 import { dimOf } from "../src/engine/date";
 import { setRegole, REGOLE_DEFAULT, mergeRegole } from "../src/engine/regole";
@@ -26,7 +26,8 @@ for(const r of runs){
     coppie++;
     const m0=chi(g,"M"), m1=chi(g+1,"M"), p0=chi(g,"P"), p1=chi(g+1,"P");
     if([...m0].some(id=>m1.has(id))) passM++;
-    if([...p0].some(id=>p1.has(id))) passP++;
+    // continuità allargata: chi lavora g (M o P) fa la mattina di g+1
+    if(c.att.some(m=>c.gt(m.id,g).some(s=>s.tipo==="M"||s.tipo==="P") && m1.has(m.id))) passP++;
   }
   for(const m of c.att){
     let run=false;
@@ -35,4 +36,4 @@ for(const r of runs){
   const mis = misuraTabellone(sc.anno,sc.mese,nd,sc.medici,T);
   iso+=mis.lavIso; qpm+=mis.quickPM; n++;
 }
-console.log(`${file.split("/").pop()} ${modo||"gen"}: passaggio mattina ${(100*passM/coppie).toFixed(1)}%  pomeriggio ${(100*passP/coppie).toFixed(1)}%  | blocchi di mattine: lunghezza media ${(giorniM/strisce).toFixed(2)} | giorni isolati ${(iso/n).toFixed(2)}/mese  rientri P→M ${(qpm/n).toFixed(2)}/mese`);
+console.log(`${file.split("/").pop()} ${modo||"gen"}: continuità M→M ${(100*passM/coppie).toFixed(1)}%  (M o P)→M ${(100*passP/coppie).toFixed(1)}%  | blocchi di mattine: lunghezza media ${(giorniM/strisce).toFixed(2)} | giorni isolati ${(iso/n).toFixed(2)}/mese  rientri P→M ${(qpm/n).toFixed(2)}/mese`);

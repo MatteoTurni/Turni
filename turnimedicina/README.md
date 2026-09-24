@@ -25,44 +25,20 @@ giorni isolati 307 → 283, violazioni 0. Carico weekend fuori forchetta 54 → 
 peggiorarlo). La generazione di base (`det.ts`)
 produce tabelloni identici: cambia solo la scelta fra i tentativi.
 
-**"Completa obiettivi": i turni mancanti si dividono in modo equo.** Quando i
-posti feriali non bastano per tutti gli obiettivi, qualcuno resta sotto. Prima
-decideva l'ordine di riempimento (un medico alla volta fino all'obiettivo):
-a giugno un MR restava a -7 e un altro a -2, e l'MDC arrivava sempre a
-obiettivo. Ora un passaggio finale sposta una M o P feriale automatica da chi
-è più vicino all'obiettivo a chi ne è più lontano (differenza ≥ 2), stesso
-giorno e fascia: copertura invariata. MR più penalizzato: giugno -6 → -4,
-dicembre/luglio/aprile -3 → -1; la carenza si divide anche con l'MDC (giugno
-21/21 → 18/21). Esempio estremo (test): 3 MR, 42 posti → 14/14/14 invece di
-25/9/8.
-
 **Equilibrio mattine / pomeriggi fra gli MR** (`riequilibraMP`, MDC e ML
-esclusi). Fasi e "Completa obiettivi" guardano il totale di ciascun medico,
-non la fascia: a giugno un MR faceva 1 mattina e 11 pomeriggi, un altro 8 e 3.
-Ora due MR che lavorano lo stesso giorno feriale, uno di mattina e l'altro di
-pomeriggio, si scambiano la fascia (A conta come mattina, Ap come pomeriggio):
-copertura, carichi e giorni lavorati identici. Lo scambio si tiene solo se
-regole, weekend e punteggio (strisce di mattine comprese) non peggiorano e
-se non toglie passaggi di consegne (stesso medico nella stessa fascia il
-giorno feriale successivo): la CONTINUITÀ ha la precedenza sull'equilibrio. I
-rientri rapidi P→M non contano (scelta del reparto). Gira in generazione e
-alla fine di "Completa obiettivi". Scarto dalla quota di mattine della squadra
-sul tabellone completato: 378 → 281 (-26%).
+esclusi) — IN LAVORAZIONE, misure da rifare. Due MR che lavorano lo stesso
+giorno feriale, uno di mattina e l'altro di pomeriggio, si scambiano la fascia
+(A conta come mattina, Ap come pomeriggio) se avvicina entrambi alla quota di
+mattine della squadra: copertura, carichi e giorni lavorati identici. Scambio
+rifiutato se viola regole, peggiora copertura/weekend/punteggio (blocchi di
+mattine compresi) o spezza la continuità. Solo in generazione: "Completa
+obiettivi" resta quello della 0.3.37 e non rimaneggia i turni.
 
 Provato anche "a monte" (tetto alle mattine di ciascuno dentro "Completa
 obiettivi", notti scelte prima per numero di notti): da solo riduce poco lo
 squilibrio (mattine/pomeriggi -5%, notti 20,7 → 15,3 contro 11-12 del
 riequilibrio) e sulle notti toccherebbe il criterio che apre le notti
-difficili; combinato col riequilibrio non aggiunge nulla di misurabile. Non
-adottato.
-
-**Continuità del reparto** (`harness/continuita.ts`, 54 mesi, tabellone
-completato, 0.3.37 → 0.3.38): passaggio di consegne della mattina 97,4% →
-97,8%, del pomeriggio 45,1% → 49,1%, blocchi di mattine 2,20 → 2,17 giorni,
-giorni isolati 9,2 → 8,0 al mese (rientri rapidi P→M 11,9 → 12,3, non
-considerati). Sul tabellone generato: blocchi 2,23 → 2,28, giorni isolati
-6,6 → 6,2. La divisione equa dei mancanti sceglie, fra gli spostamenti
-legali, quello che crea meno giorni isolati.
+difficili. Non adottato.
 
 **MDC e pomeriggi.** Verificato che la possibilità dell'MDC di fare il
 pomeriggio accanto a un collega è usata correttamente: in generazione l'MDC

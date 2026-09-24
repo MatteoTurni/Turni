@@ -3,7 +3,7 @@ import type { Medico, TurniMese } from "../types";
 import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../regole";
 import { ENG, setSalt, setAmbRotStart } from "../state";
 import { makeCtx } from "../ctx";
-import { completaObiettivi, quoteNotti, scartoNotti, riequilibraNotti, riequilibraMP } from "../genera";
+import { quoteNotti, scartoNotti, riequilibraNotti, riequilibraMP } from "../genera";
 
 // ── v0.3.38: equità delle notti fra gli MR e dei turni mancanti ──────────────
 
@@ -60,20 +60,6 @@ describe("riequilibraNotti", () => {
     const c = makeCtx(2026, 5, 30, medici, T);
     expect(riequilibraNotti(2026, 5, 30, medici, c)).toBe(false);
     expect(c.cntN(1)).toBe(5);
-  });
-});
-
-describe("Completa obiettivi: i turni mancanti si dividono in modo equo", () => {
-  it("posti per 42 turni e 3 MR da 25: 14/14/14, non 25/9/8", () => {
-    const d = dft();
-    setRegole(mergeRegole({ ...d, fabb: { fer: { mMin: 1, mMax: 1, pMin: 1, pMax: 1 },
-      sab: { mMin: 0, mMax: 0, pMin: 0, pMax: 0 }, fest: { mMin: 0, mMax: 0, pMin: 0, pMax: 0 } } }));
-    const medici = [med(1, "MR", 25), med(2, "MR", 25), med(3, "MR", 25)];
-    const o = completaObiettivi(2026, 5, 30, medici, {});
-    const c = makeCtx(2026, 5, 30, medici, o.turni);
-    const n = medici.map(m => c.cnt(m.id));
-    expect(n.reduce((a, b) => a + b, 0)).toBe(42);
-    expect(Math.max(...n) - Math.min(...n)).toBeLessThanOrEqual(1);
   });
 });
 
