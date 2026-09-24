@@ -1,4 +1,36 @@
-# TurniMedicina 0.3.38
+# TurniMedicina 0.3.39
+
+## Novità 0.3.39 — "Completa obiettivi": MR e MDC serviti a turno
+
+Caso segnalato (gennaio 2026 vuoto): dopo "Completa obiettivi" un MR aveva 11
+pomeriggi e 27/27 turni, un altro 5 pomeriggi e 17/27. Causa: gli MR venivano
+riempiti uno alla volta fino all'obiettivo; nei mesi in cui i posti feriali
+non bastano (e le mattine sono in gran parte di ML e MDC) il primo servito
+prendeva quasi tutti i pomeriggi liberi e gli ultimi restavano indietro.
+Ora, dopo l'ML (invariato, per primo), MR e MDC ricevono UN turno alla volta,
+a chi è più lontano dal suo obiettivo: l'MDC è alla pari degli MR (prima era
+servito per primo e arrivava a obiettivo a spese degli MR). Per gli MR la
+fascia è scelta per equilibrio mattine/pomeriggi; l'MDC in questa passata fa
+mattine, i pomeriggi da secondo medico nelle passate successive. Nessun turno
+viene spostato.
+
+MDC: alla pari invece che per primo o per ultimo (gennaio, obiettivo MR 27:
+MR in media 20,9 / 21,7 / 22,3, MDC 20,7 / 15,3 / 11,0 su 21). "Per ultimo"
+scartato: nei mesi con posti appena sufficienti lasciava posti inutilizzati
+(le mattine andavano agli MR, all'MDC restavano pomeriggi in cui sarebbe
+stato solo). Con obiettivi realistici per il mese (≤ 20 a gennaio) le tre
+varianti danno lo stesso risultato: tutti a obiettivo.
+
+Misurato: gennaio (`harness/gennaio.ts`, 4 generazioni) forbice dei
+pomeriggi fra MR 8,5 → 2,5, dei totali 8,0 → 1,3, turni assegnati identici;
+MR 21-23 su 27, MDC 14-16 su 21 (prima 17-27 e 20-21).
+Tabellone finale (`harness/finale.ts`, 72 mesi, 0.3.38 → 0.3.39): forbice dei
+totali MR 3,4 → 1,1, dei pomeriggi 4,2 → 2,2, scarto M/P 6,0 → 4,2, punti
+sotto obiettivo MR 12,4 → 11,1, MDC 0,6 → 2,1; errori, buchi, weekend,
+consegne P→M (43%) e continuità M→M (97,6%) invariati; blocchi di mattine
+2,26 → 2,17.
+Configurazioni casuali (180): 0 violazioni nuove. Test in `analisi038.test.ts`.
+
 
 ## Novità 0.3.38 — equità di notti e di mattine/pomeriggi fra gli MR
 
