@@ -451,15 +451,32 @@ function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici
  *  iso (v0.3.28): giorni di lavoro ISOLATI (libero-lavoro-libero, notte
  *  esclusa) — il frammento che più spezza il ritmo di un tabellone.
  *  quickPM (v0.3.28): "rientri rapidi" P→M (pomeriggio e mattina il giorno
- *  dopo): legali ma faticosi; a parità di tutto il resto meglio pochi.
- *  Entrambi pesano MENO di sforo(40) e wkScarto(60): l'organicità non deve
+ *  dopo). Peso 0 dalla v0.3.38: per il reparto il P→M è un passaggio di
+ *  consegne utile, non un difetto; il conteggio resta per le misure.
+ *  iso pesa MENO di sforo(40) e wkScarto(60): l'organicità non deve
  *  mai comprare frammentazione in cambio di equità weekend o sfori. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:4 };
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0 };
 
 /** Ordine di preferenza fra tabelloni: duro, poi scarto weekend, poi soft.
  *  Lo stesso metro usato da registra(), prova() e generaParallelo. */
 export function cmpMis(a:{s:number;wkScarto:number;soft:number}, b:{s:number;wkScarto:number;soft:number}){
   return (a.s-b.s) || (a.wkScarto-b.wkScarto) || (a.soft-b.soft);
+}
+
+// ── EQUITÀ NOTTI (v0.3.38) ────────────────────────────────────────────────
+// Prima il punteggio usava la varianza delle notti su MR+MDC: l'MDC (che può
+// fare la notte solo accanto a un «3» di un MPS) stava quasi sempre a 0 e
+// sporcava il confronto. Ora conta solo fra gli MR, con la stessa quota per
+// tutti (la media): le ferie non spostano la quota, per scelta del reparto.
+export function quoteNotti(c: ReturnType<typeof makeCtx>): Map<number, number> {
+  const tot = c.mr.reduce((q,m)=>q+c.cntN(m.id),0);
+  const media = c.mr.length ? tot/c.mr.length : 0;
+  return new Map(c.mr.map(m=>[m.id, media]));
+}
+export function scartoNotti(c: ReturnType<typeof makeCtx>): number {
+  if(c.mr.length<2) return 0;
+  const q = quoteNotti(c);
+  return c.mr.reduce((s,m)=>{ const d=c.cntN(m.id)-q.get(m.id)!; return s+d*d; },0) / c.mr.length;
 }
 
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
@@ -483,7 +500,10 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   for(const m of c.mrMdc) wkDef += Math.max(0, c.wkTargetMed(m.id)-c.cntWkLiberi(m.id));
   s = buchi*1000 + (!c.checkRegolaN()?500:0) + wkDef*10 + probs.length;
   const varOf = (a:number[]) => { if(a.length<2) return 0; const mu=a.reduce((x,y)=>x+y,0)/a.length; return a.reduce((q,v)=>q+(v-mu)*(v-mu),0)/a.length; };
-  const notti   = c.mrMdc.map(m2=>c.cntN(m2.id));
+  // EQUITÀ NOTTI (v0.3.38): solo fra gli MR (l'ML non fa notti, l'MDC solo
+  // accanto a un «3» di un MPS) e rispetto a una quota PROPORZIONALE ai giorni
+  // disponibili — vedi scartoNotti.
+  const nottiDev = scartoNotti(c);
   const carichi = c.att.map(m2=>c.cnt(m2.id));
   // ── EQUITÀ CARICO WEEKEND (v0.3.22): SCARTO DALLA FORCHETTA ───────────────
   // Il carico weekend totale W di un mese è FISSO (calendario + minimi): non
@@ -590,7 +610,7 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
     }
   }
   const P = PESI;
-  const soft = varOf(notti)*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
+  const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
              + lavIso*P.iso + quickPM*P.quickPM;
   return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM };
@@ -880,6 +900,141 @@ export function riequilibraCaricoWeekend(anno:number, mese:number, ndim:number, 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RIEQUILIBRIO NOTTI (v0.3.38) — rifinitura di EQUITÀ fra gli MR
+// ═══════════════════════════════════════════════════════════════════════════
+// La fase notti sceglie prima il medico "meno vincolante" (serve a coprire le
+// notti difficili) e solo a parità quello con meno notti: a fine generazione
+// capitava 3 contro 5 notti fra MR presenti tutto il mese. Qui una notte
+// AUTOMATICA passa da chi è più sopra la sua quota (scartoNotti) a chi è più
+// sotto: direttamente, se il ricevente è libero quel giorno, oppure con uno
+// SCAMBIO COMPENSATO (il ricevente cede al donatore la sua M/P automatica di
+// quel giorno). Ogni mossa passa da canR/add (tutte le regole dure) e si tiene
+// solo se il punteggio duro e lo scarto weekend non peggiorano e il soft cala.
+export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): boolean {
+  const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
+  let cur=misura(); let migliorato=false;
+  const mdc0=mdcViolCount(ndim,medici,c);
+  const nAuto=(id:number,g:number)=>c.gt(id,g).some(s=>s.tipo==="N" && !s.man && !s.sott);
+  for(let iter=0; iter<30; iter++){
+    if(scaduto()) break;
+    const q=quoteNotti(c);
+    const sc=(id:number)=>c.cntN(id)-q.get(id)!;
+    const donatori =[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
+    const riceventi=[...c.mr].sort((a,z)=>sc(a.id)-sc(z.id));
+    let mossa=false;
+    outer:
+    for(const o of donatori) for(const u of riceventi){
+      if(o.id===u.id || sc(o.id)-sc(u.id)<=1) continue;     // la mossa non ridurrebbe lo scarto
+      for(let g=1; g<=ndim; g++){
+        if(!nAuto(o.id,g)) continue;
+        const m0=c.mark();
+        c.st(o.id,g, c.gt(o.id,g).filter(s=>!(s.tipo==="N" && !s.man && !s.sott)));
+        let ok=false;
+        if(!c.haQ(u.id,g)){
+          if(c.canR(u,g,"N")){ c.add(u.id,g,"N"); ok=c.haN(u.id,g); }
+        } else {
+          // scambio compensato: u ha SOLO una M o una P automatica in g
+          const shU=c.gt(u.id,g);
+          const slot=shU.length===1 ? shU.find(s=>(s.tipo==="M"||s.tipo==="P") && !s.man && !s.sott) : undefined;
+          if(slot){
+            c.st(u.id,g,[]);
+            const f2=slot.tipo as "M"|"P";
+            if(c.canR(u,g,"N")){
+              c.add(u.id,g,"N");
+              if(c.haN(u.id,g) && c.canR(o,g,f2) && c.mdcOk(o,g,f2)){
+                c.add(o.id,g,f2);
+                ok=c.gt(o.id,g).some(s=>s.tipo===f2 && !s.man);
+              }
+            }
+          }
+        }
+        if(!ok){ c.rollback(m0); continue; }
+        const nx=misura();
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.soft<cur.soft
+           && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; migliorato=true; break outer; }
+        c.rollback(m0);
+      }
+    }
+    if(!mossa) break;
+  }
+  return migliorato;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EQUILIBRIO MATTINE / POMERIGGI FRA GLI MR (v0.3.38)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le fasi e "Completa obiettivi" guardano il TOTALE di ciascun medico, non la
+// fascia: misurato, a giugno un MR faceva 1 mattina e 11 pomeriggi e un altro
+// 8 e 3. Qui due MR che lavorano lo stesso giorno feriale, uno di mattina e
+// l'altro di pomeriggio, si SCAMBIANO la fascia: copertura, carichi e giorni
+// lavorati restano identici, cambia solo il rapporto M/P di ciascuno. MDC e
+// ML esclusi (vincoli propri). L'obiettivo è la quota di mattine della
+// squadra: ogni MR dovrebbe fare mattine in proporzione ai suoi turni diurni
+// (A conta come mattina, Ap come pomeriggio). Ogni scambio passa da canR/add;
+// si tiene solo se copertura, regole, weekend e il resto del punteggio
+// (strisce di mattine comprese) non peggiorano e se non spezza la continuità
+// (chi lavora un giorno fa la mattina del successivo). I rientri rapidi P→M
+// non sono penalizzati qui: per il reparto sono continuità. Solo in
+// generazione: "Completa obiettivi" non rimaneggia i turni.
+export function scartoMP(c: ReturnType<typeof makeCtx>): Map<number, number> {
+  const mp = c.mr.map(m=>{
+    let M=0,P=0;
+    for(let g=1; g<=c.ndim; g++){
+      const sh=c.gt(m.id,g);
+      if(sh.some(s=>s.tipo==="M"||s.tipo==="A")) M++;
+      if(sh.some(s=>s.tipo==="P"||s.tipo==="Ap")) P++;
+    }
+    return {M,P};
+  });
+  const tM=mp.reduce((q,x)=>q+x.M,0), tT=mp.reduce((q,x)=>q+x.M+x.P,0);
+  const R = tT>0 ? tM/tT : 0;
+  return new Map(c.mr.map((m,i)=>[m.id, mp[i].M - R*(mp[i].M+mp[i].P)]));
+}
+export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
+  const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
+  let cur=misura(); let scambi=0;
+  const mdc0=mdcViolCount(ndim,medici,c);
+  const solo=(id:number,g:number,f:"M"|"P")=>{
+    const sh=c.gt(id,g);
+    return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott ? sh[0] : null;
+  };
+  // CONTINUITÀ attorno a g (g-1→g, g→g+1): chi lavora un giorno feriale (di
+  // mattina o di pomeriggio) fa la mattina del giorno feriale dopo. È il
+  // filo che il reparto considera continuità (anche P→M); uno scambio non
+  // deve spezzarne nessuno.
+  const tutti = [...c.mr, ...c.ml, ...c.mdc];
+  const filo=(g1:number,g2:number)=>tutti.some(m=>c.gt(m.id,g1).some(s=>s.tipo==="M"||s.tipo==="P") && c.gt(m.id,g2).some(s=>s.tipo==="M"));
+  const continuita=(g:number)=>(c.feriali.includes(g-1)&&filo(g-1,g)?1:0)+(c.feriali.includes(g+1)&&filo(g,g+1)?1:0);
+  for(let iter=0; iter<60; iter++){
+    if(scaduto()) break;
+    const e=scartoMP(c);
+    const piuM=[...c.mr].sort((a,z)=>e.get(z.id)!-e.get(a.id)!);
+    const piuP=[...c.mr].sort((a,z)=>e.get(a.id)!-e.get(z.id)!);
+    let mossa=false;
+    outer:
+    for(const a of piuM) for(const b of piuP){
+      if(a.id===b.id || e.get(a.id)!-e.get(b.id)!<=1) continue;   // lo scambio non ridurrebbe lo scarto
+      for(const g of c.feriali){
+        if(!solo(a.id,g,"M") || !solo(b.id,g,"P")) continue;
+        const cont0=continuita(g);
+        const m0=c.mark();
+        c.st(a.id,g,[]); c.st(b.id,g,[]);
+        let ok=false;
+        if(c.canR(a,g,"P")){ c.add(a.id,g,"P");
+          if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
+        if(!ok || continuita(g)<cont0){ c.rollback(m0); continue; }
+        const nx=misura();
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.soft<=cur.soft
+           && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; scambi++; break outer; }
+        c.rollback(m0);
+      }
+    }
+    if(!mossa) break;
+  }
+  return scambi;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMPATTATORE DEI DIURNI FERIALI (v0.3.28) — rifinitura di ORGANICITÀ
 // ═══════════════════════════════════════════════════════════════════════════
 // Problema misurato dall'harness multi-scenario: anche nei mesi facili il
@@ -1044,6 +1199,14 @@ export function rifinituraFinale(
     }catch(_){ /* si tiene il best già trovato */ }
   }
 
+  // ── EQUITÀ NOTTI FRA GLI MR (v0.3.38) ───────────────────────────────────
+  // Prima della compattazione (che lavora sui diurni attorno alle notti).
+  try{
+    const copia = cloneT(bestT);
+    const c = makeCtx(anno, mese, ndim, medici, copia);
+    if(scartoNotti(c)>0.3 && conDeadline(Date.now()+capMs(1200), ()=>riequilibraNotti(anno, mese, ndim, medici, c))) prova(copia);
+  }catch(_){ /* si tiene il best già trovato */ }
+
   // ── COMPATTAZIONE DEI DIURNI (v0.3.28) ──────────────────────────────────
   // A copertura, regole, weekend e carichi ormai stabilizzati, si riducono i
   // frammenti: giorni di lavoro isolati e rientri rapidi P→M migrano verso i
@@ -1056,6 +1219,15 @@ export function rifinituraFinale(
       if(conDeadline(Date.now()+capMs(1200), ()=>compattaTurni(anno, mese, ndim, medici, c))) prova(copia);
     }catch(_){ /* si tiene il best già trovato */ }
   }
+
+  // ── EQUILIBRIO MATTINE / POMERIGGI FRA GLI MR (v0.3.38) ─────────────────
+  // Scambi di fascia nello stesso giorno: riequilibraMP garantisce da sé che
+  // copertura, regole, weekend e rientri rapidi non peggiorino.
+  try{
+    const copia = cloneT(bestT);
+    const c = makeCtx(anno, mese, ndim, medici, copia);
+    if(conDeadline(Date.now()+capMs(800), ()=>riequilibraMP(anno, mese, ndim, medici, c))>0){ bestT = copia; bestM = misura(copia); }
+  }catch(_){ /* si tiene il best già trovato */ }
 
   // ── ML FINO ALL'OBIETTIVO (v0.3.37) ─────────────────────────────────────
   // Ultimo ritocco: l'ML fa solo mattine, e ogni mattina che un collega gli ha
@@ -1164,21 +1336,58 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   // ── M: privilegia sequenze di mattine consecutive ──
   // ML per primo (v0.3.37): la mattina è l'unico turno che può fare, gli
   // altri possono completare con pomeriggi e notti.
+  // EQUILIBRIO MATTINE/POMERIGGI ALL'ASSEGNAZIONE (v0.3.38): per gli MR, a
+  // ogni turno si sceglie la fascia in cui il medico è più indietro rispetto
+  // alla squadra (quota di mattine degli MR), poi l'altra se la prima non ha
+  // posti legali. Nessun turno già assegnato viene spostato.
+  const mr = mrMdc.filter(m=>m.stato==="MR");
+  const conta = (id:number) => { let M=0,P=0; for(let g=1; g<=ndim; g++){ const sh=gt(id,g); if(sh.some(s=>s.tipo==="M"||s.tipo==="A")) M++; if(sh.some(s=>s.tipo==="P"||s.tipo==="Ap")) P++; } return {M,P}; };
+  const lavora = (id:number,g:number) => g>=1 && g<=ndim && ctx.lavoraGiorno(id,g);
+  const candMatt = (m:Medico, giorniM:number[]) => {
+    const cand = giorniM.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
+    cand.sort((a,b)=>{
+      const ca=(haMR(m.id,a-1)||haMR(m.id,a+1))?0:1;
+      const cb=(haMR(m.id,b-1)||haMR(m.id,b+1))?0:1;
+      return ca-cb || a-b;
+    });
+    return cand;
+  };
+  const candPom = (m:Medico) => {
+    const cand = feriali.filter(g=>{
+      if(haP(m.id,g)||haN(m.id,g)) return false;
+      if(cf(g,"P")>=npn(g).mx) return false;
+      if(haM(m.id,g)) return canR(m,g,"ASS") && canAssSett(m.id,g) && canAssDist(m.id,g);
+      return !haQ(m.id,g) && canR(m,g,"P");
+    });
+    // prima i giorni attaccati ad altri giorni lavorati (niente giorni isolati)
+    cand.sort((a,b)=>{
+      const ca=(haM(m.id,a)||lavora(m.id,a-1)||lavora(m.id,a+1))?0:1;
+      const cb=(haM(m.id,b)||lavora(m.id,b-1)||lavora(m.id,b+1))?0:1;
+      return ca-cb || a-b;
+    });
+    return cand;
+  };
   for(const m of [...byL(ml), ...byL(mrMdc)]){
-    let progress=true;
     // Per l'ML anche il SABATO non festivo: è una sua mattina possibile, e non
     // ha weekend liberi da difendere (fuori dall'equità weekend).
     const giorniM = m.stato==="ML" ? mattineML : feriali;
-    while(cnt(m.id)<m.obiettivo && progress){
-      progress=false;
-      const cand = giorniM.filter(g=>!haQ(m.id,g)&&cf(g,"M")<nmn(g).mx&&canR(m,g,"M")&&mdcOk(m,g,"M"));
+    while(cnt(m.id)<m.obiettivo){
+      if(m.stato==="MR"){
+        const tot = mr.reduce((q,x)=>{ const c=conta(x.id); return {M:q.M+c.M, T:q.T+c.M+c.P}; },{M:0,T:0});
+        const R = tot.T ? tot.M/tot.T : 0.5;
+        const me = conta(m.id);
+        const vuoleP = me.M+me.P>0 && me.M/(me.M+me.P) > R;
+        const cM = candMatt(m, giorniM), cP = candPom(m);
+        const [f, cand] = vuoleP ? (cP.length ? ["P",cP] : ["M",cM]) : (cM.length ? ["M",cM] : ["P",cP]);
+        if(!cand.length) break;
+        const c0 = cnt(m.id);
+        add(m.id,cand[0],f as "M"|"P");
+        if(cnt(m.id)===c0) break;          // inserimento rifiutato dalle guardie di add
+        continue;
+      }
+      const cand = candMatt(m, giorniM);
       if(cand.length===0) break;
-      cand.sort((a,b)=>{
-        const ca=(haMR(m.id,a-1)||haMR(m.id,a+1))?0:1;
-        const cb=(haMR(m.id,b-1)||haMR(m.id,b+1))?0:1;
-        return ca-cb || a-b;
-      });
-      add(m.id,cand[0],"M"); progress=true;
+      add(m.id,cand[0],"M");
     }
   }
 
