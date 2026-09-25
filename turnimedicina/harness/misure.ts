@@ -27,6 +27,14 @@ export function misure(sc: CasoM, T: TurniMese): Record<string,number> {
   o["wk liberi: forbice MR"] = forb(pieni.map(m=>c.cntWkLiberi(m.id)));
   o["wk lavorati: forbice MR"] = forb(pieni.map(m=>c.wkPairs.filter(([s,d])=>c.lavoraGiorno(m.id,s)||c.lavoraGiorno(m.id,d)||c.haN(m.id,s-1)).length));
   o["carico wk: forbice MR"] = forb(pieni.map(m=>c.cntWk(m.id)));
+  // Su TUTTI gli MR (anche con assenze): weekend lavorati, e weekend liberi
+  // contati solo fra quelli in cui il medico era disponibile (nessuna assenza
+  // né sabato né domenica): chi è in ferie un weekend non figura "sbilanciato".
+  const lav = (m:Medico)=>c.wkPairs.filter(([s,d])=>c.lavoraGiorno(m.id,s)||c.lavoraGiorno(m.id,d)||c.haN(m.id,s-1)).length;
+  const disp = (m:Medico)=>c.wkPairs.filter(([s,d])=>![s,d].some(g=>c.gt(m.id,g).some(x=>ASS.includes(x.tipo)))).length;
+  o["wk lavorati: forbice tutti MR"] = forb(c.mr.map(lav));
+  o["wk liberi fra i disponibili: forbice tutti MR"] = forb(c.mr.map(m=>disp(m)-c.wkPairs.filter(([s,d])=>![s,d].some(g=>c.gt(m.id,g).some(x=>ASS.includes(x.tipo))) && (c.lavoraGiorno(m.id,s)||c.lavoraGiorno(m.id,d)||c.haN(m.id,s-1))).length));
+  o["wk: MR con 0 weekend liberi (disponibile)"] = c.mr.filter(m=>disp(m)>0 && c.cntWkLiberi(m.id)===0).length;
   // ── notti
   o["notti: forbice MR"] = forb(pieni.map(m=>c.cntN(m.id)));
   const nTutti = c.mr.map(m=>c.cntN(m.id));
