@@ -949,31 +949,51 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
     if(scaduto()) break;
     const q=quoteNotti(c);
     const sc=(id:number)=>c.cntN(id)-q.get(id)!;
-    const donatori =[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
+    // Anche l'MDC può CEDERE una sua notte automatica (la fa solo accanto a un
+    // «3» di un MPS) a un MR rimasto indietro di almeno una notte: le notti
+    // dell'MDC tolgono notti agli MR e possono lasciarne uno a -1/-2.
+    const scD=(m:Medico)=>m.stato==="MDC" ? (c.cntN(m.id)>0 ? 99 : -99) : sc(m.id);
+    const donatori =[...c.mr, ...c.mdc].sort((a,z)=>scD(z)-scD(a));
     const riceventi=[...c.mr].sort((a,z)=>sc(a.id)-sc(z.id));
     let mossa=false;
     outer:
     for(const o of donatori) for(const u of riceventi){
-      if(o.id===u.id || sc(o.id)-sc(u.id)<=1) continue;     // la mossa non ridurrebbe lo scarto
+      if(o.id===u.id) continue;
+      if(o.stato==="MDC" ? sc(u.id)>-1 : sc(o.id)-sc(u.id)<=1) continue;     // la mossa non ridurrebbe lo scarto
       for(let g=1; g<=ndim; g++){
         if(!nAuto(o.id,g)) continue;
         const m0=c.mark();
         c.st(o.id,g, c.gt(o.id,g).filter(s=>!(s.tipo==="N" && !s.man && !s.sott)));
         let ok=false;
-        if(!c.haQ(u.id,g)){
-          if(c.canR(u,g,"N")){ c.add(u.id,g,"N"); ok=c.haN(u.id,g); }
-        } else {
-          // scambio compensato: u ha SOLO una M o una P automatica in g
-          const shU=c.gt(u.id,g);
-          const slot=shU.length===1 ? shU.find(s=>(s.tipo==="M"||s.tipo==="P") && !s.man && !s.sott) : undefined;
-          if(slot){
-            c.st(u.id,g,[]);
-            const f2=slot.tipo as "M"|"P";
-            if(c.canR(u,g,"N")){
-              c.add(u.id,g,"N");
-              if(c.haN(u.id,g) && c.canR(o,g,f2) && c.mdcOk(o,g,f2)){
-                c.add(o.id,g,f2);
-                ok=c.gt(o.id,g).some(s=>s.tipo===f2 && !s.man);
+        if(!c.haQ(u.id,g) && c.canR(u,g,"N")){ c.add(u.id,g,"N"); ok=c.haN(u.id,g); }
+        if(!ok){
+          // SCAMBIO COMPLETO (v0.3.41): chi cede la notte si libera il giorno
+          // della notte e quello dopo (era il suo riposo). Può quindi prendere
+          // i turni di giorno AUTOMATICI che impediscono la notte al ricevente:
+          // il giorno g, il giorno g+1 e la mattina di g+2 (vietata dopo una
+          // notte). Copertura identica; ogni inserimento passa da canR/add.
+          c.rollback(m0);
+          c.st(o.id,g, c.gt(o.id,g).filter(s=>!(s.tipo==="N" && !s.man && !s.sott)));
+          const cedibile=(x:{tipo:string;man?:boolean;sott?:boolean})=>(x.tipo==="M"||x.tipo==="P") && !x.man && !x.sott;
+          const daCedere: {g:number; f:"M"|"P"}[] = [];
+          let bloccato=false;
+          for(const gg of [g, g+1, g+2]){
+            if(gg>ndim) continue;
+            const sh=c.gt(u.id,gg);
+            const conflitto = gg===g+2 ? sh.filter(x=>x.tipo==="M") : sh;
+            if(!conflitto.length) continue;
+            if(!conflitto.every(cedibile)){ bloccato=true; break; }
+            for(const x of conflitto) daCedere.push({ g:gg, f:x.tipo as "M"|"P" });
+            c.st(u.id,gg, sh.filter(x=>!conflitto.includes(x)));
+          }
+          if(!bloccato && daCedere.length && c.canR(u,g,"N")){
+            c.add(u.id,g,"N");
+            if(c.haN(u.id,g)){
+              ok=true;
+              for(const {g:gg,f} of daCedere){
+                if(!(c.canR(o,gg,f) && c.mdcOk(o,gg,f))){ ok=false; break; }
+                c.add(o.id,gg,f);
+                if(!c.gt(o.id,gg).some(x=>x.tipo===f && !x.man)){ ok=false; break; }
               }
             }
           }

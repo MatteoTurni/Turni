@@ -150,3 +150,32 @@ describe("Catena di continuità (v0.3.40): una sola catena agganciata all'ML", (
     for (let g = 1; g <= 30; g++) if (c.isFer(g)) expect(c.cf(g, "M")).toBeLessThanOrEqual(2);
   });
 });
+
+describe("riequilibraNotti v0.3.41: scambio completo e notte ceduta dall'MDC", () => {
+  it("il ricevente ha turni di giorno il giorno della notte e quello dopo: li prende chi cede la notte", () => {
+    const medici = [med(1, "MR", 25), med(2, "MR", 25)];
+    const T: TurniMese = {};
+    for (const g of [2, 6, 10, 14, 18]) put(T, 1, g, "N");      // 1: 5 notti
+    put(T, 2, 22, "N");                                          // 2: 1 notte
+    for (const g of [2, 3, 6, 7, 10, 11, 14, 15, 18, 19]) put(T, 2, g, "P");   // 2 lavora di pomeriggio proprio nei giorni utili
+    const c = makeCtx(2026, 5, 30, medici, T);
+    const prima = Array.from({ length: 30 }, (_, i) => ["M", "P", "N"].map(f => c.cf(i + 1, f)).join(""));
+    expect(riequilibraNotti(2026, 5, 30, medici, c)).toBe(true);
+    expect(Math.abs(c.cntN(1) - c.cntN(2))).toBeLessThanOrEqual(1);
+    expect(Array.from({ length: 30 }, (_, i) => ["M", "P", "N"].map(f => c.cf(i + 1, f)).join(""))).toEqual(prima);
+  });
+  it("l'MDC cede la sua notte a un MR rimasto indietro", () => {
+    const medici = [med(1, "MR", 25), med(2, "MR", 25), med(3, "MDC", 21), { ...med(4, "MPS", 0) }];
+    const T: TurniMese = {};
+    for (const g of [2, 6, 10, 14, 18]) put(T, 1, g, "N", true);   // 1: 5 notti manuali (non si spostano)
+    for (const g of [4, 8, 12]) put(T, 2, g, "N");                   // 2: 3 notti, media MR 4
+    put(T, 4, 16, "3", true); put(T, 3, 16, "N");               // l'MDC fa la notte (martedì) accanto al «3» dell'MPS
+    // carichi realistici: l'MDC ha anche le sue mattine (accanto all'MR 2)
+    for (const g of [22, 23, 24, 25]) { put(T, 2, g, "M"); put(T, 3, g, "M"); }
+    for (const g of [29, 30]) { put(T, 1, g, "M", true); put(T, 3, g, "M"); }
+    const c = makeCtx(2026, 5, 30, medici, T);
+    expect(riequilibraNotti(2026, 5, 30, medici, c)).toBe(true);
+    expect(c.cntN(2)).toBe(4);
+    expect(c.cntN(3)).toBe(0);
+  });
+});

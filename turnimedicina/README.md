@@ -1,4 +1,29 @@
-# TurniMedicina 0.3.40
+# TurniMedicina 0.3.41
+
+## Novità 0.3.41 — notti uguali fra gli MR anche nei mesi con molte assenze
+
+Caso segnalato (ottobre 2026, molte assenze ed esclusioni): spesso un MR
+finiva a 3 notti mentre altri a 5. Il riequilibrio notti (0.3.38) poteva
+passare una notte al medico rimasto indietro solo se era libero, o cedendo il
+suo turno di QUEL giorno; ma per fare la notte serve libero anche il giorno
+dopo (riposo), e quasi sempre il ricevente lavorava. Ora:
+- SCAMBIO COMPLETO: chi cede la notte si libera il giorno della notte e quello
+  dopo, quindi prende i turni di giorno automatici del ricevente in quei due
+  giorni (e la mattina del secondo giorno dopo, vietata dopo una notte).
+  Copertura identica, ogni inserimento passa da tutte le regole;
+- anche l'MDC può cedere la sua notte (fatta accanto a un «3» di un MPS) a un
+  MR rimasto indietro di almeno una notte: una notte dell'MDC toglie una notte
+  agli MR e poteva lasciarne uno a -1/-2.
+Come prima, la mossa si tiene solo se copertura, regole, weekend e punteggio
+non peggiorano.
+
+Misurato: ottobre (`harness/ottobre.ts`, 10 generazioni) un MR a 3 notti in
+9 generazioni su 10 → 0 su 10 (tutti a 4-5, forbice 1,8 → 1,0, il minimo);
+120 mesi casuali (`harness/confronto.ts`) forbice notti fra MR 0,42 → 0,38,
+pomeriggi 2,78 → 2,58, totali 3,97 → 3,88, nient'altro peggiora;
+`harness/nottiregole.ts` 0 violazioni, copertura identica; fuzz 0 violazioni
+nuove.
+
 
 ## Novità 0.3.40 — continuità delle mattine nei giorni senza ML
 
