@@ -47,6 +47,12 @@ for(let i=0;i<+nS;i++){
   const T = completaObiettivi(anno,mese,nd,medici,r.turni).turni;
   const mis = misure({ anno, mese, medici, ex, regole }, T);
   if(process.env.SOLO && +process.env.SOLO===i){ const { violazioniIndip } = require("./validatori"); console.log(violazioniIndip({ anno, mese, medici, ex, regole, prevT:null }, T)); console.log(r.problemi.slice(0,8)); }
+  if(process.env.DUMPMR && +process.env.DUMPMR===i){
+    const { makeCtx } = require("../src/engine/ctx");
+    const c = makeCtx(anno,mese,nd,medici,T);
+    for(const m of c.mr){ let nf=0; for(let g=1;g<=nd;g++) if(c.haN(m.id,g) && c.isNotteFest(g)) nf++;
+      console.log(`  ${m.nome.padEnd(10)} notti ${c.cntN(m.id)} (di weekend/festive ${nf})  carico weekend ${c.cntWk(m.id)}  weekend liberi ${c.cntWkLiberi(m.id)}  turni ${c.cnt(m.id)}/${m.obiettivo}`); }
+  }
   risultati.push({ i, desc, ...mis });
   console.log(`#${i} ${desc} viol=${mis["violazioni"]} buchi=${mis["buchi"]}`);
 }
