@@ -32,6 +32,23 @@ buchi 14 → 12,5), giorni isolati 7,7 → 8,0 al mese. Esempio del reparto
 (gennaio 2025, ML assente 8-9, 15-18, 20-21; `harness/catena.ts`): continuità
 piena 11/19 → 14/19 passaggi.
 
+Confronto con la 0.3.39 su 120 mesi CASUALI (`harness/confronto.ts`: squadra,
+assenze dell'ML, ferie, esclusioni, manuali, regole e ambulatori variabili;
+stessi semi, stesso tempo): continuità piena nei giorni senza ML 46,8% →
+51,5% (migliora in 56 mesi, peggiora in 8), nessuna continuità 37,1% →
+31,6%; invariati errori, buchi, weekend liberi (mancanti 1,73 → 1,69),
+carico weekend (fuori forchetta 0,98 → 0,99; forbice fra MR 0,89 → 0,86),
+weekend lavorati, notti, mattine/pomeriggi e obiettivi. Unico effetto
+negativo: la forbice delle sole notti di sabato/domenica/festivi fra MR
+1,21 → 1,27 (in 11 mesi su 120 +1 notte), compensata nel carico weekend
+complessivo, che resta equilibrato.
+
+Provati e scartati: preferenza di continuità dentro "Completa obiettivi"
+(nessun effetto misurabile: le mattine feriali dei giorni senza ML sono già
+della catena, le domeniche non le assegna) e peso della continuità più alto
+(20-80: più continuità ma mattine/pomeriggi meno equilibrati; con anche
+l'equilibrio M/P nel punteggio la continuità torna al livello di peso 8).
+
 
 ## Novità 0.3.39 — "Completa obiettivi": MR e MDC serviti a turno
 
