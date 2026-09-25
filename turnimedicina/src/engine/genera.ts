@@ -949,17 +949,12 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
     if(scaduto()) break;
     const q=quoteNotti(c);
     const sc=(id:number)=>c.cntN(id)-q.get(id)!;
-    // Anche l'MDC può CEDERE una sua notte automatica (la fa solo accanto a un
-    // «3» di un MPS) a un MR rimasto indietro di almeno una notte: le notti
-    // dell'MDC tolgono notti agli MR e possono lasciarne uno a -1/-2.
-    const scD=(m:Medico)=>m.stato==="MDC" ? (c.cntN(m.id)>0 ? 99 : -99) : sc(m.id);
-    const donatori =[...c.mr, ...c.mdc].sort((a,z)=>scD(z)-scD(a));
+    const donatori =[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
     const riceventi=[...c.mr].sort((a,z)=>sc(a.id)-sc(z.id));
     let mossa=false;
     outer:
     for(const o of donatori) for(const u of riceventi){
-      if(o.id===u.id) continue;
-      if(o.stato==="MDC" ? sc(u.id)>-1 : sc(o.id)-sc(u.id)<=1) continue;     // la mossa non ridurrebbe lo scarto
+      if(o.id===u.id || sc(o.id)-sc(u.id)<=1) continue;     // la mossa non ridurrebbe lo scarto
       for(let g=1; g<=ndim; g++){
         if(!nAuto(o.id,g)) continue;
         const m0=c.mark();

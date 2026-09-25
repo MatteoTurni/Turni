@@ -11,19 +11,23 @@ dopo (riposo), e quasi sempre il ricevente lavorava. Ora:
   dopo, quindi prende i turni di giorno automatici del ricevente in quei due
   giorni (e la mattina del secondo giorno dopo, vietata dopo una notte).
   Copertura identica, ogni inserimento passa da tutte le regole;
-- anche l'MDC può cedere la sua notte (fatta accanto a un «3» di un MPS) a un
-  MR rimasto indietro di almeno una notte: una notte dell'MDC toglie una notte
-  agli MR e poteva lasciarne uno a -1/-2.
+- l'MDC tiene sempre le sue notti (ne fa poche, solo accanto a un «3» di un
+  MPS): non entra nel riequilibrio.
 Come prima, la mossa si tiene solo se copertura, regole, weekend e punteggio
 non peggiorano.
 
 Misurato: ottobre (`harness/ottobre.ts`, 10 generazioni) un MR a 3 notti in
-9 generazioni su 10 → 0 su 10 (tutti a 4-5, forbice 1,8 → 1,0, il minimo);
-120 mesi casuali (`harness/confronto.ts`) forbice notti fra MR 0,42 → 0,38,
-pomeriggi 2,78 → 2,58, totali 3,97 → 3,88, nient'altro peggiora;
-`harness/nottiregole.ts` 0 violazioni, copertura identica; fuzz 0 violazioni
-nuove.
-
+9 generazioni su 10 → 0 su 10 (tutti a 4-5, forbice 1,8 → 1,0, il minimo).
+Confronto con la 0.3.40 su 360 mesi casuali (`harness/confronto.ts`, stessi
+semi e tempo): 240 mesi normali — forbice notti fra TUTTI gli MR 1,06 → 0,89,
+mesi con un MR a 2+ notti da un altro 29% → 17% (migliora in 29, peggiora in
+1); 120 mesi con molte assenze (PESANTE=1) — forbice 1,72 → 1,39, mesi con
+un MR a 2+ notti da un altro 62% → 44%. Invariati errori, buchi, weekend
+liberi/lavorati, carico weekend, continuità, obiettivi; lieve aumento della
+forbice dei turni totali fra MR presenti tutto il mese (4,09 → 4,15) e dei
+pomeriggi (2,87 → 2,93): lo scambio completo sposta anche turni di giorno.
+`harness/nottiregole.ts` 0 violazioni, copertura identica; fuzz 0
+violazioni nuove.
 
 ## Novità 0.3.40 — continuità delle mattine nei giorni senza ML
 

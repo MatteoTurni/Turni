@@ -29,6 +29,9 @@ export function misure(sc: CasoM, T: TurniMese): Record<string,number> {
   o["carico wk: forbice MR"] = forb(pieni.map(m=>c.cntWk(m.id)));
   // ── notti
   o["notti: forbice MR"] = forb(pieni.map(m=>c.cntN(m.id)));
+  const nTutti = c.mr.map(m=>c.cntN(m.id));
+  o["notti: forbice tutti MR"] = forb(nTutti);
+  o["notti: mese con MR a 2+ da un altro"] = forb(nTutti)>=2 ? 1 : 0;
   o["notti wk/festive: forbice MR"] = forb(pieni.map(m=>{ let k=0; for(let g=1;g<=nd;g++) if(c.haN(m.id,g) && c.isNotteFest(g)) k++; return k; }));
   // ── continuità
   let coppie=0, mm=0, pm=0;

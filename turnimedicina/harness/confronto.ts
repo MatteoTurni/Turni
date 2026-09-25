@@ -36,6 +36,11 @@ for(let i=0;i<+nS;i++){
   for(const m of medici.filter(x=>x.stato==="ML")) for(let k=0;k<int(0,3);k++){ const da=int(1,nd), len=int(1,7); for(let g=da; g<da+len; g++) put(m.id,g,pick(["L","L","ANA"])); }
   // ferie di MR/MDC
   for(const m of medici.filter(x=>x.stato==="MR"||x.stato==="MDC")) if(prob(0.3)){ const da=int(1,nd), len=int(4,14); for(let g=da; g<da+len; g++) put(m.id,g,"L"); }
+  // mesi PESANTI (come l'ottobre segnalato): assenze ed esclusioni fitte
+  if(process.env.PESANTE) for(const m of medici.filter(x=>x.stato==="MR"||x.stato==="MDC")){
+    for(let k=0;k<int(1,3);k++){ const da=int(1,nd), len=int(1,4); for(let g=da; g<da+len; g++) put(m.id,g,pick(["L","ANA","ANA","104","X","per11"])); }
+    if(prob(0.4)) put(m.id,int(1,nd),pick(["Xp","Xn"]));
+  }
   // esclusioni sparse
   for(const m of medici.filter(x=>x.stato!=="MPS")) for(let k=0;k<int(0,2);k++) put(m.id,int(1,nd),pick(["X","Xn","Xm","Xp"]));
   // pochi manuali di lavoro
