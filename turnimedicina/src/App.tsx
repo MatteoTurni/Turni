@@ -843,7 +843,7 @@ export default function App(){
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
           ["maxAssSett","Max turni associati / settimana","Massimo di M+P nella stessa giornata per medico, per settimana."],
-          ["blocchiMattina","Continuità mattine (blocchi)","Nei giorni SENZA mattina del ML, un unico medico \"porta\" le mattine per blocchi di ~N giorni, con passaggio di consegne: l'ultima mattina dell'uscente affianca la prima dell'entrante, entro il fabbisogno MINIMO. Preferenza morbida, mai vincolante. 0 = disattivata."],
+          ["blocchiMattina","Continuità mattine (blocchi)","Nei giorni SENZA mattina del ML (assenze, domeniche, festivi) una catena di medici dà continuità: il primo affianca l'ultima mattina del ML, ogni blocco dura ~N giorni e il successivo inizia nel suo ultimo giorno (passaggio di consegne), l'ultimo accompagna il rientro del ML. Solo entro il fabbisogno MINIMO; preferenza, mai vincolante: non toglie weekend liberi né altro. 0 = disattivata."],
         ];
         return (
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>

@@ -5,7 +5,7 @@ import { dimOf, dowOf } from "../src/engine/date";
 import { setRegole, REGOLE_DEFAULT, mergeRegole } from "../src/engine/regole";
 import { ENG } from "../src/engine/state";
 import { makeCtx } from "../src/engine/ctx";
-import { completaObiettivi, misuraTabellone } from "../src/engine/genera";
+import { completaObiettivi, misuraTabellone, continuitaScoperti } from "../src/engine/genera";
 import { violazioniIndip } from "./validatori";
 import { scenari } from "./scenari";
 import * as fs from "node:fs";
@@ -49,6 +49,10 @@ for(const r of runs){
   for(const m of c.att){ let run=false; for(const g of c.feriali){ const h=c.gt(m.id,g).some(s=>s.tipo==="M"); if(h){ giorniM++; if(!run) blocchi++; } run=h && c.feriali.includes(g+1); } }
   add("blocco mattine medio", giorniM/Math.max(1,blocchi));
   add("giorni isolati", mis.lavIso);
+  const cs = continuitaScoperti(c); const tl = Math.max(1, cs.piena+cs.minima+cs.nessuna);
+  add("senza ML: continuità piena %", 100*cs.piena/tl);
+  add("senza ML: solo P→M %", 100*cs.minima/tl);
+  add("senza ML: nessuna %", 100*cs.nessuna/tl);
   add("P→M (conteggio)", mis.quickPM);
   // ── equilibrio
   const mp = c.mr.map(m=>{ let M=0,P=0; for(let g=1;g<=nd;g++){ const sh=c.gt(m.id,g); if(sh.some(s=>s.tipo==="M"||s.tipo==="A")) M++; if(sh.some(s=>s.tipo==="P"||s.tipo==="Ap")) P++; } return {M,P}; });

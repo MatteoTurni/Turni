@@ -99,3 +99,18 @@ export function scenari(): ScenCfg[] {
   return S;
 }
 
+
+// Squadra reale del reparto (gennaio 2026), usata da gennaio.ts e catena.ts.
+export const squadraGennaio = (): Medico[] => [
+  { id:1, nome:"D. BALDI", codice:"8109", stato:"MR", obiettivo:27, ambulatorio:false },
+  { id:2, nome:"M. RENIS", codice:"8199", stato:"MR", obiettivo:27, ambulatorio:true },
+  { id:3, nome:"M. GENTILE", codice:"8204", stato:"MR", obiettivo:27, ambulatorio:false },
+  { id:4, nome:"A. DEL GATTO", codice:"8205", stato:"ML", obiettivo:27, ambulatorio:false },
+  { id:5, nome:"C. CIAMPA", codice:"12086", stato:"MR", obiettivo:27, ambulatorio:true },
+  { id:6, nome:"V. SPUGNARDI", codice:"12088", stato:"MR", obiettivo:27, ambulatorio:true },
+  { id:7, nome:"M. STEFANUCCI", codice:"12334", stato:"MR", obiettivo:27, ambulatorio:false },
+  { id:8, nome:"M. LEZZI", codice:"12523", stato:"MDC", obiettivo:21, ambulatorio:true },
+  { id:9, nome:"V. GIORDANO", codice:"12497", stato:"MR", obiettivo:27, ambulatorio:false },
+  { id:10, nome:"B. CASILLI", codice:"8175", stato:"MPS", obiettivo:0, ambulatorio:false },
+  { id:11, nome:"P. SCUDERI", codice:"60680", stato:"MPS", obiettivo:0, ambulatorio:false },
+];

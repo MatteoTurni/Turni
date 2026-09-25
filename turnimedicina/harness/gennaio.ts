@@ -7,21 +7,10 @@ import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../src/engine/regole";
 import { ENG, setSalt, setAmbRotStart } from "../src/engine/state";
 import { generaMigliorTentativo, completaObiettivi } from "../src/engine/genera";
 import { makeCtx } from "../src/engine/ctx";
+import { squadraGennaio } from "./scenari";
 function mulberry32(seed:number){ let a=seed>>>0; return ()=>{ a|=0; a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15),1|a); t=(t+Math.imul(t^(t>>>7),61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; }; }
 const ms = +(process.argv[2]||2000), semi = +(process.argv[3]||3);
-export const squadraGennaio = (): Medico[] => [
-  { id:1, nome:"D. BALDI", codice:"8109", stato:"MR", obiettivo:27, ambulatorio:false },
-  { id:2, nome:"M. RENIS", codice:"8199", stato:"MR", obiettivo:27, ambulatorio:true },
-  { id:3, nome:"M. GENTILE", codice:"8204", stato:"MR", obiettivo:27, ambulatorio:false },
-  { id:4, nome:"A. DEL GATTO", codice:"8205", stato:"ML", obiettivo:27, ambulatorio:false },
-  { id:5, nome:"C. CIAMPA", codice:"12086", stato:"MR", obiettivo:27, ambulatorio:true },
-  { id:6, nome:"V. SPUGNARDI", codice:"12088", stato:"MR", obiettivo:27, ambulatorio:true },
-  { id:7, nome:"M. STEFANUCCI", codice:"12334", stato:"MR", obiettivo:27, ambulatorio:false },
-  { id:8, nome:"M. LEZZI", codice:"12523", stato:"MDC", obiettivo:21, ambulatorio:true },
-  { id:9, nome:"V. GIORDANO", codice:"12497", stato:"MR", obiettivo:27, ambulatorio:false },
-  { id:10, nome:"B. CASILLI", codice:"8175", stato:"MPS", obiettivo:0, ambulatorio:false },
-  { id:11, nome:"P. SCUDERI", codice:"60680", stato:"MPS", obiettivo:0, ambulatorio:false },
-];
+
 const anno=2026, mese=0, nd=dimOf(anno,mese);
 const tot = { rngP:0, rngTot:0 };
 for(let s=0; s<semi; s++){
