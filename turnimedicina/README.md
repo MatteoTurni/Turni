@@ -26,6 +26,9 @@ un MR a 2+ notti da un altro 62% → 44%. Invariati errori, buchi, weekend
 liberi/lavorati, carico weekend, continuità, obiettivi; lieve aumento della
 forbice dei turni totali fra MR presenti tutto il mese (4,09 → 4,15) e dei
 pomeriggi (2,87 → 2,93): lo scambio completo sposta anche turni di giorno.
+Weekend su TUTTI gli MR (anche con assenze): forbice dei weekend lavorati
+1,63 → 1,60 (normali) e 1,80 → 1,80 (pesanti); forbice dei weekend liberi
+fra quelli in cui il medico era disponibile 1,75 → 1,70 e 1,38 → 1,35.
 `harness/nottiregole.ts` 0 violazioni, copertura identica; fuzz 0
 violazioni nuove.
 
