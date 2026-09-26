@@ -643,7 +643,7 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
              + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont;
-  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen };
+  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen, strisceM };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -1035,24 +1035,28 @@ export function scartoMP(c: ReturnType<typeof makeCtx>): Map<number, number> {
   const R = tT>0 ? tM/tT : 0;
   return new Map(c.mr.map((m,i)=>[m.id, mp[i].M - R*(mp[i].M+mp[i].P)]));
 }
-export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
+export interface OpzMP { rilassa?: boolean; assoluto?: boolean; mobile?: (id:number,g:number)=>boolean }
+export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>, opz:OpzMP = {}): number {
   const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
   let cur=misura(); let scambi=0;
   const mdc0=mdcViolCount(ndim,medici,c);
   const solo=(id:number,g:number,f:"M"|"P")=>{
     const sh=c.gt(id,g);
-    return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott ? sh[0] : null;
+    return sh.length===1 && sh[0].tipo===f && !sh[0].man && !sh[0].sott && (!opz.mobile || opz.mobile(id,g)) ? sh[0] : null;
   };
-  // CONTINUITÀ attorno a g (g-1→g, g→g+1): chi lavora un giorno feriale (di
-  // mattina o di pomeriggio) fa la mattina del giorno feriale dopo. È il
-  // filo che il reparto considera continuità (anche P→M); uno scambio non
-  // deve spezzarne nessuno.
   const tutti = [...c.mr, ...c.ml, ...c.mdc];
   const filo=(g1:number,g2:number)=>tutti.some(m=>c.gt(m.id,g1).some(s=>s.tipo==="M"||s.tipo==="P") && c.gt(m.id,g2).some(s=>s.tipo==="M"));
   const continuita=(g:number)=>(c.feriali.includes(g-1)&&filo(g-1,g)?1:0)+(c.feriali.includes(g+1)&&filo(g,g+1)?1:0);
+  const altro=(x:MisuraTab)=>opz.rilassa ? x.soft - x.strisceM*PESI.strisce - x.contPen*PESI.cont : x.soft;
+  const scarto=():Map<number,number>=>{
+    if(!opz.assoluto) return scartoMP(c);
+    const P=c.mr.map(m=>{ let k=0; for(let g=1; g<=c.ndim; g++) if(c.gt(m.id,g).some(s=>s.tipo==="P"||s.tipo==="Ap")) k++; return k; });
+    const mu=P.reduce((q,v)=>q+v,0)/Math.max(1,P.length);
+    return new Map(c.mr.map((m,i)=>[m.id, mu-P[i]]));
+  };
   for(let iter=0; iter<60; iter++){
     if(scaduto()) break;
-    const e=scartoMP(c);
+    const e=scarto();
     const piuM=[...c.mr].sort((a,z)=>e.get(z.id)!-e.get(a.id)!);
     const piuP=[...c.mr].sort((a,z)=>e.get(a.id)!-e.get(z.id)!);
     let mossa=false;
@@ -1067,9 +1071,9 @@ export function riequilibraMP(anno:number, mese:number, ndim:number, medici:Medi
         let ok=false;
         if(c.canR(a,g,"P")){ c.add(a.id,g,"P");
           if(c.gt(a.id,g).some(s=>s.tipo==="P") && c.canR(b,g,"M")){ c.add(b.id,g,"M"); ok=c.gt(b.id,g).some(s=>s.tipo==="M"); } }
-        if(!ok || continuita(g)<cont0){ c.rollback(m0); continue; }
+        if(!ok || continuita(g)<cont0-(opz.rilassa?1:0)){ c.rollback(m0); continue; }
         const nx=misura();
-        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && nx.soft<=cur.soft
+        if(nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && altro(nx)<=altro(cur)+1e-9
            && mdcViolCount(ndim,medici,c)<=mdc0){ cur=nx; mossa=true; scambi++; break outer; }
         c.rollback(m0);
       }
@@ -1328,7 +1332,7 @@ export function rifinituraFinale(
   try{
     const copia = cloneT(bestT);
     const c = makeCtx(anno, mese, ndim, medici, copia);
-    if(conDeadline(Date.now()+capMs(800), ()=>riequilibraMP(anno, mese, ndim, medici, c))>0){ bestT = copia; bestM = misura(copia); }
+    if(conDeadline(Date.now()+capMs(800), ()=>riequilibraMP(anno, mese, ndim, medici, c, { rilassa:(ENG.MPVAR&1)>0, assoluto:(ENG.MPVAR&4)>0 }))>0){ bestT = copia; bestM = misura(copia); }
   }catch(_){ /* si tiene il best già trovato */ }
 
   // ── CONTINUITÀ NEI GIORNI SENZA ML (v0.3.40) ────────────────────────────
@@ -1590,6 +1594,10 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
   const rimasti = [...ml, ...mrMdc]
     .filter(m=>cnt(m.id)<m.obiettivo)
     .map(m=>({ id:m.id, nome:m.nome, mancano:m.obiettivo-cnt(m.id) }));
+  if(ENG.MPVAR&2){
+    const nuovo=(id:number,g:number)=>!(ex[id]?.[g]?.t||[]).length;
+    conDeadline(Date.now()+1500, ()=>riequilibraMP(anno, mese, ndim, medici, ctx, { rilassa:(ENG.MPVAR&1)>0, assoluto:(ENG.MPVAR&4)>0, mobile:nuovo }));
+  }
   let postiLiberi = 0;
   for(const g of feriali) postiLiberi += Math.max(0,nmn(g).mx-cf(g,"M")) + Math.max(0,npn(g).mx-cf(g,"P"));
   return { turni: pulisciT(T), rimasti, postiLiberi };

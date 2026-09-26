@@ -15,7 +15,7 @@ const { anno, mese, ex } = snap; const nd=dimOf(anno,mese);
 const medici = squadraGennaio().map(m=>m.id===3 ? { ...m, ambulatorio:true } : m);
 let forb=0;
 for(let s=0;s<semi;s++){
-  setRegole(mergeRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)))); ENG.PREV=null; setSalt(0); setAmbRotStart(s%5);
+  setRegole(mergeRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)))); ENG.PREV=null; ENG.MPVAR=+(process.env.MPVAR||0); setSalt(0); setAmbRotStart(s%5);
   const r0=Math.random; (Math as any).random=mulberry32(500+s);
   let r; try{ r=generaMigliorTentativo(anno,mese,nd,medici,ex,ms); } finally { (Math as any).random=r0; }
   const T=completaObiettivi(anno,mese,nd,medici,r.turni).turni;

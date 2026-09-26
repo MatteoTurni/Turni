@@ -7,6 +7,7 @@ import { mkKey, dimOf } from "./date";
 // prima veniva letto dall'esterno ora viene INIETTATO dalla UI (o dai test)
 // prima di una generazione.
 export const ENG = {
+  MPVAR: 0,
   // GEN_SALT: sale globale iniettato in ogni RNG. Cambiandolo prima di una
   // generazione, TUTTE le fasi esplorano un ordine casuale diverso pur restando
   // internamente riproducibili. È il meccanismo alla base del multi-tentativo.
