@@ -1,4 +1,36 @@
-# TurniMedicina 0.3.40
+# TurniMedicina 0.3.41
+
+## Novità 0.3.41 — notti uguali fra gli MR anche nei mesi con molte assenze
+
+Caso segnalato (ottobre 2026, molte assenze ed esclusioni): spesso un MR
+finiva a 3 notti mentre altri a 5. Il riequilibrio notti (0.3.38) poteva
+passare una notte al medico rimasto indietro solo se era libero, o cedendo il
+suo turno di QUEL giorno; ma per fare la notte serve libero anche il giorno
+dopo (riposo), e quasi sempre il ricevente lavorava. Ora:
+- SCAMBIO COMPLETO: chi cede la notte si libera il giorno della notte e quello
+  dopo, quindi prende i turni di giorno automatici del ricevente in quei due
+  giorni (e la mattina del secondo giorno dopo, vietata dopo una notte).
+  Copertura identica, ogni inserimento passa da tutte le regole;
+- l'MDC tiene sempre le sue notti (ne fa poche, solo accanto a un «3» di un
+  MPS): non entra nel riequilibrio.
+Come prima, la mossa si tiene solo se copertura, regole, weekend e punteggio
+non peggiorano.
+
+Misurato: ottobre (`harness/ottobre.ts`, 10 generazioni) un MR a 3 notti in
+9 generazioni su 10 → 0 su 10 (tutti a 4-5, forbice 1,8 → 1,0, il minimo).
+Confronto con la 0.3.40 su 360 mesi casuali (`harness/confronto.ts`, stessi
+semi e tempo): 240 mesi normali — forbice notti fra TUTTI gli MR 1,06 → 0,89,
+mesi con un MR a 2+ notti da un altro 29% → 17% (migliora in 29, peggiora in
+1); 120 mesi con molte assenze (PESANTE=1) — forbice 1,72 → 1,39, mesi con
+un MR a 2+ notti da un altro 62% → 44%. Invariati errori, buchi, weekend
+liberi/lavorati, carico weekend, continuità, obiettivi; lieve aumento della
+forbice dei turni totali fra MR presenti tutto il mese (4,09 → 4,15) e dei
+pomeriggi (2,87 → 2,93): lo scambio completo sposta anche turni di giorno.
+Weekend su TUTTI gli MR (anche con assenze): forbice dei weekend lavorati
+1,63 → 1,60 (normali) e 1,80 → 1,80 (pesanti); forbice dei weekend liberi
+fra quelli in cui il medico era disponibile 1,75 → 1,70 e 1,38 → 1,35.
+`harness/nottiregole.ts` 0 violazioni, copertura identica; fuzz 0
+violazioni nuove.
 
 ## Novità 0.3.40 — continuità delle mattine nei giorni senza ML
 
