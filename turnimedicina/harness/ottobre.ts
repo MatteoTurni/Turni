@@ -26,5 +26,9 @@ for(let s=0;s<semi;s++){
   forb+=Math.max(...nMR)-Math.min(...nMR);
   console.log(`seme ${s}: `+c.mr.map(m=>`${m.nome.split(" ").pop()} ${c.cntN(m.id)}${man(m.id)?`(${man(m.id)} man)`:""}`).join("  ")+`  | MDC ${c.mdc.map(m=>c.cntN(m.id)).join(",")}  notti scoperte ${c.giorniArr.filter(g=>c.cf(g,"N")<1).length}`);
   if(s===0) console.log("   giorni di assenza/esclusione: "+c.mr.map(m=>`${m.nome.split(" ").pop()} ${assenze(m.id)}`).join("  "));
+  if(process.env.MP){
+    const f=(id:number,t:string[])=>{ let k=0; for(let g=1;g<=nd;g++) if(c.gt(id,g).some(x=>t.includes(x.tipo))) k++; return k; };
+    console.log("   M/P/N/tot: "+c.mr.map(m=>`${m.nome.split(" ").pop()!.slice(0,5)} ${f(m.id,["M","A"])}/${f(m.id,["P","Ap"])}/${c.cntN(m.id)}=${c.cnt(m.id)}`).join("  "));
+  }
 }
 console.log(`forbice media notti fra MR: ${(forb/semi).toFixed(2)}`);
