@@ -1520,7 +1520,13 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
       const pool = byL(mrMdc).filter(m=>!fermi.has(m.id) && cnt(m.id)<m.obiettivo)
         .sort((a,b)=>(b.obiettivo-cnt(b.id))-(a.obiettivo-cnt(a.id)));
       if(!pool.length) break;
-      const m = pool[0];
+      let m = pool[0];
+      if((ENG.MPVAR&8) && m.stato==="MR"){
+        // a parità (±1) di distanza dall'obiettivo, prima chi ha la quota di mattine più bassa
+        const d0 = m.obiettivo-cnt(m.id);
+        const quota = (x:Medico) => { const k=conta(x.id); return k.M+k.P ? k.M/(k.M+k.P) : 0; };
+        m = pool.filter(x=>x.stato==="MR" && x.obiettivo-cnt(x.id)>=d0-1).sort((a,b)=>quota(a)-quota(b))[0] ?? m;
+      }
       let ok: boolean;
       if(m.stato==="MDC"){
         // l'MDC in questa passata fa mattine (dove il minimo è 2: mai solo);
