@@ -470,6 +470,10 @@ export function cmpMis(a:{s:number;wkScarto:number;soft:number}, b:{s:number;wkS
 // tutti (la media): le ferie non spostano la quota, per scelta del reparto.
 export function quoteNotti(c: ReturnType<typeof makeCtx>): Map<number, number> {
   const tot = c.mr.reduce((q,m)=>q+c.cntN(m.id),0);
+  if(ENG.NQ){
+    const pres = c.mr.reduce((q,m)=>q+c.presenza(m.id),0);
+    return new Map(c.mr.map(m=>[m.id, pres ? tot*c.presenza(m.id)/pres : 0]));
+  }
   const media = c.mr.length ? tot/c.mr.length : 0;
   return new Map(c.mr.map(m=>[m.id, media]));
 }

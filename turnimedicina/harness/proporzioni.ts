@@ -52,12 +52,12 @@ for(let i=0;i<+nS;i++){
   // pochi manuali di lavoro
   for(let k=0;k<int(0,4);k++){ const m=pick(medici.filter(x=>x.stato==="MR")); put(m.id,int(1,nd),pick(["N","M","P"])); }
   const desc = `${anno}-${mese+1} MR${nMR} MDC${nMDC} ML${nML} MPS${nMPS} amb${nAmb}`;
-  setRegole(regole); ENG.PREV=null; setSalt(0); setAmbRotStart(0);
+  setRegole(regole); ENG.PREV=null; ENG.NQ=+(process.env.NQ||0); setSalt(0); setAmbRotStart(0);
   const r0 = Math.random; (Math as any).random = mulberry32(+semeS*977 + i);
   let r; try{ r = generaMigliorTentativo(anno,mese,nd,medici,ex,+msS); } finally { (Math as any).random = r0; }
   const T = completaObiettivi(anno,mese,nd,medici,r.turni).turni;
   const E = equilibra(anno,mese,nd,medici,T,{ traGiorni:true }).turni;
-  const riga: any = { i, desc, mr: [] as any[] };
+  const riga: any = { i, desc, mr: [] as any[], ...misure({ anno, mese, medici, ex, regole }, T) };
   for(const [k,X] of [["base",T],["eq",E]] as const){
     const c = makeCtx(anno,mese,nd,medici,X);
     c.mr.forEach((m,j)=>{
