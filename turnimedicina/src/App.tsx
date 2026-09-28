@@ -508,7 +508,7 @@ export default function App(){
         const td = {padding:"2px 6px",textAlign:"right" as const};
         const freccia = (a:number,b:number) => a===b ? <span>{a}</span> : <span>{a}→<b style={{color:"#5eead4"}}>{b}</b></span>;
         return (
-          <div className="np" style={{position:"fixed",top:"66px",left:"50%",transform:"translateX(-50%)",zIndex:901,
+          <div className="np" style={{position:"fixed",bottom:"16px",right:"16px",zIndex:901,
             background:"#0b1220",border:"1px solid #0f766e",color:"#e2f0ff",borderRadius:"10px",
             padding:"12px 14px",fontSize:"12px",fontFamily:"monospace",boxShadow:"0 10px 30px #000",
             maxWidth:"440px",width:"calc(100% - 32px)"}}>
@@ -527,7 +527,7 @@ export default function App(){
               </table>
             )}
             <div style={{fontSize:"10px",color:"#64748b",marginBottom:"9px"}}>
-              Turni totali, copertura, regole e weekend invariati. Qualche blocco di mattine può essere più corto di un giorno.
+              Celle cambiate evidenziate in verde acqua. Turni totali, copertura, regole e weekend invariati; qualche blocco di mattine può essere più corto di un giorno.
             </div>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>setEqRes(null)}
@@ -698,9 +698,10 @@ export default function App(){
                       const ct=gT(med.id,g);
                       const hX=ct.some(s=>s.tipo==="X"), vis=ct.filter(s=>s.tipo!=="X");
                       const bg=hX?"#1a1a24":mt.h?"#1c0f0f":mt.sat||mt.dom?"#12142e":"#0b1626";
+                      const eqCambiata = !!eqRes && eqRes.esito.celle.some(x=>x.id===med.id && x.g===g);
                       return (
                         <td key={g} onClick={editabile ? ()=>setCella({id:med.id,g}) : undefined}
-                          style={{background:bg,border:"1px solid #1e3a5f",padding:"1px 2px",textAlign:"center",cursor:editabile?"pointer":"default",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
+                          style={{background:bg,border:"1px solid #1e3a5f",boxShadow:eqCambiata?"inset 0 0 0 2px #2dd4bf":undefined,padding:"1px 2px",textAlign:"center",cursor:editabile?"pointer":"default",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
                           onMouseEnter={editabile ? e=>e.currentTarget.style.background="#22406b" : undefined}
                           onMouseLeave={editabile ? e=>e.currentTarget.style.background=bg : undefined}>
                           <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
