@@ -932,7 +932,7 @@ export function faseNotti(ctx: Ctx, seed: number, blocco: Blocco): { ok:boolean;
             (futDemand(a.id)-futDemand(b.id)) ||
             (cntWkLiberi(b.id)-cntWkLiberi(a.id)))[0]
         : pool.slice().sort((a,b)=>
-            (futDemand(a.id)-futDemand(b.id)) || (ENG.NQ ? cntN(a.id)/Math.max(1,ctx.presenza(a.id))-cntN(b.id)/Math.max(1,ctx.presenza(b.id)) : cntN(a.id)-cntN(b.id)))[0];
+            (futDemand(a.id)-futDemand(b.id)) || (cntN(a.id)-cntN(b.id)))[0];
       if(ch) add(ch.id,g,"N");
     }
     const cop = nottiCoperte();

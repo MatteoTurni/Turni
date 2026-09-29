@@ -490,15 +490,7 @@ export function makeCtx(
   };
 
   const byL = (a:Medico[]) => [...a].sort((x,y)=>cnt(x.id)-cnt(y.id));
-  // PRESENZA (v0.3.43): giorni del mese senza licenza/permessi (L, ANA, 104,
-  // art.11). Con la quota notti proporzionale (ENG.NQ) chi è presente meno
-  // giorni riceve proporzionalmente meno notti.
-  const ASSENZA = ["L","ANA","104","per11"];
-  const presMap = new Map<number,number>();
-  const presenza = (id:number) => { let p=presMap.get(id); if(p==null){ p=0; for(let g=1; g<=ndim; g++) if(!gt(id,g).some(s=>ASSENZA.includes(s.tipo))) p++; presMap.set(id,p); } return p; };
-  const byN = (a:Medico[]) => ENG.NQ
-    ? [...a].sort((x,y)=>cntN(x.id)/Math.max(1,presenza(x.id))-cntN(y.id)/Math.max(1,presenza(y.id)))
-    : [...a].sort((x,y)=>cntN(x.id)-cntN(y.id));
+  const byN = (a:Medico[]) => [...a].sort((x,y)=>cntN(x.id)-cntN(y.id));
   // EQUITÀ WEEKEND (v0.3.19): meno carico weekend prima; a parità, meno carico
   // totale (byL). Soft, analogo a byN per le notti.
   const byWk= (a:Medico[]) => [...a].sort((x,y)=>(cntWk(x.id)-cntWk(y.id))||(cnt(x.id)-cnt(y.id)));
@@ -806,7 +798,7 @@ export function makeCtx(
     ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
     dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
-    canConsec, runConsec, lavoraGiorno, presenza, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
+    canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
     pesoSlot, wkPortatori: wkPortatoriL, wkCapacita, wkPavimento, wkQuota, byWkQuota,
