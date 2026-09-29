@@ -643,7 +643,7 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
              + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont;
-  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen };
+  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen, strisceM };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -847,7 +847,7 @@ function forchettaWk(c:ReturnType<typeof makeCtx>){
 // Numero di violazioni mdcOk (un MDC lasciato solo in turno): l'UNICO vincolo
 // duro che misuraTabellone NON cattura in `s`. Tutto il resto (buchi, Regola N,
 // weekend liberi, ambulatorio, consecutivi) è già dentro `s` via validazioneGlobale.
-function mdcViolCount(ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
+export function mdcViolCount(ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): number {
   let n=0;
   for(const m of medici){ if(m.stato!=="MDC") continue;
     for(let g=1;g<=ndim;g++) for(const s of c.gt(m.id,g)){ const f=fasciaSlot(s.tipo); if(f&&!c.mdcOk(m,g,f)) n++; } }

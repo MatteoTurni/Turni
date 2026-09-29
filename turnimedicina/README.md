@@ -1,4 +1,32 @@
-# TurniMedicina 0.3.41
+# TurniMedicina 0.3.42
+
+## Novità 0.3.42 — pulsante «③ Equilibra» (facoltativo)
+
+"Completa obiettivi" non rimaneggia i turni già assegnati. Quando si vuole più
+equità, il nuovo pulsante «③ Equilibra» (accanto a «② Obiettivi») scambia
+turni AUTOMATICI fra gli MR:
+- notti: una notte passa da chi ne ha di più a chi ne ha di meno; chi la cede
+  riprende turni di giorno per gli stessi punti (l'MDC tiene le sue notti);
+- mattine/pomeriggi: scambi di fascia nello stesso giorno e anche fra giorni
+  diversi (chi ha troppi pomeriggi cede un pomeriggio e prende la mattina di
+  un collega in un altro giorno).
+Ogni scambio lascia invariati turni e punti di ciascuno, copertura, regole,
+weekend liberi e carico weekend; manuali, sottolineati, MDC e ML non si
+toccano. Prezzo accettato dal reparto: un blocco di mattine può accorciarsi di
+un giorno. Dopo l'uso un riquadro mostra, per ogni MR cambiato, mattine,
+pomeriggi e notti prima → dopo; le celle cambiate sono evidenziate e
+«Annulla» riporta il tabellone esattamente a prima.
+
+Misurato su 360 mesi casuali (`harness/equilibra.ts`: stesso tabellone prima
+e dopo, quindi nessun rumore): 240 mesi normali — squilibrio mattine/pomeriggi
+fra MR 4,07 → 2,60 (migliora in 153 mesi, peggiora in 0), forbice della quota
+di pomeriggi 23,2% → 15,3%, pomeriggi del più carico sopra la media 2,68 →
+2,37; continuità piena nei giorni senza ML 55,2% → 53,8%. 120 mesi con molte
+assenze: squilibrio 4,65 → 3,59. Invariati errori, buchi, weekend, notti,
+obiettivi; nessuna violazione nuova (validatori indipendenti). Tempo medio
+pochi millisecondi. Lo scambio fra giorni diversi aggiunge poco rispetto al
+solo stesso giorno (4,07 → 2,72 senza) ma riduce i giorni isolati.
+
 
 ## Novità 0.3.41 — notti uguali fra gli MR anche nei mesi con molte assenze
 

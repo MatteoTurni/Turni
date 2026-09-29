@@ -61,6 +61,10 @@ export function misure(sc: CasoM, T: TurniMese): Record<string,number> {
   const qm = pieni.map(m=>{ const x=mp[c.mr.indexOf(m)]; return x.M+x.P ? x.M/(x.M+x.P) : 0; });
   o["quota mattine: forbice %"] = 100*forb(qm);
   o["pomeriggi: forbice MR"] = forb(pieni.map(m=>mp[c.mr.indexOf(m)].P));
+  const Ptutti = mp.map(x=>x.P), muP = Ptutti.reduce((q,v)=>q+v,0)/Math.max(1,Ptutti.length);
+  o["pomeriggi: forbice tutti MR"] = forb(Ptutti);
+  o["pomeriggi: max sopra media"] = Ptutti.length ? Math.max(...Ptutti)-muP : 0;
+  o["quota pomeriggi: forbice tutti MR %"] = 100*forb(mp.filter(x=>x.M+x.P>=4).map(x=>x.P/(x.M+x.P)));
   o["totali: forbice MR"] = forb(pieni.map(m=>c.cnt(m.id)));
   // ── obiettivi
   o["punti sotto obiettivo MR"] = c.mr.reduce((q,m)=>q+Math.max(0,m.obiettivo-c.cnt(m.id)),0);

@@ -7,6 +7,7 @@ import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
+import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
 import { generaParallelo } from "./generaParallelo";
 import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
 import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
@@ -110,6 +111,9 @@ export default function App(){
   // generazione (cluster di giorni, vincolo determinante, collo di bottiglia).
   const [diagCaus, setDiagCaus] = useState<DiagnosiCausale|null>(null);
   const [diagOpen, setDiagOpen] = useState(false);
+  // EQUILIBRA (v0.3.42): esito dell'ultimo "Equilibra" + tabellone di prima,
+  // per l'Annulla. Si chiude da solo se il tabellone cambia per altre vie.
+  const [eqRes, setEqRes] = useState<{esito:EsitoEquilibra; prima:TurniAll[string]}|null>(null);
   const [busy,   setBusy]   = useState(false);
   const [printing, setPrinting] = useState(false);
   const calRef = useRef<HTMLDivElement>(null);
@@ -129,7 +133,8 @@ export default function App(){
   };
 
   useEffect(()=>{ saveS({anno,mese,medici,turniAll}); if(remotoOk.current && editabile) salvaRemoto("stato",{anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
-  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); },[anno,mese]);   // la telemetria vale solo per il mese generato
+  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); },[anno,mese]);
+  useEffect(()=>{ if(eqRes && turni!==eqRes.esito.turni) setEqRes(null); },[turni]);   // la telemetria vale solo per il mese generato
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
 
@@ -194,6 +199,24 @@ export default function App(){
             : "i giorni ancora liberi sono bloccati da riposi, consecutivi o turni già presenti";
           showMsg(`Obiettivi completati dove possibile. Restano sotto: ${elenco} — ${perche}.`,"warn");
         }
+      }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
+      setBusy(false);
+    },50);
+  };
+
+  // ── Equilibra (pulsante ③, facoltativo) ───────────────────────────────────
+  // Scambia turni AUTOMATICI fra gli MR per rendere più equi notti e
+  // mattine/pomeriggi. Punti di ciascuno, copertura, regole e weekend restano
+  // invariati; manuali e sottolineati non si toccano. Annullabile.
+  const equilibraTab = () => {
+    setBusy(true);
+    setTimeout(()=>{
+      try{
+        setPrevContext(turniAll,anno,mese);
+        const prima = turni;
+        const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
+        if(e.scambiNotti+e.scambiMP===0){ showMsg("Il tabellone è già equilibrato: nessuno scambio possibile senza peggiorare altro."); }
+        else { setTurni(e.turni); setEqRes({ esito:e, prima }); }
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
@@ -438,6 +461,7 @@ export default function App(){
           {([
             ["①","Copertura", busy?"#0f1a2a":"#1d4ed8", generaCopertura, busy],
             ["②","Obiettivi", busy?"#0f1a2a":"#6d28d9", generaObiettivi, busy],
+            ["③","Equilibra", busy?"#0f1a2a":"#0f766e", equilibraTab, busy],
             ["⊘","Rimuovi App","#4c1d95", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>s.man)}; } return n; }); showMsg("Turni app rimossi."); }, false],
             ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#7f1d1d", rimuoviManuali, false],
             ["⎙","Excel", printing?"#0f1a2a":"#064e3b", handlePrint, printing],
@@ -475,6 +499,47 @@ export default function App(){
           {toast.txt}
         </div>
       )}
+
+      {/* ESITO EQUILIBRA — prima → dopo per MR, con Annulla */}
+      {eqRes&&(()=>{
+        const { esito } = eqRes;
+        const dopo = new Map(esito.dopo.map(r=>[r.id,r]));
+        const cambiati = esito.prima.filter(r=>{ const d=dopo.get(r.id)!; return d.M!==r.M||d.P!==r.P||d.N!==r.N; });
+        const td = {padding:"2px 6px",textAlign:"right" as const};
+        const freccia = (a:number,b:number) => a===b ? <span>{a}</span> : <span>{a}→<b style={{color:"#5eead4"}}>{b}</b></span>;
+        return (
+          <div className="np" style={{position:"fixed",bottom:"16px",right:"16px",zIndex:901,
+            background:"#0b1220",border:"1px solid #0f766e",color:"#e2f0ff",borderRadius:"10px",
+            padding:"12px 14px",fontSize:"12px",fontFamily:"monospace",boxShadow:"0 10px 30px #000",
+            maxWidth:"440px",width:"calc(100% - 32px)"}}>
+            <div style={{fontWeight:700,color:"#5eead4",marginBottom:"6px"}}>
+              Equilibrio applicato: {esito.scambiNotti+esito.scambiMP} {esito.scambiNotti+esito.scambiMP===1?"scambio":"scambi"}
+            </div>
+            <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"6px"}}>
+              {esito.scambiNotti>0 && <>notti: {esito.scambiNotti} · </>}mattine/pomeriggi: {esito.scambiMP} · celle cambiate: {esito.celle.length}
+            </div>
+            {cambiati.length>0 && (
+              <table style={{borderCollapse:"collapse",marginBottom:"8px",fontSize:"11px"}}>
+                <thead><tr style={{color:"#64748b"}}><th style={{textAlign:"left",padding:"2px 6px"}}>MR</th><th style={td}>Mattine</th><th style={td}>Pomeriggi</th><th style={td}>Notti</th></tr></thead>
+                <tbody>{cambiati.map(r=>{ const d=dopo.get(r.id)!; return (
+                  <tr key={r.id}><td style={{padding:"2px 6px"}}>{r.nome.split(" ").pop()}</td>
+                    <td style={td}>{freccia(r.M,d.M)}</td><td style={td}>{freccia(r.P,d.P)}</td><td style={td}>{freccia(r.N,d.N)}</td></tr>); })}</tbody>
+              </table>
+            )}
+            <div style={{fontSize:"10px",color:"#64748b",marginBottom:"9px"}}>
+              Celle cambiate evidenziate in verde acqua. Turni totali, copertura, regole e weekend invariati; qualche blocco di mattine può essere più corto di un giorno.
+            </div>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>setEqRes(null)}
+                style={{background:"#0f766e",color:"#fff",border:"none",borderRadius:"6px",padding:"7px 14px",
+                  cursor:"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace"}}>Tieni</button>
+              <button onClick={()=>{ const p=eqRes.prima; setEqRes(null); setTurni(p); showMsg("Equilibrio annullato."); }}
+                style={{background:"#1e3a5f",color:"#94a3b8",border:"1px solid #2f5a8a",borderRadius:"6px",padding:"7px 14px",
+                  cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>Annulla</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* VARIANTE ULTIMA CHANCE — proposta non bloccante */}
       {altUC&&(()=>{
@@ -633,9 +698,10 @@ export default function App(){
                       const ct=gT(med.id,g);
                       const hX=ct.some(s=>s.tipo==="X"), vis=ct.filter(s=>s.tipo!=="X");
                       const bg=hX?"#1a1a24":mt.h?"#1c0f0f":mt.sat||mt.dom?"#12142e":"#0b1626";
+                      const eqCambiata = !!eqRes && eqRes.esito.celle.some(x=>x.id===med.id && x.g===g);
                       return (
                         <td key={g} onClick={editabile ? ()=>setCella({id:med.id,g}) : undefined}
-                          style={{background:bg,border:"1px solid #1e3a5f",padding:"1px 2px",textAlign:"center",cursor:editabile?"pointer":"default",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
+                          style={{background:bg,border:"1px solid #1e3a5f",boxShadow:eqCambiata?"inset 0 0 0 2px #2dd4bf":undefined,padding:"1px 2px",textAlign:"center",cursor:editabile?"pointer":"default",minWidth:"34px",height:"25px",verticalAlign:"middle",transition:"background .08s"}}
                           onMouseEnter={editabile ? e=>e.currentTarget.style.background="#22406b" : undefined}
                           onMouseLeave={editabile ? e=>e.currentTarget.style.background=bg : undefined}>
                           <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
