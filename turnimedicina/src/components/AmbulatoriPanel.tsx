@@ -1,6 +1,6 @@
-import type { Ambulatorio, FasciaAmb, Medico } from "../engine/types";
+import type { Ambulatorio, FasciaAmb, Medico, OccAmb } from "../engine/types";
 import { DF } from "../engine/date";
-import { abilitatoAmb } from "../engine/turni";
+import { abilitatoAmb, ambConfigurato, OCC_AMB } from "../engine/turni";
 import { siglaDaNome } from "../engine/regole";
 
 // ─── PANNELLO AMBULATORI (v0.3.36) ────────────────────────────────────────────
@@ -9,6 +9,7 @@ import { siglaDaNome } from "../engine/regole";
 // si modificano per comodità insieme al resto, come dalla scheda del medico.
 
 const FASCE: [FasciaAmb | "", string][] = [["", "—"], ["M", "Mattina"], ["P", "Pomeriggio"], ["MP", "Matt.+Pom."]];
+const OCC_LBL: Record<OccAmb, string> = { "1": "1ª", "2": "2ª", "3": "3ª", "4": "4ª", "5": "5ª", U: "Ultima" };
 
 /** Abilitazioni effettive del medico (materializza il vecchio flag). */
 export function ambulatoriDi(m: Medico, ambulatori: Ambulatorio[]): string[] {
@@ -37,6 +38,30 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
     const giorni = { ...a.giorni };
     if (f) giorni[d] = f; else delete giorni[d];
     upd(a.id, { giorni });
+  };
+  // SETTIMANE DEL MESE (v0.3.43): un giorno può valere solo in alcune
+  // settimane (2° e 4° giovedì, primo e ultimo martedì…), con fascia propria.
+  const perSettimana = (a: Ambulatorio, d: number) => !!a.settimane?.[d];
+  const togSettimane = (a: Ambulatorio, d: number) => {
+    const settimane = { ...(a.settimane || {}) };
+    const giorni = { ...a.giorni };
+    if (settimane[d]) {
+      // torna a "ogni settimana": riprende la prima fascia scelta, se c'era
+      const f = Object.values(settimane[d]!).find(Boolean);
+      delete settimane[d];
+      if (f) giorni[d] = f; else delete giorni[d];
+    } else {
+      // passa a "per settimana": la fascia settimanale vale per tutte le occorrenze
+      const f = giorni[d];
+      settimane[d] = f ? { "1": f, "2": f, "3": f, "4": f, "5": f } : {};
+      delete giorni[d];
+    }
+    upd(a.id, { giorni, settimane });
+  };
+  const setFasciaOcc = (a: Ambulatorio, d: number, o: OccAmb, f: FasciaAmb | "") => {
+    const occ = { ...(a.settimane?.[d] || {}) };
+    if (f) occ[o] = f; else delete occ[o];
+    upd(a.id, { settimane: { ...(a.settimane || {}), [d]: occ } });
   };
   const aggiungi = () => {
     const id = "amb_" + Date.now().toString(36);
@@ -90,23 +115,44 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
             </div>
 
             <div style={{ ...LBL, marginBottom: "4px" }}>Giorni e fascia</div>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px", alignItems: "flex-start" }}>
               {[0, 1, 2, 3, 4].map(d => {
+                const ps = perSettimana(a, d);
                 const f = a.giorni[d] ?? "";
+                const attivo = ps ? Object.values(a.settimane![d]!).some(Boolean) : !!f;
+                const sel = (v: string) => ({ ...inp, padding: "3px", color: v ? "#34d399" : "#3d5878", borderColor: v ? "#059669" : "#1e3a5f" });
                 return (
-                  <label key={d} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                    <span style={{ ...LBL, color: f ? "#34d399" : "#3d5878", fontWeight: 700 }}>{DF[d].slice(0, 3)}</span>
-                    <select value={f} onChange={e => setFascia(a, d, e.target.value as FasciaAmb | "")}
-                      style={{ ...inp, padding: "4px", color: f ? "#34d399" : "#3d5878", borderColor: f ? "#059669" : "#1e3a5f" }}>
-                      {FASCE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                  </label>
+                  <div key={d} style={{ display: "flex", flexDirection: "column", gap: "3px",
+                    ...(ps ? { background: "#081120", border: "1px solid #1e3a5f", borderRadius: "6px", padding: "4px" } : {}) }}>
+                    <span style={{ ...LBL, color: attivo ? "#34d399" : "#3d5878", fontWeight: 700 }}>{DF[d].slice(0, 3)}</span>
+                    {!ps && (
+                      <select value={f} onChange={e => setFascia(a, d, e.target.value as FasciaAmb | "")} style={sel(f)}>
+                        {FASCE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    )}
+                    {ps && OCC_AMB.map(o => {
+                      const fo = a.settimane![d]![o] ?? "";
+                      return (
+                        <label key={o} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <span style={{ ...LBL, width: "38px", color: fo ? "#34d399" : "#3d5878" }}>{OCC_LBL[o]}</span>
+                          <select value={fo} onChange={e => setFasciaOcc(a, d, o, e.target.value as FasciaAmb | "")} style={sel(fo)}>
+                            {FASCE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                          </select>
+                        </label>
+                      );
+                    })}
+                    <label title="Scegli la fascia per ciascuna settimana del mese (es. 2° e 4° giovedì, primo e ultimo martedì)"
+                      style={{ ...LBL, display: "flex", gap: "3px", alignItems: "center", cursor: "pointer", fontSize: "9px" }}>
+                      <input type="checkbox" checked={ps} onChange={() => togSettimane(a, d)} style={{ margin: 0 }} />
+                      per settimana
+                    </label>
+                  </div>
                 );
               })}
             </div>
 
             <div style={{ ...LBL, marginBottom: "4px" }}>
-              Medici abilitati ({abil.length}){abil.length === 0 && Object.keys(a.giorni).length > 0 &&
+              Medici abilitati ({abil.length}){abil.length === 0 && ambConfigurato(a) &&
                 <span style={{ color: "#f87171" }}> — nessuno: l'ambulatorio resterà scoperto</span>}
             </div>
             <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
@@ -131,6 +177,9 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
       </button>
       <div style={{ ...LBL, fontSize: "9px", lineHeight: 1.6 }}>
         Per ogni ambulatorio scegli i giorni (Mattina, Pomeriggio o entrambe) e i medici abilitati.
+        Con «per settimana» il giorno vale solo in alcune settimane del mese, ciascuna con la sua
+        fascia: es. 2° e 4° giovedì, oppure primo e ultimo martedì («Ultima» = l'ultimo del mese;
+        se coincide con la 4ª o la 5ª le fasce si sommano).
         Il generatore assegna ogni ambulatorio solo ai suoi abilitati, bilanciando il TOTALE degli
         ambulatori fra i medici. Due ambulatori nella stessa fascia vanno a medici diversi.
         In tabellone compare la sigla (pomeriggio: sigla + "p"). I festivi restano sempre esclusi.

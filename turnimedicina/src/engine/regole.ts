@@ -1,4 +1,4 @@
-import type { Regole, Ambulatorio, FasciaAmb } from "./types";
+import type { Regole, Ambulatorio, FasciaAmb, OccAmb } from "./types";
 
 // ─── REGOLE CONFIGURABILI ─────────────────────────────────────────────────────
 // Fabbisogni giornalieri e limiti che prima erano costanti hardcoded. Il motore
@@ -66,6 +66,21 @@ function sanaGiorni(x: unknown): Partial<Record<number,FasciaAmb>> {
   }
   return out;
 }
+// Settimane del mese (v0.3.43): giorno 0–4 → { "1".."5"|"U" → fascia }.
+// Giorni senza alcuna occorrenza valida vengono scartati.
+const OCC_OK = new Set<string>(["1","2","3","4","5","U"]);
+function sanaSettimane(x: unknown): Ambulatorio["settimane"] | undefined {
+  if(!x || typeof x!=="object") return undefined;
+  const out: NonNullable<Ambulatorio["settimane"]> = {};
+  for(const [k,v] of Object.entries(x)){
+    const d0=+k;
+    if(!Number.isInteger(d0)||d0<0||d0>4||!v||typeof v!=="object") continue;
+    const occ: Partial<Record<OccAmb,FasciaAmb>> = {};
+    for(const [o,f] of Object.entries(v)) if(OCC_OK.has(o) && FASCE_OK.has(f as FasciaAmb)) occ[o as OccAmb]=f as FasciaAmb;
+    if(Object.keys(occ).length) out[d0]=occ;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 /** Sigla di ripiego: prime 3 lettere del nome, maiuscole. */
 export function siglaDaNome(nome: string): string {
   const s = (nome||"").replace(/[^A-Za-zÀ-ÿ0-9 ]/g,"").trim().toUpperCase();
@@ -83,7 +98,8 @@ function sanaAmbulatori(s: Partial<Regole>): Ambulatorio[] {
       visti.add(a.id);
       const nome = typeof a.nome==="string" && a.nome.trim() ? a.nome.trim() : "Ambulatorio";
       const sigla = typeof a.sigla==="string" && a.sigla.trim() ? a.sigla.trim().slice(0,5) : siglaDaNome(nome);
-      out.push({ id:a.id, nome, sigla, giorni: sanaGiorni(a.giorni) });
+      const settimane = sanaSettimane(a.settimane);
+      out.push({ id:a.id, nome, sigla, giorni: sanaGiorni(a.giorni), ...(settimane ? { settimane } : {}) });
     }
     return out;
   }

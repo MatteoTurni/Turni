@@ -151,7 +151,7 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
       for(const s of cell(T,m.id,g)){
         if(!((s.tipo==="A"||s.tipo==="Ap")&&!s.man)) continue;
         if(!abilitatoAmb(m,ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto a non abilitato ${m.nome}`);
-        const slots = isHol(anno,mese,g) ? [] : slotAmbGiorno(R.ambulatori??[],dow);
+        const slots = isHol(anno,mese,g) ? [] : slotAmbGiorno(R.ambulatori??[],dow,g,dimOf(anno,mese));
         if(!slots.some(sl=>sl.cod===s.tipo&&sl.amb===ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto fuori dai giorni/fasce d'ambulatorio`);
       }
     }

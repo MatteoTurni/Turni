@@ -44,7 +44,16 @@ export interface Ambulatorio {
   /** Giorno della settimana (0=Lun … 4=Ven) → fascia. Assente = niente
    *  ambulatorio quel giorno. I festivi sono sempre esclusi. */
   giorni: Partial<Record<number, FasciaAmb>>;
+  /** SETTIMANE DEL MESE (v0.3.43), per giorno della settimana (0=Lun … 4=Ven).
+   *  Se presente per un giorno, SOSTITUISCE `giorni[dw]`: la fascia si sceglie
+   *  per occorrenza nel mese ("1".."5" = 1°…5° quel giorno del mese, "U" =
+   *  l'ultimo). Esempi: 2° e 4° giovedì; primo e ultimo martedì; 2° giovedì di
+   *  mattina e 4° di pomeriggio. Se la 4ª (o 5ª) occorrenza è anche l'ultima,
+   *  le fasce si uniscono. Assente = ogni settimana con `giorni[dw]`. */
+  settimane?: Partial<Record<number, Partial<Record<OccAmb, FasciaAmb>>>>;
 }
+/** Occorrenza di un giorno della settimana nel mese: 1ª…5ª o ultima. */
+export type OccAmb = "1"|"2"|"3"|"4"|"5"|"U";
 
 export interface Regole {
   maxNotti: number;

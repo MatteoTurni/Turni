@@ -1,4 +1,24 @@
-# TurniMedicina 0.3.42
+# TurniMedicina 0.3.43
+
+## Novità 0.3.43 — ambulatori solo in alcune settimane del mese
+
+Alcuni ambulatori non si fanno ogni settimana: 2° e 4° giovedì, primo e
+ultimo martedì, una volta al mese… Nel pannello Ambulatori ogni giorno ha
+ora la spunta «per settimana»: se attiva, la fascia si sceglie per ciascuna
+occorrenza del giorno nel mese (1ª, 2ª, 3ª, 4ª, 5ª, Ultima), anche diversa
+fra le settimane (es. 2° giovedì di mattina, 4° di pomeriggio). «Ultima» è
+l'ultimo quel giorno del mese: se coincide con la 4ª o la 5ª scelta, le fasce
+si sommano (un solo giorno). Senza spunta tutto resta come prima (ogni
+settimana); i festivi saltano come sempre. Rotazione, equità, fabbisogno e
+bilancio contano solo i giorni effettivi.
+
+Collaudo: 8 test nuovi (mesi con 4 e 5 occorrenze, primo/ultimo, fasce
+sommate, salvataggio, fabbisogno, generazione); 320 mesi casuali con
+ambulatori per settimana (`harness/ambsett.ts`, genera + completa +
+equilibra): nessuna violazione nuova (validatori indipendenti, che calcolano
+le settimane per conto loro); gli ambulatori scoperti sono tutti senza alcun
+abilitato disponibile quel giorno.
+
 
 ## Novità 0.3.42 — pulsante «③ Equilibra» (facoltativo)
 

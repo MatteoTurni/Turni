@@ -1613,7 +1613,7 @@ export function calcAmbRotNext(turni:TurniMese, medici:Medico[], anno:number, me
   for(let g=1; g<=ndim; g++){
     if(isHol(anno,mese,g)) continue;                     // solo giorni d'ambulatorio feriali
     // Stesso ordine della fase: ambulatori in ordine di lista, A poi Ap.
-    for(const sl of slotAmbGiorno(ambs, dowOf(anno,mese,g))){
+    for(const sl of slotAmbGiorno(ambs, dowOf(anno,mese,g), g, ndim)){
       for(let i=0;i<ab.length;i++){
         if((turni[ab[i].id]?.[g]?.t||[]).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb && !s.man)){ next=(i+1)%ab.length; break; }
       }
