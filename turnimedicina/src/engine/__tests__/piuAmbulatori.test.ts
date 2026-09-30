@@ -50,9 +50,9 @@ describe("utility", () => {
   });
 
   it("slotAmbGiorno ed etichettaTurno", () => {
-    expect(slotAmbGiorno([DIA, CAR], 1)).toEqual([{ amb:"dia", cod:"A" }, { amb:"car", cod:"A" }]);
-    expect(slotAmbGiorno([DIA, CAR], 3)).toEqual([{ amb:"dia", cod:"Ap" }]);
-    expect(slotAmbGiorno([DIA, CAR], 0)).toEqual([]);
+    expect(slotAmbGiorno([DIA, CAR], 1, 10, 30)).toEqual([{ amb:"dia", cod:"A" }, { amb:"car", cod:"A" }]);
+    expect(slotAmbGiorno([DIA, CAR], 3, 10, 30)).toEqual([{ amb:"dia", cod:"Ap" }]);
+    expect(slotAmbGiorno([DIA, CAR], 0, 10, 30)).toEqual([]);
     expect(etichettaTurno({ tipo:"A", amb:"dia" }, [DIA, CAR])).toBe("DIA");
     expect(etichettaTurno({ tipo:"Ap", amb:"dia" }, [DIA, CAR])).toBe("DIAp");
     expect(etichettaTurno({ tipo:"A", amb:"sparito" }, [DIA, CAR])).toBe("A");

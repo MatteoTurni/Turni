@@ -152,7 +152,18 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
       const amb = R.ambulatori.find(a=>a.id===id);
       const abil = Array.isArray(m.ambulatori) ? m.ambulatori.includes(id) : (!!m.ambulatorio && id==="A");
       if(!abil || m.stato==="MPS") V.push(`${nome(m)}: ambulatorio ${id} automatico senza abilitazione g${g}`);
-      const f = amb?.giorni?.[dw];
+      // Fascia prevista, calcolata QUI in modo indipendente dal motore: con le
+      // settimane del mese conta l'occorrenza del giorno (1ª = primo di quel
+      // giorno nel mese…) e "U" = nessun altro dello stesso giorno dopo.
+      let f: string|undefined = amb?.giorni?.[dw];
+      const sett = (amb as any)?.settimane?.[dw];
+      if(sett){
+        let occ=0; for(let k=1;k<=g;k++) if(dowOf(anno,mese,k)===dw) occ++;
+        let ultimo=true; for(let k=g+1;k<=nd;k++) if(dowOf(anno,mese,k)===dw) ultimo=false;
+        const fs=[sett[String(occ)], ultimo?sett.U:undefined].filter(Boolean) as string[];
+        const hM=fs.some(x=>x==="M"||x==="MP"), hP=fs.some(x=>x==="P"||x==="MP");
+        f = hM&&hP ? "MP" : hM ? "M" : hP ? "P" : undefined;
+      }
       const ok = !fest && f && (s.tipo==="A" ? (f==="M"||f==="MP") : (f==="P"||f==="MP"));
       if(!ok) V.push(`${nome(m)}: ambulatorio ${id}/${s.tipo} fuori dai suoi giorni g${g}`);
       if(s.tipo==="Ap" && m.stato==="ML") V.push(`${nome(m)}(ML): ambulatorio di pomeriggio g${g}`);

@@ -240,7 +240,7 @@ export function makeCtx(
   // abilitati. Uno SLOT = (ambulatorio, codice A|Ap) da coprire in un giorno.
   const AMBS = REG.ambulatori ?? [];
   // Slot richiesti nel giorno g: [] nei festivi e nei giorni senza ambulatorio.
-  const ambSlots = (g:number): SlotAmb[] => isH(g) ? [] : slotAmbGiorno(AMBS, dw(g));
+  const ambSlots = (g:number): SlotAmb[] => isH(g) ? [] : slotAmbGiorno(AMBS, dw(g), g, ndim);
   // Il giorno g ha almeno un ambulatorio (festivi esclusi)?
   const isAmb = (g:number) => ambSlots(g).length>0;
   // Il medico `id` copre lo slot in g?

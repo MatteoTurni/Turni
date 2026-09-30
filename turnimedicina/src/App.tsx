@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Medico, Regole, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
 import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
-import { vt, SPEC, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
+import { vt, SPEC, ambConfigurato, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
 import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
@@ -370,7 +370,7 @@ export default function App(){
   // sotto-minimo, oppure uno dei suoi ambulatori è tuttora scoperto. Se
   // l'utente sistema a mano quei giorni, il cluster sparisce da sé.
   // Slot d'ambulatorio richiesti nel giorno g: (ambulatorio, A|Ap).
-  const ambSlotsApp = (g:number) => metaG(g).h ? [] : slotAmbGiorno(regole.ambulatori, dowOf(anno,mese,g));
+  const ambSlotsApp = (g:number) => metaG(g).h ? [] : slotAmbGiorno(regole.ambulatori, dowOf(anno,mese,g), g, nd);
   const chiSlot = (g:number, sl:{amb:string;cod:string}) =>
     medici.find(m=>gT(m.id,g).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb));
   const ambMancaApp = (g:number) => ambSlotsApp(g).some(sl=>!chiSlot(g,sl));
@@ -1068,8 +1068,8 @@ export default function App(){
               {RIGA("M","Mattine (minimo di copertura)", fab.m, 1, "#60a5fa")}
               {RIGA("P","Pomeriggi (minimo di copertura)", fab.p, 1, "#a78bfa")}
               {RIGA("N","Notti (una per giorno)", fab.n, 2, "#4ade80")}
-              {RIGA("A",`Ambulatori (${regole.ambulatori.some(a=>Object.keys(a.giorni).length)
-                ? regole.ambulatori.filter(a=>Object.keys(a.giorni).length).map(a=>a.sigla).join(", ")+" · feriali"
+              {RIGA("A",`Ambulatori (${regole.ambulatori.some(ambConfigurato)
+                ? regole.ambulatori.filter(ambConfigurato).map(a=>a.sigla).join(", ")+" · feriali"
                 : "nessuno"})`, fab.a, 1, "#34d399")}
 
               <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e3a5f"}}>

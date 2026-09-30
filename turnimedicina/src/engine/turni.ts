@@ -1,4 +1,4 @@
-import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio } from "./types";
+import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio, OccAmb } from "./types";
 
 // ─── UTILITY TURNI ────────────────────────────────────────────────────────────
 // I turni associati (M+P oppure A+P) NON sono un tipo a sé: sono sempre
@@ -51,10 +51,29 @@ export function abilitatoQualche(m: Medico, ambulatori: Ambulatorio[]): boolean 
 export interface SlotAmb { amb: string; cod: string; }
 /** Slot richiesti in un giorno della settimana (festivi esclusi dal chiamante):
  *  per ambulatorio, nell'ordine della lista, prima la A poi la Ap. */
-export function slotAmbGiorno(ambulatori: Ambulatorio[], dw: number): SlotAmb[] {
+export const OCC_AMB: OccAmb[] = ["1","2","3","4","5","U"];
+/** Fascia dell'ambulatorio `a` nel giorno g del mese (dw = giorno della
+ *  settimana, ndim = giorni del mese), festivi esclusi a monte. Con le
+ *  SETTIMANE DEL MESE (v0.3.43) conta l'occorrenza di g: 1ª = giorni 1–7,
+ *  2ª = 8–14, …; "U" = ultima (g+7 oltre la fine del mese). */
+export function fasciaAmbGiorno(a: Ambulatorio, dw: number, g: number, ndim: number): FasciaAmb|null {
+  const sett = a.settimane?.[dw];
+  if(!sett) return a.giorni?.[dw] ?? null;
+  const occ = String(Math.ceil(g/7)) as OccAmb;
+  const fasce = [sett[occ], g+7>ndim ? sett.U : undefined].filter(Boolean) as FasciaAmb[];
+  if(!fasce.length) return null;
+  const M = fasce.some(f=>f!=="P"), P = fasce.some(f=>f!=="M");
+  return M&&P ? "MP" : M ? "M" : "P";
+}
+/** L'ambulatorio ha almeno un giorno configurato (settimanale o per settimane)? */
+export function ambConfigurato(a: Ambulatorio): boolean {
+  if(Object.keys(a.giorni||{}).length) return true;
+  return Object.values(a.settimane||{}).some(s=>s && Object.values(s).some(Boolean));
+}
+export function slotAmbGiorno(ambulatori: Ambulatorio[], dw: number, g: number, ndim: number): SlotAmb[] {
   const out: SlotAmb[] = [];
   for(const a of ambulatori){
-    const f = a.giorni?.[dw];
+    const f = fasciaAmbGiorno(a, dw, g, ndim);
     if(!f) continue;
     for(const cod of codiciAmb(f)) out.push({ amb:a.id, cod });
   }

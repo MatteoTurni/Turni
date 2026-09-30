@@ -148,7 +148,7 @@ export function dettaglioFabbisogno(anno: number, mese: number, nd: number, r: R
     m += fs.mMin;
     p += fs.pMin;
     // giorno feriale: uno slot per ogni (ambulatorio, fascia) previsto quel giorno
-    if (!h) a += slotAmbGiorno(r.ambulatori ?? [], dw).length;
+    if (!h) a += slotAmbGiorno(r.ambulatori ?? [], dw, g, nd).length;
   }
   const n = nd;                    // una notte per ogni giorno del mese
   return { m, p, n, a, vt: m + p + 2 * n + a };

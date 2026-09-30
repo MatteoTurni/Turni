@@ -157,7 +157,7 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
       for(const s of cell(T,m.id,g)){
         if(!((s.tipo==="A"||s.tipo==="Ap")&&!s.man)) continue;
         if(!abilitatoAmb(m,ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto a non abilitato ${m.nome}`);
-        const slots = isHol(anno,mese,g) ? [] : slotAmbGiorno(R.ambulatori??[],dow);
+        const slots = isHol(anno,mese,g) ? [] : slotAmbGiorno(R.ambulatori??[],dow,g,dimOf(anno,mese));
         if(!slots.some(sl=>sl.cod===s.tipo&&sl.amb===ambIdDi(s))) V.push(`g${g}: ${s.tipo} auto fuori dai giorni/fasce d'ambulatorio`);
       }
     }
@@ -270,7 +270,7 @@ function violazioniAmb(sc: ScenCfg, T: TurniMese, problemi: string[]): string[] 
       if(c.filter(s=>s.tipo==="A").length>1) V.push(`g${g}: ${m.nome} con due A`);
       if(c.filter(s=>s.tipo==="Ap").length>1) V.push(`g${g}: ${m.nome} con due Ap`);
     }
-    const slots = isFestivo(sc.anno,sc.mese,g) ? [] : slotAmbGiorno(R.ambulatori, dowOf(sc.anno,sc.mese,g));
+    const slots = isFestivo(sc.anno,sc.mese,g) ? [] : slotAmbGiorno(R.ambulatori, dowOf(sc.anno,sc.mese,g), g, dimOf(sc.anno,sc.mese));
     for(const sl of slots){
       const chi = sc.medici.filter(m=>cell(T,m.id,g).some(s=>s.tipo===sl.cod && ambIdDi(s)===sl.amb));
       if(chi.length>1 && chi.some(m=>cell(T,m.id,g).some(s=>s.tipo===sl.cod&&ambIdDi(s)===sl.amb&&!s.man)))
@@ -351,7 +351,7 @@ function main(){
     const R = getRegole();
     for(let g=1; g<=ndim; g++){
       if(isFestivo(sc.anno,sc.mese,g)) continue;
-      for(const sl of slotAmbGiorno(R.ambulatori, dowOf(sc.anno,sc.mese,g))){
+      for(const sl of slotAmbGiorno(R.ambulatori, dowOf(sc.anno,sc.mese,g), g, dimOf(sc.anno,sc.mese))){
         if(sc.medici.some(m=>cell(r.turni,m.id,g).some(s=>s.tipo===sl.cod&&ambIdDi(s)===sl.amb))) continue;
         const ab = sc.medici.filter(m=>abilitatoAmb(m,sl.amb));
         const mot = ab.map(m=>{
