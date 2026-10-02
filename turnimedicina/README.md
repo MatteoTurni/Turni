@@ -1,4 +1,22 @@
-# TurniMedicina 0.3.43
+# TurniMedicina 0.3.44
+
+## Novità 0.3.44 — scheda Reparto, esporta/importa configurazione
+
+Ciò che era scritto nel codice per il reparto d'origine diventa impostabile
+dall'app, in Regole → **Reparto**:
+- intestazione dell'app (azienda, presidio, unità operativa) e del riepilogo;
+- intestazione dell'Excel (tre righe) e sigla sopra la griglia;
+- logo dell'Excel: predefinito, nessuno, oppure caricato (PNG/JPEG, max 500 KB);
+- festività locali (es. il santo patrono): valgono come un festivo nazionale
+  in tutto il motore (fabbisogno festivo, niente ambulatorio, notte prefestiva).
+**Esporta / Importa configurazione**: un file con regole, ambulatori, scheda
+reparto ed elenco dei medici (non i turni), per avviare un altro reparto da
+una configurazione esistente. All'importazione l'elenco dei medici si
+sostituisce solo su conferma; i turni non vengono toccati. «Ripristina
+default» delle regole non cancella la scheda Reparto.
+Senza modifiche tutto resta come prima (valori storici di Medicina Interna,
+patrono 8 settembre).
+
 
 ## Novità 0.3.43 — ambulatori solo in alcune settimane del mese
 

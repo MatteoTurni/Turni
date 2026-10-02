@@ -4,6 +4,7 @@ import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
 import { vt, SPEC, ambConfigurato, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
 import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
+import { RepartoPanel } from "./components/RepartoPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
@@ -283,7 +284,7 @@ export default function App(){
 
   // Riepilogo testuale della squadra (Formato B, copiabile): rispecchia le card.
   const riepilogoTesto = () => {
-    const out: string[] = [`Riepilogo turni — U.O.C. Medicina Interna — ${MESI[mese]} ${anno}`, ""];
+    const out: string[] = [`Riepilogo turni — ${regole.reparto.unita} — ${MESI[mese]} ${anno}`, ""];
     for(const m of medici){
       const tot=cntM(m.id), r=rieM(m.id), wkLib=cntWkLiberi(m.id);
       const ambN=cntAmb(m.id), psN=cntPS(m.id), pm=cntPerm(m.id);
@@ -434,10 +435,10 @@ export default function App(){
       <div className="np" style={{background:"#122036",borderBottom:"1px solid #1e3a5f",padding:"10px 16px",display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:"200px"}}>
           <div style={{fontSize:"8px",color:"#4b7aad",letterSpacing:".15em",textTransform:"uppercase",marginBottom:"3px"}}>
-            AOU San Giovanni di Dio e Ruggi d'Aragona · P.O. Santa Maria Incoronata dell'Olmo
+            {[regole.reparto.azienda, regole.reparto.presidio].filter(Boolean).join(" · ")}
           </div>
           <div style={{fontSize:"15px",fontWeight:700,color:"#e2f0ff"}}>
-            U.O.C. Medicina Interna
+            {regole.reparto.unita || "Reparto"}
             <span style={{color:"#4b7aad",fontSize:"11px",fontWeight:400,marginLeft:"8px"}}>— Pianificazione Turni</span>
           </div>
         </div>
@@ -915,7 +916,7 @@ export default function App(){
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
               <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Regole del reparto</span>
-              <button onClick={()=>updRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)))}
+              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto })}
                 style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
                 Ripristina default
               </button>
@@ -924,6 +925,15 @@ export default function App(){
               Le modifiche sono salvate subito e usate dalla PROSSIMA generazione (①/②).
               La <b>Notte</b> resta fissa a 1/giorno: è un invariante dell'algoritmo, non un parametro.
             </div>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                REPARTO <span style={{fontWeight:400,color:"#4b7aad"}}>· intestazioni, logo, festività locali, esporta/importa</span>
+              </summary>
+              <div style={{marginTop:"12px"}}>
+                <RepartoPanel regole={regole} medici={medici} onRegole={updRegole} onMedici={setMedici} avviso={showMsg}/>
+              </div>
+            </details>
 
             <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>FABBISOGNO GIORNALIERO (min–max)</div>

@@ -42,11 +42,9 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   // v0.3.18: banner riportato IN CIMA, largo quanto la tabella del mese (ancoraggio
   // a due celle, più sotto), con i tre righi di testo CENTRATI sotto. Nessuna
   // sovrapposizione: il banner è confinato a r1, i testi vivono da r2 in giù.
-  const hdr = [
-    "Azienda Ospedaliero-Universitaria",
-    "San Giovanni di Dio e Ruggi d\u2019Aragona  -  Salerno",
-    "Presidio Ospedaliero \u201cSanta Maria Incoronata dell\u2019Olmo\u201d",
-  ];
+  // Intestazione, sigla e logo dalla SCHEDA REPARTO (v0.3.44).
+  const rep = getRegole().reparto;
+  const hdr = rep.righeExcel.slice(0, 3);
   hdr.forEach((t, i) => {
     const r = 2 + i;
     ws.mergeCells(r, 1, r, nd + 1);               // centra su tutta la larghezza
@@ -56,7 +54,7 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
     cell.alignment = { horizontal: "center", vertical: "middle" };
   });
   const med = ws.getCell(6, 1);
-  med.value = "MEDICINA";
+  med.value = rep.siglaExcel;
   med.font = { name: "Arial", size: 12, bold: true };
 
   const R_NUM = 7, R_DOW = 8, FIRST_MED = 9;
@@ -139,8 +137,14 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   // basso quanto prima (r1 è alta ~56 px: stesso "schiacciamento" dell'export
   // precedente). Nota: la forma stringa evita la firma tl/br che i tipi di
   // ExcelJS pretendono come Anchor completo (native*), che non compilerebbe.
-  const imgId = wb.addImage({ base64: LOGO_PNG_BASE64, extension: "png" });
-  ws.addImage(imgId, `A1:${colLetter(nd + 1)}1`);
+  // Logo: predefinito (assente), nessuno (""), o caricato (data URL PNG/JPEG).
+  if (rep.logo !== "") {
+    const m = rep.logo ? /^data:image\/(png|jpeg);base64,(.*)$/.exec(rep.logo) : null;
+    const imgId = m
+      ? wb.addImage({ base64: m[2], extension: m[1] as "png" | "jpeg" })
+      : wb.addImage({ base64: LOGO_PNG_BASE64, extension: "png" });
+    ws.addImage(imgId, `A1:${colLetter(nd + 1)}1`);
+  } else ws.getRow(1).height = 8;
 
   // ---------- area di stampa ----------
   const lastColL = colLetter(nd + 1);
