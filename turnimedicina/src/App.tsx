@@ -926,15 +926,6 @@ export default function App(){
               La <b>Notte</b> resta fissa a 1/giorno: è un invariante dell'algoritmo, non un parametro.
             </div>
 
-            <details style={BOX}>
-              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                REPARTO <span style={{fontWeight:400,color:"#4b7aad"}}>· intestazioni, logo, festività locali, esporta/importa</span>
-              </summary>
-              <div style={{marginTop:"12px"}}>
-                <RepartoPanel regole={regole} medici={medici} onRegole={updRegole} onMedici={setMedici} avviso={showMsg}/>
-              </div>
-            </details>
-
             <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>FABBISOGNO GIORNALIERO (min–max)</div>
               <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
@@ -1048,6 +1039,15 @@ export default function App(){
                 </div>
               )}
             </div>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                IMPOSTAZIONI DEL REPARTO <span style={{fontWeight:400,color:"#4b7aad"}}>· intestazioni, logo, festività locali, esporta/importa (di solito si imposta una volta sola)</span>
+              </summary>
+              <div style={{marginTop:"12px"}}>
+                <RepartoPanel regole={regole} medici={medici} onRegole={updRegole} onMedici={setMedici} avviso={showMsg}/>
+              </div>
+            </details>
           </div>
         );
       })()}
