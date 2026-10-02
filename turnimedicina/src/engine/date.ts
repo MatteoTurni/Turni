@@ -52,9 +52,20 @@ export function holSet(y: number): Set<string> {
 // riga vale per ogni anno, senza manutenzione. Per aggiungerne un'altra basta
 // una stringa in più qui (le feste patronali mobili non sono supportate: se
 // mai servissero, servirebbe una chiave completa "AAAA-MM-GG").
-const FESTIVI_LOCALI = new Set([
+// SCHEDA REPARTO (v0.3.44): l'elenco non è più fisso nel codice ma viene
+// dalle regole del reparto (setRegole → setFestiviLocali). Il valore iniziale
+// resta quello storico, così il motore usato senza regole non cambia.
+let FESTIVI_LOCALI = new Set([
   "09-08", // Madonna dell'Olmo — patrona di Cava de' Tirreni
 ]);
+/** Imposta le festività locali ("MM-GG"). Svuota la cache dei festivi solo
+ *  se l'elenco cambia davvero. */
+export function setFestiviLocali(date: string[]){
+  const nuovo = new Set(date.filter(d=>/^\d\d-\d\d$/.test(d)));
+  if(nuovo.size===FESTIVI_LOCALI.size && [...nuovo].every(d=>FESTIVI_LOCALI.has(d))) return;
+  FESTIVI_LOCALI = nuovo;
+  _holDCache.clear();
+}
 
 /** true se (m,d) è una festività LOCALE a data fissa. m è 0-based. */
 export function isHolLocale(m:number,d:number){

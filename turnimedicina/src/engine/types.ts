@@ -55,6 +55,26 @@ export interface Ambulatorio {
 /** Occorrenza di un giorno della settimana nel mese: 1ª…5ª o ultima. */
 export type OccAmb = "1"|"2"|"3"|"4"|"5"|"U";
 
+/** Festività locale a data fissa (es. il santo patrono), "MM-GG". */
+export interface FestivoLocale { data: string; nome: string; }
+/** SCHEDA REPARTO (v0.3.44): ciò che distingue un reparto dall'altro fuori
+ *  dalle regole di turno — intestazioni di app ed Excel, logo, festività
+ *  locali. */
+export interface Reparto {
+  /** Riga piccola in alto nell'app (azienda · presidio). */
+  azienda: string;
+  presidio: string;
+  /** Titolo dell'app e del riepilogo (es. "U.O.C. Medicina Interna"). */
+  unita: string;
+  /** Excel: le righe di intestazione sotto il logo e la sigla sopra la griglia. */
+  righeExcel: string[];
+  siglaExcel: string;
+  /** Logo dell'Excel: assente = quello predefinito; "" = nessun logo;
+   *  altrimenti data URL (PNG o JPEG) caricato dall'utente. */
+  logo?: string;
+  festiviLocali: FestivoLocale[];
+}
+
 export interface Regole {
   maxNotti: number;
   maxNottiConsec: number;   // max notti "di fila" (a passo 2: N-libero-N-libero-N…)
@@ -96,6 +116,7 @@ export interface Regole {
   /** @deprecated vedi giorniAmb. */
   fasceAmb?: Partial<Record<number, FasciaAmb>>;
   fabb: { fer: FasciaFabb; sab: FasciaFabb; fest: FasciaFabb };
+  reparto: Reparto;
 }
 
 /** Una cella di copertura scoperta (giorno + fascia). */

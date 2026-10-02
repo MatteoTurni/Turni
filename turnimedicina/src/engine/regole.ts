@@ -1,4 +1,5 @@
-import type { Regole, Ambulatorio, FasciaAmb, OccAmb } from "./types";
+import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale } from "./types";
+import { setFestiviLocali } from "./date";
 
 // ─── REGOLE CONFIGURABILI ─────────────────────────────────────────────────────
 // Fabbisogni giornalieri e limiti che prima erano costanti hardcoded. Il motore
@@ -20,6 +21,19 @@ export const REGOLE_DEFAULT: Regole = {
   blocchiMattina: 4,// catena di continuità mattine: blocchi da ~4 giorni (0 = off)
   // Ambulatori (v0.3.36): default un solo ambulatorio il martedì mattina.
   ambulatori: [{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:{ 1:"M" } }],
+  // Scheda reparto (v0.3.44): valori storici del reparto d'origine.
+  reparto: {
+    azienda: "AOU San Giovanni di Dio e Ruggi d'Aragona",
+    presidio: "P.O. Santa Maria Incoronata dell'Olmo",
+    unita: "U.O.C. Medicina Interna",
+    righeExcel: [
+      "Azienda Ospedaliero-Universitaria",
+      "San Giovanni di Dio e Ruggi d\u2019Aragona  -  Salerno",
+      "Presidio Ospedaliero \u201cSanta Maria Incoronata dell\u2019Olmo\u201d",
+    ],
+    siglaExcel: "MEDICINA",
+    festiviLocali: [{ data:"09-08", nome:"Madonna dell'Olmo (patrona di Cava de' Tirreni)" }],
+  },
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -47,12 +61,36 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
   const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
-  return { ...d, ...resto, ambulatori: amb, notteLiberoNotte: nLN, riposoEsteso: rE,
+  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},
   }};
+}
+
+// ── SCHEDA REPARTO (v0.3.44) ──────────────────────────────────────────────────
+// Assente (salvataggi precedenti) → valori storici. Testi non stringa → default;
+// logo accettato solo come data URL PNG/JPEG (o "" = nessun logo); festività
+// solo "MM-GG" con mese e giorno plausibili, senza doppioni.
+const LOGO_MAX = 700_000;   // caratteri del data URL (~500 KB di immagine)
+function sanaReparto(x: unknown, d: Reparto): Reparto {
+  if(!x || typeof x!=="object") return JSON.parse(JSON.stringify(d));
+  const r = x as Partial<Reparto>;
+  const txt = (v: unknown, def: string) => typeof v==="string" ? v.slice(0,200) : def;
+  const righe = Array.isArray(r.righeExcel) ? r.righeExcel.filter(v=>typeof v==="string").slice(0,5).map(v=>v.slice(0,200)) : d.righeExcel;
+  const logo = typeof r.logo==="string" && (r.logo==="" || (/^data:image\/(png|jpeg);base64,/.test(r.logo) && r.logo.length<=LOGO_MAX)) ? r.logo : undefined;
+  const visti = new Set<string>();
+  const fest: FestivoLocale[] = [];
+  for(const f of Array.isArray(r.festiviLocali) ? r.festiviLocali : d.festiviLocali){
+    if(!f || typeof f.data!=="string" || !/^\d\d-\d\d$/.test(f.data) || visti.has(f.data)) continue;
+    const [mm,gg] = f.data.split("-").map(Number);
+    if(mm<1||mm>12||gg<1||gg>31) continue;
+    visti.add(f.data);
+    fest.push({ data:f.data, nome: typeof f.nome==="string" ? f.nome.slice(0,100) : "" });
+  }
+  return { azienda: txt(r.azienda,d.azienda), presidio: txt(r.presidio,d.presidio), unita: txt(r.unita,d.unita),
+           righeExcel: righe, siglaExcel: txt(r.siglaExcel,d.siglaExcel), ...(logo!==undefined ? { logo } : {}), festiviLocali: fest };
 }
 
 // ── AMBULATORI ────────────────────────────────────────────────────────────────
@@ -113,5 +151,5 @@ function sanaAmbulatori(s: Partial<Regole>): Ambulatorio[] {
 }
 
 let REGOLE: Regole = dft();
-export function setRegole(r: Regole){ REGOLE = mergeRegole(r); }
+export function setRegole(r: Regole){ REGOLE = mergeRegole(r); setFestiviLocali(REGOLE.reparto.festiviLocali.map(f=>f.data)); }
 export function getRegole(): Regole { return REGOLE; }
