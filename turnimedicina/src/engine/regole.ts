@@ -1,4 +1,4 @@
-import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale } from "./types";
+import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale, AffiancamentoPS } from "./types";
 import { setFestiviLocali } from "./date";
 
 // ─── REGOLE CONFIGURABILI ─────────────────────────────────────────────────────
@@ -34,6 +34,8 @@ export const REGOLE_DEFAULT: Regole = {
     siglaExcel: "MEDICINA",
     festiviLocali: [{ data:"09-08", nome:"Madonna dell'Olmo (patrona di Cava de' Tirreni)" }],
   },
+  // Turni PS validi per affiancare l'MDC (v0.3.45): tutti, come prima.
+  psAff: { "1":{ ord:true, alpi:true }, "2":{ ord:true, alpi:true }, "3":{ ord:true, alpi:true } },
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -61,12 +63,27 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
   const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
-  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), notteLiberoNotte: nLN, riposoEsteso: rE,
+  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},
   }};
+}
+
+// ── AFFIANCAMENTO MDC CON TURNI PS (v0.3.45) ─────────────────────────────────
+// Assente o malformato → default (tutti validi, comportamento storico).
+function sanaPsAff(x: unknown, d: AffiancamentoPS): AffiancamentoPS {
+  const out = JSON.parse(JSON.stringify(d)) as AffiancamentoPS;
+  if(!x || typeof x!=="object") return out;
+  for(const k of ["1","2","3"] as const){
+    const v = (x as Record<string, unknown>)[k];
+    if(!v || typeof v!=="object") continue;
+    const o = v as { ord?: unknown; alpi?: unknown };
+    if(typeof o.ord==="boolean") out[k].ord = o.ord;
+    if(typeof o.alpi==="boolean") out[k].alpi = o.alpi;
+  }
+  return out;
 }
 
 // ── SCHEDA REPARTO (v0.3.44) ──────────────────────────────────────────────────

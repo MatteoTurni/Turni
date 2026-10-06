@@ -21,7 +21,15 @@ export interface Turno {
   man?: boolean;
   /** Solo per A/Ap: id dell'ambulatorio (Regole.ambulatori). Assente = "A". */
   amb?: string;
+  /** Solo per i turni PS 1/2/3 (v0.3.45): svolto in ALTRO OSPEDALE. Vale come
+   *  sempre per chi lo fa (punti, riposo, notti) ma non affianca mai l'MDC.
+   *  In tabellone ed Excel la sigla ha un asterisco (es. "3*"). */
+  est?: boolean;
 }
+
+/** Turni PS validi per affiancare l'MDC (v0.3.45), per codice: ordinario e
+ *  ALPI (sottolineato). I turni in altro ospedale non sono mai validi. */
+export type AffiancamentoPS = Record<"1"|"2"|"3", { ord: boolean; alpi: boolean }>;
 
 export interface Cella { t: Turno[]; }
 
@@ -117,6 +125,8 @@ export interface Regole {
   fasceAmb?: Partial<Record<number, FasciaAmb>>;
   fabb: { fer: FasciaFabb; sab: FasciaFabb; fest: FasciaFabb };
   reparto: Reparto;
+  /** Turni PS che valgono come compagno dell'MDC (v0.3.45). */
+  psAff: AffiancamentoPS;
 }
 
 /** Una cella di copertura scoperta (giorno + fascia). */

@@ -955,6 +955,51 @@ export default function App(){
                 onMedici={setMedici}/>
             </div>
 
+            {/* ── TURNI PS E AFFIANCAMENTO MDC (v0.3.45) ── */}
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                TURNI PS E AFFIANCAMENTO MDC <span style={{fontWeight:400,color:"#4b7aad"}}>
+                  · {(["1","2","3"] as const).every(k=>regole.psAff[k].ord&&regole.psAff[k].alpi) ? "tutti validi" :
+                     (["1","2","3"] as const).flatMap(k=>[...(regole.psAff[k].ord?[]:[k]),...(regole.psAff[k].alpi?[]:[k+" ALPI"])]).join(", ")+" non validi"}
+                </span>
+              </summary>
+              <div style={{...LBL,margin:"10px 0",lineHeight:1.6}}>
+                L'MDC non può stare solo in turno. Oltre ai turni di reparto (M/A, P/Ap, N), qui scegli quali turni
+                PS di un collega lo affiancano: 1 di mattina, 2 di pomeriggio, 3 di notte. I turni PS segnati
+                «altro osp.» (in tabellone con l'asterisco, es. 3*) non lo affiancano mai. Per chi li fa valgono
+                come sempre: punti, riposo dopo la notte, conteggio notti.
+              </div>
+              <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
+                <thead><tr>
+                  <th style={{...LBL,textAlign:"left",padding:"4px 14px 4px 0"}}>Codice</th>
+                  <th style={{...LBL,padding:"4px 10px"}}>Ordinario</th>
+                  <th style={{...LBL,padding:"4px 10px"}}>ALPI (sottolineato)</th>
+                  <th style={{...LBL,padding:"4px 10px"}}>Altro ospedale</th>
+                </tr></thead>
+                <tbody>
+                  {([["1","mattina"],["2","pomeriggio"],["3","notte"]] as const).map(([k,lbl])=>(
+                    <tr key={k}>
+                      <td style={{...LBL,color:"#e2eeff",padding:"4px 14px 4px 0"}}><b>{k}</b> {lbl}</td>
+                      {(["ord","alpi"] as const).map(c=>{
+                        const on = regole.psAff[k][c];
+                        return (
+                          <td key={c} style={{padding:"4px 10px",textAlign:"center"}}>
+                            <button onClick={()=>updRegole({...regole,psAff:{...regole.psAff,[k]:{...regole.psAff[k],[c]:!on}}})}
+                              style={{background:on?"#052e16":"#1a0606",color:on?"#34d399":"#f87171",
+                                border:`1px solid ${on?"#059669":"#7f1d1d"}`,borderRadius:"5px",padding:"3px 10px",
+                                cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace",minWidth:"78px"}}>
+                              {on?"valido":"non valido"}
+                            </button>
+                          </td>
+                        );
+                      })}
+                      <td style={{...LBL,padding:"4px 10px",textAlign:"center",color:"#f87171"}}>mai</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+
             <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>LIMITI PER MEDICO</div>
               {limiti.map(([k,lbl,hint])=>(

@@ -118,14 +118,20 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
     // (misurato a parte: non è una violazione dura, vedi `sforo` in metriche)
   }
   // ── MDC mai solo in turno (automatico)
-  const COMP = { M:["M","A","1"], P:["P","2","Ap"], N:["N","3"] } as const;
+  // Compagni validi, scritti QUI per conto proprio (v0.3.45): reparto sempre;
+  // PS 1/2/3 secondo psAff (ordinario/ALPI), mai se in altro ospedale.
+  const PSC = { M:"1", P:"2", N:"3" } as const;
+  const REPC = { M:["M","A"], P:["P","Ap"], N:["N"] } as const;
+  const valido = (x:{tipo:string;sott?:boolean;est?:boolean}, f:"M"|"P"|"N") =>
+    (REPC[f] as readonly string[]).includes(x.tipo) ||
+    (x.tipo===PSC[f] && !x.est && (x.sott ? (R.psAff?.[PSC[f]]?.alpi ?? true) : (R.psAff?.[PSC[f]]?.ord ?? true)));
   for(const m of medici){
     if(m.stato!=="MDC") continue;
     for(let g=1;g<=nd;g++) for(const s of cell(m.id,g)){
       if(s.man) continue;
       const f = isM(s.tipo)?"M":isP(s.tipo)?"P":isN(s.tipo)?"N":null;
       if(!f) continue;
-      if(!medici.some(a=>a.id!==m.id && cell(a.id,g).some(x=>(COMP[f] as readonly string[]).includes(x.tipo))))
+      if(!medici.some(a=>a.id!==m.id && cell(a.id,g).some(x=>valido(x as any, f))))
         V.push(`${nome(m)}(MDC): solo in turno ${f} g${g}`);
     }
   }

@@ -8,7 +8,9 @@ import { Badge } from "./Badge";
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
 // Editor dei turni MANUALI di una cella (medico, giorno). I turni automatici
 // esistenti vengono preservati al salvataggio.
-type Sel = { tipo:string; sott:boolean; amb?:string };
+type Sel = { tipo:string; sott:boolean; amb?:string; est?:boolean };
+// Turni PS che si possono svolgere in altro ospedale (v0.3.45).
+const PS_EST = ["1","2","3"];
 
 export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, onSalva, onClose }: {
   medico: Medico | undefined;
@@ -21,7 +23,7 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
   onClose: () => void;
 }){
   const [sel,setSel] = useState<Sel[]>(
-    esistenti.filter(s=>s.man).map(s=>({tipo:s.tipo,sott:!!s.sott,...(isAmbT(s.tipo)?{amb:ambIdDi(s)}:{})}))
+    esistenti.filter(s=>s.man).map(s=>({tipo:s.tipo,sott:!!s.sott,...(isAmbT(s.tipo)?{amb:ambIdDi(s)}:{}),...(s.est?{est:true}:{})}))
   );
   // Stesso turno? Per A/Ap conta anche l'ambulatorio.
   const eq = (s:Sel, tipo:string, amb?:string) => s.tipo===tipo && (!isAmbT(tipo) || ambIdDi(s)===amb);
@@ -55,11 +57,12 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
     return next;
   });
   const togS = (tipo:string) => setSel(p=>p.map(s=>s.tipo===tipo?{...s,sott:!s.sott}:s));
+  const togE = (tipo:string) => setSel(p=>p.map(s=>s.tipo===tipo?{...s,est:!s.est}:s));
   const salva = () => {
     // I turni automatici restano, salvo quelli nella stessa fascia di un'A/Ap
     // manuale appena scelta (il medico non può fare due ambulatori insieme).
     const auto = esistenti.filter(s=>!s.man && !(isAmbT(s.tipo) && sel.some(x=>x.tipo===s.tipo)));
-    onSalva([...sel.map(s=>({tipo:s.tipo,sott:s.sott,man:true,...(s.amb?{amb:s.amb}:{})})),...auto]);
+    onSalva([...sel.map(s=>({tipo:s.tipo,sott:s.sott,man:true,...(s.amb?{amb:s.amb}:{}),...(s.est&&PS_EST.includes(s.tipo)?{est:true}:{})})),...auto]);
     onClose();
   };
   const svuota = () => { onSalva([]); onClose(); };
@@ -95,6 +98,14 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
                     border:"1px solid #1e3a5f",borderRadius:"3px",fontSize:"8px",
                     padding:"1px 4px",cursor:"pointer",textDecoration:"underline",fontFamily:"monospace"
                   }}>u</button>
+                )}
+                {s&&PS_EST.includes(tipo)&&(
+                  <button onClick={()=>togE(tipo)} title="Turno PS svolto in altro ospedale: non affianca l'MDC"
+                    style={{
+                    background:s.est?"#3b2a06":"transparent",color:s.est?"#fbbf24":"#2d5a8a",
+                    border:"1px solid #1e3a5f",borderRadius:"3px",fontSize:"8px",
+                    padding:"1px 4px",cursor:"pointer",fontFamily:"monospace"
+                  }}>altro osp.</button>
                 )}
               </div>
             );
