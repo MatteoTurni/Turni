@@ -5,7 +5,7 @@
 - Nella finestra della cella, per i turni PS **1, 2, 3**, c'è il pulsante
   **«altro osp.»**: il turno è svolto in un altro ospedale. In tabellone ed
   Excel la sigla ha l'asterisco (es. `3*`, sottolineato se ALPI), senza
-  legenda. Per chi lo fa vale come sempre: punti (ALPI 0), riposo dopo la
+  legenda nell'Excel (nel tabellone dell'app sì). Per chi lo fa vale come sempre: punti (ALPI 0), riposo dopo la
   notte, conteggio notti.
 - Regole → **Turni PS e affiancamento MDC**: per ogni codice (1 mattina,
   2 pomeriggio, 3 notte) si sceglie se il turno ordinario e quello ALPI

@@ -785,6 +785,9 @@ export default function App(){
                 <span style={{color:"#4b7aad",fontSize:"8px"}}>{a.nome} (matt./pom.)</span>
               </div>
             ))}
+            <div style={{display:"flex",alignItems:"center",gap:"3px"}}>
+              <Badge tipo="3" man lbl="3*"/><span style={{color:"#4b7aad",fontSize:"8px"}}>PS in altro ospedale</span>
+            </div>
             <span style={{color:"#3d5878",fontSize:"8px",marginLeft:"8px"}}>pieno=manuale · semitrasparente=auto</span>
           </div>
         </div>
