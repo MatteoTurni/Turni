@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, Regole } from "./types";
 import { DF, dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, SPEC, escludeFascia } from "./turni";
+import { isMatt, isPom, isNot, SPEC, escludeFascia, compagnoMDC } from "./turni";
 import { getRegole } from "./regole";
 import { calcolaBilancio } from "./bilancio";
 
@@ -62,8 +62,7 @@ export function diagnosiStatica(
   // Compagni manuali per la regola MDC (stesse liste di mdcOk in ctx).
   const compagnoMan = (g:number, f:"M"|"P"|"N", escl:number) => medici.some(m=>{
     if(m.id===escl) return false;
-    const COMP = f==="M"?["M","A","1"]:f==="P"?["P","2","Ap"]:["N","3"];
-    return man(m.id,g).some(s=>COMP.includes(s.tipo));
+    return man(m.id,g).some(s=>compagnoMDC(s,f,REG.psAff));
   });
 
   // Opzioni statiche di UN medico in UN giorno (capacità sovrastimata: la

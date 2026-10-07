@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
+import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
@@ -479,12 +479,9 @@ export function makeCtx(
   // Un medico MDC (Decreto Calabria) non può restare SOLO in turno.
   const mdcOk = (m:Medico,g:number,f:string) => {
     if(m.stato!=="MDC") return true;
-    const COMP = f==="M" ? ["M","A","1"]
-               : f==="P" ? ["P","2","Ap"]
-               : f==="N" ? ["N","3"] : [];
     for(const a of medici){
       if(a.id===m.id) continue;
-      if(gt(a.id,g).some(s=>COMP.includes(s.tipo))) return true;
+      if(gt(a.id,g).some(s=>compagnoMDC(s,f,REG.psAff))) return true;
     }
     return false;
   };
@@ -549,9 +546,8 @@ export function makeCtx(
     // GIÀ un turno compatibile inserito a mano. Solo turni MANUALI: così la
     // capacità è IDENTICA per tutti i tabelloni a confronto, che è ciò che
     // rende la forchetta un metro comparabile.
-    const COMP:Record<string,string[]> = { M:["M","A","1"], P:["P","2","Ap"], N:["N","3"] };
     const affMan = (id:number, g:number, f:"M"|"P"|"N") =>
-      medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMP[f].includes(s.tipo)));
+      medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && compagnoMDC(s,f,REG.psAff)));
     // FIX CAPACITÀ FANTASMA M/P (v0.3.29) — stessa classe del fix Notte 0.3.27:
     // il "compagno" manuale che rende ammissibile lo slot per l'MDC può
     // SATURARE lui stesso il fabbisogno massimo della fascia (festivi 1/1):
@@ -594,9 +590,8 @@ export function makeCtx(
   //    giorni): si sbaglia dalla parte prudente, mai vincolando troppo.
   //  · wkPavimento(id) = PAVIMENTO: i punti che ha già per TURNI MANUALI e che
   //    nessuna generazione può togliergli.
-  const COMPF:Record<string,string[]> = { M:["M","A","1"], P:["P","2","Ap"], N:["N","3"] };
   const affManC = (id:number, g:number, f:"M"|"P"|"N") =>
-    medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && COMPF[f].includes(s.tipo)));
+    medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && compagnoMDC(s,f,REG.psAff)));
   const wkCapacita = (m:Medico) => {
     if(m.stato==="ML" || m.obiettivo<=0) return 0;
     const mdcOnly = m.stato==="MDC";

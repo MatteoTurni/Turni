@@ -1,4 +1,19 @@
-# TurniMedicina 0.3.44
+# TurniMedicina 0.3.45
+
+## Novità 0.3.45 — turni PS in altro ospedale e affiancamento dell'MDC
+
+- Nella finestra della cella, per i turni PS **1, 2, 3**, c'è il pulsante
+  **«altro osp.»**: il turno è svolto in un altro ospedale. In tabellone ed
+  Excel la sigla ha l'asterisco (es. `3*`, sottolineato se ALPI), senza
+  legenda nell'Excel (nel tabellone dell'app sì). Per chi lo fa vale come sempre: punti (ALPI 0), riposo dopo la
+  notte, conteggio notti.
+- Regole → **Turni PS e affiancamento MDC**: per ogni codice (1 mattina,
+  2 pomeriggio, 3 notte) si sceglie se il turno ordinario e quello ALPI
+  (sottolineato) di un collega valgono come compagno dell'MDC. I turni in
+  altro ospedale non lo sono mai. Default: tutti validi, come prima.
+- Una sola regola (`compagnoMDC`) usata da generazione, capacità dei weekend
+  e diagnosi; i validatori delle simulazioni la riscrivono per conto proprio.
+
 
 ## Novità 0.3.44 — scheda Reparto, esporta/importa configurazione
 

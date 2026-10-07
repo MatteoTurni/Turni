@@ -1,4 +1,4 @@
-import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio, OccAmb } from "./types";
+import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio, OccAmb, AffiancamentoPS } from "./types";
 
 // ─── UTILITY TURNI ────────────────────────────────────────────────────────────
 // I turni associati (M+P oppure A+P) NON sono un tipo a sé: sono sempre
@@ -70,6 +70,23 @@ export function ambConfigurato(a: Ambulatorio): boolean {
   if(Object.keys(a.giorni||{}).length) return true;
   return Object.values(a.settimane||{}).some(s=>s && Object.values(s).some(Boolean));
 }
+// ─── COMPAGNO DELL'MDC (v0.3.45) ──────────────────────────────────────────────
+// UNICA definizione di "turno che affianca l'MDC" nella fascia f, usata da
+// motore, capacità weekend e diagnosi. Turni di reparto (M/A, P/Ap, N): sempre.
+// Turni PS (1 mattina, 2 pomeriggio, 3 notte): secondo la tabella psAff delle
+// regole, distinguendo ordinario e ALPI (sottolineato); in altro ospedale mai.
+const REPARTO_F: Record<string, string[]> = { M:["M","A"], P:["P","Ap"], N:["N"] };
+const PS_F: Record<string, "1"|"2"|"3"> = { M:"1", P:"2", N:"3" };
+export function compagnoMDC(s: Turno, f: string, psAff?: AffiancamentoPS): boolean {
+  if(REPARTO_F[f]?.includes(s.tipo)) return true;
+  const ps = PS_F[f];
+  if(!ps || s.tipo!==ps) return false;
+  if(s.est) return false;
+  const r = psAff?.[ps];
+  if(!r) return true;                                  // senza regole: come prima (sempre valido)
+  return s.sott ? r.alpi : r.ord;
+}
+
 export function slotAmbGiorno(ambulatori: Ambulatorio[], dw: number, g: number, ndim: number): SlotAmb[] {
   const out: SlotAmb[] = [];
   for(const a of ambulatori){
@@ -82,6 +99,7 @@ export function slotAmbGiorno(ambulatori: Ambulatorio[], dw: number, g: number, 
 /** Etichetta di un turno per tabellone/Excel: per A/Ap la sigla del suo
  *  ambulatorio (pomeriggio: sigla + "p"); ambulatorio sconosciuto → A/Ap. */
 export function etichettaTurno(s: Turno, ambulatori: Ambulatorio[]): string {
+  if(s.est && ["1","2","3"].includes(s.tipo)) return s.tipo + "*";   // PS in altro ospedale (v0.3.45)
   if(!isAmbT(s.tipo)) return s.tipo;
   const a = ambulatori.find(x=>x.id===ambIdDi(s));
   if(!a) return s.tipo;
@@ -145,7 +163,7 @@ export function cloneTDeep(src: TurniMese): TurniMese {
     for(const g in gsrc){
       const c = gsrc[g];
       if(!c || !Array.isArray(c.t)) continue;
-      gi[g] = { t: c.t.map(s=>({ tipo:s.tipo, sott:!!s.sott, man:!!s.man, ...(s.amb ? { amb:s.amb } : {}) })) };
+      gi[g] = { t: c.t.map(s=>({ tipo:s.tipo, sott:!!s.sott, man:!!s.man, ...(s.amb ? { amb:s.amb } : {}), ...(s.est ? { est:true } : {}) })) };
     }
     out[id] = gi;
   }
