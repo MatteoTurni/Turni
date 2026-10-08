@@ -127,6 +127,10 @@ export interface Regole {
   reparto: Reparto;
   /** Turni PS che valgono come compagno dell'MDC (v0.3.45). */
   psAff: AffiancamentoPS;
+  /** true (default) = un turno PS 1/2 in ALTRO OSPEDALE occupa tutta la
+   *  giornata: nessun turno di reparto o ambulatorio automatico quel giorno
+   *  (v0.3.46). false = come un PS in sede: l'altra fascia resta assegnabile. */
+  psEstGiornata: boolean;
 }
 
 /** Una cella di copertura scoperta (giorno + fascia). */

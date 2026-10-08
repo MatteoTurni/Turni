@@ -72,6 +72,8 @@ export function diagnosiStatica(
   const opzioni = (m:Medico, g:number): Opz[] => {
     if(m.stato==="MPS") return [];                         // MPS: mai in generazione
     if(haX(m.id,g) || assenza(m.id,g)) return [];
+    // PS 1/2 in altro ospedale che occupa la giornata (v0.3.46).
+    if(REG.psEstGiornata && man(m.id,g).some(s=>s.est && (s.tipo==="1"||s.tipo==="2"))) return [];
     if(manNotte(m.id,g)) return [];                        // notte manuale oggi: giornata piena
     if(manNotte(m.id,g-1)) return [];                      // g+1 di una notte immovibile: riposo
     // g+2 di una notte immovibile: M vietata, SALVO regola mattinaDopoNotte

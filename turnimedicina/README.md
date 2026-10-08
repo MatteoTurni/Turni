@@ -1,4 +1,14 @@
-# TurniMedicina 0.3.45
+# TurniMedicina 0.3.46
+
+## Novità 0.3.46 — il PS in altro ospedale occupa la giornata
+
+Nuova spunta in Regole → Turni PS e affiancamento MDC: **«Un turno PS in
+altro ospedale occupa tutta la giornata»** (attiva di default). Con un 1*
+(mattina) o un 2* (pomeriggio) il medico non riceve turni automatici di
+reparto né ambulatori in quel giorno; senza spunta l'altra fascia resta
+assegnabile, come per un PS in sede. La regola vale in ogni fase (guardia
+di `add`, `canR`, ambulatori, diagnosi) e nei validatori delle simulazioni.
+
 
 ## Novità 0.3.45 — turni PS in altro ospedale e affiancamento dell'MDC
 

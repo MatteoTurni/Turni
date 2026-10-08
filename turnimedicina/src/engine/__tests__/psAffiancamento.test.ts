@@ -4,7 +4,7 @@ import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../regole";
 import { setSalt, setAmbRotStart, setPrevContext } from "../state";
 import { makeCtx } from "../ctx";
 import { compagnoMDC, etichettaTurno, vt, cloneTDeep } from "../turni";
-import { generaMigliorTentativo } from "../genera";
+import { generaMigliorTentativo, completaObiettivi } from "../genera";
 import { dimOf } from "../date";
 import { costruisciWorkbook } from "../../export/excel";
 
@@ -122,6 +122,47 @@ describe("salvataggi e generazione", () => {
       const altri = medici.filter(m => m.id !== 7).some(m => (r.turni[m.id]?.[g]?.t || []).some(s =>
         s.tipo === "N" || (s.tipo === "3" && !s.est && !s.sott)));
       expect(altri, `MDC di notte il ${g} senza compagno valido`).toBe(true);
+    }
+  });
+});
+
+// ── v0.3.46: PS in altro ospedale che occupa la giornata ─────────────────────
+describe("PS 1*/2* in altro ospedale: giornata occupata", () => {
+  const MR2: Medico = { id: 4, nome: "X. MR2", codice: "4", stato: "MR", obiettivo: 25, ambulatorio: true, ambulatori: ["A"] };
+  const casi: [string, Turno][] = [["1*", { tipo: "1", est: true }], ["2*", { tipo: "2", est: true }], ["2* ALPI", { tipo: "2", est: true, sott: true }]];
+  it("default (spunta attiva): nessun turno di reparto o ambulatorio nello stesso giorno", () => {
+    setRegole(dft());
+    for (const [, s] of casi) {
+      const c = makeCtx(2026, 9, 31, [MDC, MPS, MR2], { 4: { 13: { t: [{ ...s, man: true }] } } });
+      for (const f of ["M", "P", "ASS", "N"]) expect(c.canR(MR2, 13, f)).toBe(false);
+      c.add(4, 13, s.tipo === "1" ? "P" : "M");
+      expect(c.gt(4, 13).length).toBe(1);                             // la guardia di add rifiuta
+    }
+  });
+  it("spunta tolta: l'altra fascia torna assegnabile; un PS in sede la lascia sempre assegnabile", () => {
+    setRegole(mergeRegole({ ...dft(), psEstGiornata: false }));
+    const c = makeCtx(2026, 9, 31, [MDC, MPS, MR2], { 4: { 13: { t: [{ tipo: "1", est: true, man: true }] } } });
+    expect(c.canR(MR2, 13, "P")).toBe(true);
+    setRegole(dft());
+    const c2 = makeCtx(2026, 9, 31, [MDC, MPS, MR2], { 4: { 13: { t: [{ tipo: "1", man: true }] } } });
+    expect(c2.canR(MR2, 13, "P")).toBe(true);
+  });
+  it("salvataggi vecchi: spunta attiva", () => {
+    const { psEstGiornata: _x, ...vecchie } = dft();
+    expect(mergeRegole(vecchie).psEstGiornata).toBe(true);
+  });
+  it("generazione + completa: mai turni automatici nei giorni di 1*/2*", () => {
+    const medici: Medico[] = [1, 2, 3, 4, 5, 6].map(i => ({ id: i, nome: "D" + i, codice: "" + i, stato: "MR", obiettivo: 27, ambulatorio: true, ambulatori: ["A"] } as Medico));
+    medici.push({ id: 7, nome: "MDC", codice: "7", stato: "MDC", obiettivo: 21, ambulatorio: false });
+    const ex: TurniMese = {};
+    for (const [id, g, tipo] of [[1, 6, "1"], [1, 13, "2"], [2, 6, "2"], [3, 20, "1"], [4, 27, "1"], [5, 8, "2"]] as const)
+      ((ex[id] ||= {})[g] = { t: [{ tipo, est: true, man: true }] });
+    setRegole(dft());
+    const r = generaMigliorTentativo(2026, 9, 31, medici, ex, 2500);
+    const T = completaObiettivi(2026, 9, 31, medici, r.turni).turni;
+    for (const id in ex) for (const g in ex[id]) {
+      const auto = (T[id]?.[g]?.t || []).filter(s => !s.man);
+      expect(auto, `medico ${id} giorno ${g}`).toEqual([]);
     }
   });
 });

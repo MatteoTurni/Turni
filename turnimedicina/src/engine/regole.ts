@@ -36,6 +36,8 @@ export const REGOLE_DEFAULT: Regole = {
   },
   // Turni PS validi per affiancare l'MDC (v0.3.45): tutti, come prima.
   psAff: { "1":{ ord:true, alpi:true }, "2":{ ord:true, alpi:true }, "3":{ ord:true, alpi:true } },
+  // PS 1/2 in altro ospedale: occupa tutta la giornata (v0.3.46).
+  psEstGiornata: true,
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -63,7 +65,7 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
   const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
-  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), notteLiberoNotte: nLN, riposoEsteso: rE,
+  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},

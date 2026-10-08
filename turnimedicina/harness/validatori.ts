@@ -117,6 +117,13 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
     // ── obiettivo: sforo massimo +1 (una notte vale 2) sui soli automatici
     // (misurato a parte: non è una violazione dura, vedi `sforo` in metriche)
   }
+  // ── PS 1/2 in altro ospedale (v0.3.46): con psEstGiornata nessun turno
+  //    automatico di reparto/ambulatorio nello stesso giorno.
+  if(R.psEstGiornata ?? true) for(const m of medici) for(let g=1;g<=nd;g++){
+    const c = cell(m.id,g);
+    if(c.some((s:any)=>s.est && (s.tipo==="1"||s.tipo==="2")) && c.some(s=>!s.man && ["M","P","N","A","Ap"].includes(s.tipo)))
+      V.push(`${nome(m)}: turno automatico nel giorno di un PS in altro ospedale g${g}`);
+  }
   // ── MDC mai solo in turno (automatico)
   // Compagni validi, scritti QUI per conto proprio (v0.3.45): reparto sempre;
   // PS 1/2/3 secondo psAff (ordinario/ALPI), mai se in altro ospedale.
