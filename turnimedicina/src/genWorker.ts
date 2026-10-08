@@ -18,6 +18,7 @@
 // Prima girava sul thread principale e nei mesi difficili (riparazione,
 // variante d'ultima chance, diagnosi causale) congelava la pagina per 4-7 s.
 import { cercaMigliorTentativo, rifinituraFinale, rifinisciCandidati } from "./engine/genera";
+import { eseguiProva, type SpecProva } from "./engine/diagnosiWeekend";
 import type { MisuraTab } from "./engine/genera";
 import { setRegole } from "./engine/regole";
 import { ENG } from "./engine/state";
@@ -32,6 +33,18 @@ export interface MsgRifinisci {
   ambRot:number;
   bestT:TurniMese;
   cand:{ turni:TurniMese; m:MisuraTab }[];
+}
+
+/** Terzo compito (v0.3.47): una PROVA della diagnosi dei weekend liberi.
+ *  { tipo:"prova", ...contesto, spec, ms, job } → { tipo:"provato", job, deficit, buchi } */
+export interface MsgProva {
+  tipo:"prova";
+  anno:number; mese:number; ndim:number;
+  medici:Medico[]; turni:TurniMese;
+  regole:Regole;
+  prev: null | { ndim:number; T:TurniMese };
+  ambRot:number;
+  spec:SpecProva; ms:number; job:number;
 }
 
 export interface MsgAvvio {
@@ -49,6 +62,19 @@ export interface MsgAvvio {
 const ws = self as unknown as { postMessage(m:unknown):void; onmessage: ((e:MessageEvent)=>void)|null };
 
 ws.onmessage = (e: MessageEvent) => {
+  if((e.data as { tipo?:string })?.tipo === "prova"){
+    const q = e.data as MsgProva;
+    try{
+      setRegole(q.regole);
+      ENG.PREV = q.prev ?? null;
+      ENG.AMB_ROT_START = q.ambRot ?? 0;
+      const r = eseguiProva(q.anno, q.mese, q.ndim, q.medici, q.turni, q.spec, q.ms);
+      ws.postMessage({ tipo:"provato", job:q.job, ...r });
+    }catch(err){
+      ws.postMessage({ tipo:"errore", job:q.job, msg:String((err as Error)?.message ?? err) });
+    }
+    return;
+  }
   if((e.data as { tipo?:string })?.tipo === "rifinisci"){
     const q = e.data as MsgRifinisci;
     try{
