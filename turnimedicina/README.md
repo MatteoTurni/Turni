@@ -1,4 +1,27 @@
-# TurniMedicina 0.3.46
+# TurniMedicina 0.3.47
+
+## Novità 0.3.47 — diagnosi delle notti e dei weekend liberi
+
+Il pannello di diagnosi (ora «Diagnosi») spiega anche gli avvisi sui weekend
+liberi, non solo i buchi di copertura:
+- **Notti del mese** (dai soli turni manuali): notti di reparto da coprire,
+  quante la squadra ne può fare al massimo (tetto notti meno le notti già
+  inserite — N, 3, 3* —, punti rimasti all'obiettivo, giorni liberi), margine
+  e, se il mese è tirato, chi deve arrivare almeno a quante notti.
+- **Weekend liberi mancanti**: per ogni medico sotto obiettivo, i weekend che
+  lavora (turni manuali segnalati) e, per ogni turno automatico, perché
+  nessun collega poteva prenderlo (assente, al massimo notti, riposo dopo la
+  notte, già in turno, obiettivo raggiunto, perderebbe un weekend libero…).
+- **Cosa servirebbe**: dopo una generazione con avvisi sui weekend, il mese
+  viene rigenerato in background con una modifica alla volta (massimo notti +1,
+  consecutivi +1, senza un turno manuale: prima le notti PS/manuali, poi i
+  turni manuali nei weekend di chi è sotto obiettivo), ogni prova ripetuta, in
+  parallelo nei worker (~10–20 s). Risultato: ✓ cosa elimina l'avviso, ◐ cosa
+  lo riduce. Solo indicazioni: il tabellone non viene toccato.
+
+Esempio (settembre 2026 con un 3* ALPI di Ciampa il 16): la diagnosi indica
+«Senza 3* (ALPI) di Ciampa mer 16: nessun weekend libero mancante».
+
 
 ## Novità 0.3.46 — il PS in altro ospedale occupa la giornata
 
