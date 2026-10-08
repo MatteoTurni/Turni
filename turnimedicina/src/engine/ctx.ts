@@ -160,6 +160,10 @@ export function makeCtx(
     }
   };
 
+  // PS IN ALTRO OSPEDALE (v0.3.46): con la regola attiva (default) un 1* o un
+  // 2* occupa tutta la giornata del medico — niente reparto né ambulatorio.
+  const psEstOccupa = (id:number,g:number) =>
+    !!REG.psEstGiornata && gt(id,g).some(s=>s.est && (s.tipo==="1"||s.tipo==="2"));
   const add = (id:number,g:number,tipo:string,man=false,amb?:string) => {
     const c=gt(id,g);
     if(c.some(s=>s.tipo===tipo)) return;
@@ -167,6 +171,8 @@ export function makeCtx(
     // Garantiscono che NESSUNA fase — base, ultima chance o emergenza — possa
     // produrre un tabellone che viola i vincoli duri.
     if(!man){
+      // 00) PS in altro ospedale che occupa la giornata (v0.3.46).
+      if(!SPEC.includes(tipo) && psEstOccupa(id,g)) return;
       // 0) ESCLUSIONI (v0.3.30): X totale o Xm/Xp/Xn sulla fascia del turno.
       //    Guardia di sicurezza a specchio delle altre: i pool passano già da
       //    canR, questo chiude anche le aggiunte dirette delle fasi.
@@ -447,6 +453,7 @@ export function makeCtx(
 
   const canR = (m:Medico,g:number,f:string) => {
     if(m.stato==="MPS") return false;
+    if(psEstOccupa(m.id,g)) return false;
     // ESCLUSIONI: per l'associato basta che sia esclusa una delle due fasce.
     if(f==="ASS" ? esclusoAss(m.id,g) : escluso(m.id,g,f as "M"|"P"|"N")) return false;
     if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
@@ -792,7 +799,7 @@ export function makeCtx(
   return {
     ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
     dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
-    canLav, canMatt, canPom, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
+    canLav, canMatt, canPom, psEstOccupa, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,

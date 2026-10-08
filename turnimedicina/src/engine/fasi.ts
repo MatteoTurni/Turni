@@ -525,9 +525,10 @@ export function tappaBuchi(ctx: Ctx): number {
 // fonte per la fase ambulatorio, la riparazione dei buchi e la diagnosi
 // causale (v0.3.37): prima erano tre copie che potevano divergere.
 export function ambAssegnabile(ctx: Ctx, m: Medico, g: number, sl: SlotAmb): boolean {
-  const { gt, abilitatoAmb, escluso, haN, canConsec, canMatt, canPom, canAssDist } = ctx;
+  const { gt, abilitatoAmb, escluso, haN, canConsec, canMatt, canPom, canAssDist, psEstOccupa } = ctx;
   const cod = sl.cod, fascia: "M"|"P" = cod==="A" ? "M" : "P";
   if(m.stato==="MPS") return false;
+  if(psEstOccupa(m.id,g)) return false;                    // PS in altro ospedale: giornata occupata (v0.3.46)
   if(!abilitatoAmb(m, sl.amb)) return false;              // solo gli abilitati a QUESTO ambulatorio
   if(fascia==="P" && m.stato==="ML") return false;         // l'ML non fa pomeriggi: niente Ap
   if(escluso(m.id,g,fascia)) return false;                // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)

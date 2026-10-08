@@ -1001,6 +1001,17 @@ export default function App(){
                   ))}
                 </tbody>
               </table>
+              <label style={{display:"flex",gap:"8px",alignItems:"flex-start",marginTop:"12px",cursor:"pointer"}}>
+                <input type="checkbox" checked={regole.psEstGiornata}
+                  onChange={e=>updRegole({...regole,psEstGiornata:e.target.checked})} style={{marginTop:"2px"}}/>
+                <span>
+                  <span style={{...LBL,color:"#e2eeff",fontWeight:700}}>Un turno PS in altro ospedale occupa tutta la giornata</span>
+                  <div style={{...LBL,fontSize:"9px"}}>
+                    Con 1* (mattina) o 2* (pomeriggio) il medico non riceve turni di reparto né ambulatori in quel giorno.
+                    Senza spunta l'altra fascia resta assegnabile, come per un PS in sede.
+                  </div>
+                </span>
+              </label>
             </details>
 
             <div style={BOX}>
