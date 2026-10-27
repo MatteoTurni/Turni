@@ -134,7 +134,7 @@ function violazioni(sc: ScenCfg, T: TurniMese): string[] {
     for(let g=1;g<=ndim;g++) for(const s of cell(T,m.id,g)){
       const f = isMatt(s.tipo)?"M":isPom(s.tipo)?"P":isNot(s.tipo)?"N":null;
       if(!f || s.man) continue;
-      const comp = medici.some(a=>a.id!==m.id && cell(T,a.id,g).some(x=>COMP[f].includes(x.tipo)));
+      const comp = medici.some(a=>a.id!==m.id && a.stato!=="MDC" && cell(T,a.id,g).some(x=>COMP[f].includes(x.tipo)));
       if(!comp) V.push(`${m.nome}(MDC): solo in turno ${f} g${g}`);
     }
   }

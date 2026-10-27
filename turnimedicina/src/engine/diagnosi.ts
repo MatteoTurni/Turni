@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, Regole } from "./types";
 import { DF, dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, SPEC, escludeFascia, compagnoMDC } from "./turni";
+import { isMatt, isPom, isNot, SPEC, escludeFascia, compagnoMDC, affiancaMDC } from "./turni";
 import { getRegole } from "./regole";
 import { calcolaBilancio } from "./bilancio";
 
@@ -61,7 +61,7 @@ export function diagnosiStatica(
     medici.reduce((n,m)=>n+(man(m.id,g).some(s=>s.tipo===f)?1:0),0);
   // Compagni manuali per la regola MDC (stesse liste di mdcOk in ctx).
   const compagnoMan = (g:number, f:"M"|"P"|"N", escl:number) => medici.some(m=>{
-    if(m.id===escl) return false;
+    if(m.id===escl || !affiancaMDC(m)) return false;          // un altro MDC non affianca (v0.3.48)
     return man(m.id,g).some(s=>compagnoMDC(s,f,REG.psAff));
   });
 

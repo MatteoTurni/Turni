@@ -16,7 +16,7 @@ import type { Medico, TurniMese, Regole, Turno } from "./types";
 import { DF, dowOf } from "./date";
 import { getRegole, setRegole } from "./regole";
 import { makeCtx } from "./ctx";
-import { compagnoMDC, isNot, SPEC, etichettaTurno } from "./turni";
+import { compagnoMDC, affiancaMDC, isNot, SPEC, etichettaTurno } from "./turni";
 import { generaMigliorTentativo, misuraTabellone } from "./genera";
 
 type Ctx = ReturnType<typeof makeCtx>;
@@ -59,7 +59,7 @@ export function bilancioNotti(anno:number, mese:number, ndim:number, medici:Medi
       if(sh.some(s=>isNot(s.tipo))) manuali.push(`${etichettaTurno(sh.find(s=>isNot(s.tipo))!, [])}${sh.find(s=>isNot(s.tipo))!.sott?" (ALPI)":""} il ${g}`);
       if(sh.length) continue;                                         // giorno già occupato (anche assenze ed esclusioni)
       if(notteMan(m.id,g-1)) continue;                                // riposo dopo una notte manuale
-      if(m.stato==="MDC" && !medici.some(a=>a.id!==m.id && man(a.id,g).some(s=>compagnoMDC(s,"N",REG.psAff)))) continue;
+      if(m.stato==="MDC" && !medici.some(a=>a.id!==m.id && affiancaMDC(a) && man(a.id,g).some(s=>compagnoMDC(s,"N",REG.psAff)))) continue;
       giorni++;
     }
     const notteMan_ = manuali.length;

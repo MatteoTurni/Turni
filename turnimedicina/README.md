@@ -1,4 +1,14 @@
-# TurniMedicina 0.3.47
+# TurniMedicina 0.3.48
+
+## Novità 0.3.48 — un MDC non affianca un altro MDC
+
+Correzione: la regola «MDC mai solo in turno» guardava solo il turno del
+collega (M, P, N, 1, 2, 3…), non chi lo faceva. Così un MDC con una notte o un
+3 in PS rendeva assegnabile la notte a un altro MDC, come se lo affiancasse.
+Ora un Decreto Calabria non vale mai come affiancamento per un altro Decreto
+Calabria: la regola unica `affiancaMDC` è usata da generazione, capacità dei
+weekend, diagnosi e validatori delle simulazioni.
+
 
 ## Novità 0.3.47 — diagnosi delle notti e dei weekend liberi
 

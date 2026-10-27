@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
+import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, affiancaMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
@@ -487,7 +487,7 @@ export function makeCtx(
   const mdcOk = (m:Medico,g:number,f:string) => {
     if(m.stato!=="MDC") return true;
     for(const a of medici){
-      if(a.id===m.id) continue;
+      if(a.id===m.id || !affiancaMDC(a)) continue;           // un altro MDC non affianca (v0.3.48)
       if(gt(a.id,g).some(s=>compagnoMDC(s,f,REG.psAff))) return true;
     }
     return false;
@@ -554,7 +554,7 @@ export function makeCtx(
     // capacità è IDENTICA per tutti i tabelloni a confronto, che è ciò che
     // rende la forchetta un metro comparabile.
     const affMan = (id:number, g:number, f:"M"|"P"|"N") =>
-      medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && compagnoMDC(s,f,REG.psAff)));
+      medici.some(a => a.id!==id && affiancaMDC(a) && gt(a.id,g).some(s => s.man && compagnoMDC(s,f,REG.psAff)));
     // FIX CAPACITÀ FANTASMA M/P (v0.3.29) — stessa classe del fix Notte 0.3.27:
     // il "compagno" manuale che rende ammissibile lo slot per l'MDC può
     // SATURARE lui stesso il fabbisogno massimo della fascia (festivi 1/1):
@@ -598,7 +598,7 @@ export function makeCtx(
   //  · wkPavimento(id) = PAVIMENTO: i punti che ha già per TURNI MANUALI e che
   //    nessuna generazione può togliergli.
   const affManC = (id:number, g:number, f:"M"|"P"|"N") =>
-    medici.some(a => a.id!==id && gt(a.id,g).some(s => s.man && compagnoMDC(s,f,REG.psAff)));
+    medici.some(a => a.id!==id && affiancaMDC(a) && gt(a.id,g).some(s => s.man && compagnoMDC(s,f,REG.psAff)));
   const wkCapacita = (m:Medico) => {
     if(m.stato==="ML" || m.obiettivo<=0) return 0;
     const mdcOnly = m.stato==="MDC";

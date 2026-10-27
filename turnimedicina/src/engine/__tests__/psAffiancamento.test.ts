@@ -166,3 +166,37 @@ describe("PS 1*/2* in altro ospedale: giornata occupata", () => {
     }
   });
 });
+
+// ── v0.3.48: un MDC non affianca un altro MDC ────────────────────────────────
+describe("MDC: un altro MDC non vale come affiancamento", () => {
+  const MDC2: Medico = { id: 9, nome: "X. MDC2", codice: "9", stato: "MDC", obiettivo: 21, ambulatorio: false };
+  it("mdcOk: la notte o il 3 di un altro MDC non bastano; quelli di un MR o di un MPS sì", () => {
+    setRegole(dft());
+    for (const s of [{ tipo: "N" }, { tipo: "3" }, { tipo: "M" }]) {
+      const f = s.tipo === "M" ? "M" : "N";
+      const c = makeCtx(2026, 9, 31, [MDC, MDC2, MR, MPS], { 9: { 10: { t: [{ ...s, man: true }] } } });
+      expect(c.mdcOk(MDC, 10, f), `${s.tipo} di un MDC`).toBe(false);
+    }
+    const c2 = makeCtx(2026, 9, 31, [MDC, MDC2, MR, MPS], { 3: { 10: { t: [{ tipo: "N", man: true }] } }, 2: { 11: { t: [{ tipo: "3", man: true }] } } });
+    expect(c2.mdcOk(MDC, 10, "N")).toBe(true);                       // N di un MR
+    expect(c2.mdcOk(MDC, 11, "N")).toBe(true);                       // 3 di un MPS
+  });
+  it("generazione: nessun MDC in turno con un altro MDC come unico compagno", () => {
+    const medici: Medico[] = [1, 2, 3, 4, 5, 6].map(i => ({ id: i, nome: "D" + i, codice: "" + i, stato: "MR", obiettivo: 25, ambulatorio: false } as Medico));
+    medici.push({ id: 7, nome: "MDC A", codice: "7", stato: "MDC", obiettivo: 21, ambulatorio: false },
+                { id: 8, nome: "MDC B", codice: "8", stato: "MDC", obiettivo: 21, ambulatorio: false });
+    const ex: TurniMese = { 7: {} };
+    for (const g of [3, 9, 15, 21, 27]) ex[7][g] = { t: [{ tipo: "3", man: true }] };       // l'MDC A fa PS notte
+    for (const g of [6, 12, 18, 24]) ex[7][g] = { t: [{ tipo: "N", man: true }] };          // e notti in reparto
+    setRegole(dft());
+    const r = generaMigliorTentativo(2026, 9, 31, medici, ex, 2500);
+    const T = completaObiettivi(2026, 9, 31, medici, r.turni).turni;
+    const fascia = (t: string) => (["M", "A", "1"].includes(t) ? "M" : ["P", "Ap", "2"].includes(t) ? "P" : ["N", "3"].includes(t) ? "N" : null);
+    for (let g = 1; g <= 31; g++) for (const id of [7, 8]) for (const s of T[id]?.[g]?.t || []) {
+      if (s.man) continue;
+      const f = fascia(s.tipo); if (!f) continue;
+      const comp = medici.some(a => a.id !== id && a.stato !== "MDC" && (T[a.id]?.[g]?.t || []).some(x => fascia(x.tipo) === f && !x.est));
+      expect(comp, `MDC ${id} solo (o solo con l'altro MDC) in ${f} il ${g}`).toBe(true);
+    }
+  });
+});
