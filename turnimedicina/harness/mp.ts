@@ -12,7 +12,7 @@ const APPLICA = !!process.env.MP;   // applica riequilibraMP dopo "Completa obie
 let dSoft=0, dIso=0, nScambi=0, dS=0;
 const runs: any[] = JSON.parse(fs.readFileSync(file,"utf8"));
 const SC = new Map(scenari().map(s=>[s.nome,s]));
-const ASS = ["L","ANA","104","per11","X"];
+const ASS = ["L","ANA","104","per11","art37","X"];
 const agg: Record<string,{rM:number;rP:number;rMf:number;rPf:number;dev:number}[]> = {};
 for(const r of runs){
   const sc = SC.get(r.scen)!;

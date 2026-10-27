@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, Regole } from "./types";
 import { DF, dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, SPEC, escludeFascia, compagnoMDC, affiancaMDC } from "./turni";
+import { isMatt, isPom, isNot, SPEC, isLicenza, escludeFascia, compagnoMDC, affiancaMDC } from "./turni";
 import { getRegole } from "./regole";
 import { calcolaBilancio } from "./bilancio";
 
@@ -50,7 +50,7 @@ export function diagnosiStatica(
   // ESCLUSIONI PER FASCIA (v0.3.30): come in ctx, ma sui SOLI manuali (qui è
   // tutto manuale per definizione: X/Xm/Xp/Xn si inseriscono solo a mano).
   const esclF    = (id:number,g:number,f:"M"|"P"|"N") => man(id,g).some(s=>escludeFascia(s.tipo,f));
-  const assenza  = (id:number,g:number) => man(id,g).some(s=>["L","ANA","per11","104"].includes(s.tipo));
+  const assenza  = (id:number,g:number) => man(id,g).some(s=>isLicenza(s.tipo));
   // Notte manuale ai fini del riposo: come manNight in ctx, include il codice PS "3".
   const manNotte = (id:number,g:number) => g>=1 && man(id,g).some(s=>isNot(s.tipo));
   const manMside = (id:number,g:number) => man(id,g).some(s=>isMatt(s.tipo));   // M, A, 1

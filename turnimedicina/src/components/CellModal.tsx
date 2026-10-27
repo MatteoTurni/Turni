@@ -91,7 +91,7 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
                   border:`2px solid ${s?c.b:"#1e293b"}`,borderRadius:"6px",
                   padding:"5px 8px",fontFamily:"monospace",fontWeight:700,fontSize:"11px",
                   cursor:"pointer",minWidth:"38px",transition:"all .1s"
-                }}>{tipo==="per11"?"p11":tipo}</button>
+                }}>{tipo==="per11"?"p11":tipo==="art37"?"a37":tipo}</button>
                 {s&&TS.includes(tipo)&&(
                   <button onClick={()=>togS(tipo)} style={{
                     background:s.sott?"#1e3a5f":"transparent",color:s.sott?"#93c5fd":"#2d5a8a",

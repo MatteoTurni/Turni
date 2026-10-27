@@ -8,8 +8,8 @@
 import type { Medico, TurniMese, Regole, Turno } from "../src/engine/types";
 import { dimOf, dowOf, isFestivo } from "../src/engine/date";
 
-const SPEC = ["X","Xm","Xp","Xn","ANA","per11","104","L"];
-const ASS  = ["L","ANA","per11","104"];
+const SPEC = ["X","Xm","Xp","Xn","ANA","per11","art37","104","L"];
+const ASS  = ["L","ANA","per11","art37","104"];
 const isM  = (t:string) => t==="M"||t==="A"||t==="1";
 const isP  = (t:string) => t==="P"||t==="Ap"||t==="2";
 const isN  = (t:string) => t==="N"||t==="3";

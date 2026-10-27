@@ -7,7 +7,7 @@ import { makeCtx } from "../src/engine/ctx";
 import { misuraTabellone, continuitaScoperti } from "../src/engine/genera";
 import { violazioniIndip } from "./validatori";
 export interface CasoM { anno:number; mese:number; medici:Medico[]; ex:TurniMese; regole:Regole; prevT?:TurniMese|null }
-const ASS = ["L","ANA","104","per11","X"];
+const ASS = ["L","ANA","104","per11","art37","X"];
 const forb = (a:number[]) => a.length>1 ? Math.max(...a)-Math.min(...a) : 0;
 export function misure(sc: CasoM, T: TurniMese): Record<string,number> {
   const nd = dimOf(sc.anno,sc.mese);

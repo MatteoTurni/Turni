@@ -7,10 +7,15 @@ import type { Turno, TurniMese, FasciaAmb, Medico, Ambulatorio, OccAmb, Affianca
 export function isMatt(t:string){ return ["M","A","1"].includes(t); }
 export function isPom(t:string) { return ["P","2","Ap"].includes(t); }
 export function isNot(t:string) { return ["N","3"].includes(t); }
+// LICENZE / PERMESSI (v0.3.49: elenco unico). Assenze inserite a mano: valgono
+// 1 punto verso l'obiettivo, sono riposo e bloccano ogni turno automatico.
+// Per aggiungerne una basta questa riga (più colore ed etichetta in UI).
+export const LICENZE = ["L","ANA","104","per11","art37"];
+export const isLicenza = (t:string) => LICENZE.includes(t);
 export function vt(t:string,u?:boolean): number {
   if(u)return 0;
   if(["N","3"].includes(t))return 2;
-  if(["M","P","A","Ap","L","ANA","104","per11","1","2"].includes(t))return 1;
+  if(["M","P","A","Ap","1","2"].includes(t) || isLicenza(t))return 1;
   return 0;
 }
 
@@ -131,7 +136,7 @@ export function fasciaDi(t:string): "M"|"P"|"N"|null {
 }
 
 // Codici "speciali": non sono lavoro (assenze/esclusioni) e valgono come riposo.
-export const SPEC = ["X","Xm","Xp","Xn","ANA","per11","104","L"];
+export const SPEC = ["X","Xm","Xp","Xn",...LICENZE];
 
 // ─── CLONAZIONE VELOCE DI T ───────────────────────────────────────────────────
 // Sostituisce JSON.parse(JSON.stringify(T)) nei punti in cui serve una COPIA

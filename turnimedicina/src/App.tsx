@@ -273,9 +273,9 @@ export default function App(){
     for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(isAmbT(s.tipo)) n++;
     return n;
   };
-  // Conta i permessi (L / ANA / 104 / per11) del medico nel mese, con
+  // Conta i permessi (L / ANA / 104 / per11 / art37) del medico nel mese, con
   // dettaglio per tipo. X resta fuori: è un'esclusione, non un permesso.
-  const PERM = ["L","ANA","104","per11"] as const;
+  const PERM = ["L","ANA","104","per11","art37"] as const;
   const cntPerm = (id:number) => {
     const det: Record<string,number> = {};
     let tot=0;
@@ -844,7 +844,7 @@ export default function App(){
 
           <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #1e3a5f",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
             <span style={{color:"#3d5878",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
-            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
+            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["art37","Art.37"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
               <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
                 <Badge tipo={tipo} man/><span style={{color:"#4b7aad",fontSize:"8px"}}>{desc}</span>
               </div>
@@ -977,7 +977,7 @@ export default function App(){
           { k:"mattinaDopoNotte", lbl:"Mattina", spegne:["riposoEsteso"],
             hint:"Due giorni dopo una notte è ammessa anche una Mattina (M, A o 1), non solo il Pomeriggio: vale in generazione, nell'inserimento manuale e nella validazione. Indipendente dall'opzione «Notte»: si possono tenere attive entrambe." },
           { k:"riposoEsteso", lbl:"Nulla — riposo esteso", spegne:["notteLiberoNotte","mattinaDopoNotte"],
-            hint:"Dopo una Notte anche il SECONDO giorno resta completamente libero: nessun turno, ammessi solo X, ANA, per11, 104 o L. Vieta quindi anche il Pomeriggio. Vincolo duro: prevale sulle altre due opzioni e non viene mai derogato, nemmeno dall'ultima chance." },
+            hint:"Dopo una Notte anche il SECONDO giorno resta completamente libero: nessun turno, ammessi solo X, ANA, per11, art37, 104 o L. Vieta quindi anche il Pomeriggio. Vincolo duro: prevale sulle altre due opzioni e non viene mai derogato, nemmeno dall'ultima chance." },
         ];
         const limiti: [CampoTop,string,string][] = [
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],

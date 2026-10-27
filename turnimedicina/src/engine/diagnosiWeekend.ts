@@ -16,11 +16,11 @@ import type { Medico, TurniMese, Regole, Turno } from "./types";
 import { DF, dowOf } from "./date";
 import { getRegole, setRegole } from "./regole";
 import { makeCtx } from "./ctx";
-import { compagnoMDC, affiancaMDC, isNot, SPEC, etichettaTurno } from "./turni";
+import { compagnoMDC, affiancaMDC, isNot, LICENZE, SPEC, etichettaTurno } from "./turni";
 import { generaMigliorTentativo, misuraTabellone } from "./genera";
 
 type Ctx = ReturnType<typeof makeCtx>;
-const ASSENZE = ["L","ANA","104","per11"];
+const ASSENZE = LICENZE;
 const cognome = (m: Medico) => { const c = m.nome.split(" ").pop() || m.nome; return c.charAt(0).toUpperCase()+c.slice(1).toLowerCase(); };
 const gLbl = (anno:number, mese:number, g:number) => `${DF[dowOf(anno,mese,g)].slice(0,3).toLowerCase()} ${g}`;
 const soloManuali = (T: TurniMese): TurniMese => {

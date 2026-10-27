@@ -38,7 +38,7 @@ for(let i=0;i<+nS;i++){
   for(const m of medici.filter(x=>x.stato==="MR"||x.stato==="MDC")) if(prob(0.3)){ const da=int(1,nd), len=int(4,14); for(let g=da; g<da+len; g++) put(m.id,g,"L"); }
   // mesi PESANTI (come l'ottobre segnalato): assenze ed esclusioni fitte
   if(process.env.PESANTE) for(const m of medici.filter(x=>x.stato==="MR"||x.stato==="MDC")){
-    for(let k=0;k<int(1,3);k++){ const da=int(1,nd), len=int(1,4); for(let g=da; g<da+len; g++) put(m.id,g,pick(["L","ANA","ANA","104","X","per11"])); }
+    for(let k=0;k<int(1,3);k++){ const da=int(1,nd), len=int(1,4); for(let g=da; g<da+len; g++) put(m.id,g,pick(["L","ANA","ANA","104","X","per11","art37"])); }
     if(prob(0.4)) put(m.id,int(1,nd),pick(["Xp","Xn"]));
   }
   // esclusioni sparse

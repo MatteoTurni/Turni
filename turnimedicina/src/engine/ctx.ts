@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
-import { isMatt, isPom, isNot, vt, SPEC, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, affiancaMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
+import { isMatt, isPom, isNot, vt, SPEC, LICENZE, isLicenza, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, affiancaMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
@@ -304,7 +304,7 @@ export function makeCtx(
   };
 
   // ── REGOLA N ──────────────────────────────────────────────
-  const CODICI_ANTE_N = ["ANA","L","per11","X","104"];
+  const CODICI_ANTE_N = [...LICENZE,"X"];
   const hasAnteN = (id:number,g:number) => { if(g>=ndim) return false; return gt(id,g+1).some(s=>CODICI_ANTE_N.includes(s.tipo)); };
   // CONTINUITÀ: g-1 e g-2 possono cadere nel mese precedente (g=1,2).
   const postN1 = (id:number,g:number) => haNB(id,g-1);   // g è il giorno DOPO una notte (=g+1)
@@ -439,7 +439,7 @@ export function makeCtx(
       if(sh.some(s=>s.man&&s.tipo===f)){ n++; continue; }   // cella già coperta da un manuale (anche MPS)
       if(m.stato==="MPS") continue;
       if(escluso(m.id,g,f)) continue;                        // X totale o Xm/Xp/Xn sulla fascia
-      if(sh.some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) continue;
+      if(sh.some(s=>s.man&&isLicenza(s.tipo))) continue;
       if(f!=="N" && sh.some(s=>s.man&&isNot(s.tipo))) continue;   // notte manuale oggi → niente M/P
       if(manNight(m.id,g-1)) continue;                            // g+1 di una notte immovibile
       if(f==="M" && !mattG2 && manNight(m.id,g-2)) continue;      // M vietata a g+2 di una notte (salvo mattinaDopoNotte)
@@ -456,7 +456,7 @@ export function makeCtx(
     if(psEstOccupa(m.id,g)) return false;
     // ESCLUSIONI: per l'associato basta che sia esclusa una delle due fasce.
     if(f==="ASS" ? esclusoAss(m.id,g) : escluso(m.id,g,f as "M"|"P"|"N")) return false;
-    if(gt(m.id,g).some(s=>s.man&&["L","ANA","per11","104"].includes(s.tipo))) return false;
+    if(gt(m.id,g).some(s=>s.man&&isLicenza(s.tipo))) return false;
     // OBIETTIVO RAGGIUNTO: un medico già ad obiettivo non riceve altri turni
     // AUTOMATICI (i turni manuali restano intatti).
     if(cnt(m.id) >= m.obiettivo) return false;
@@ -539,7 +539,7 @@ export function makeCtx(
   // Solo turni manuali → la popolazione dei portatori è la STESSA per tutti i
   // tabelloni a confronto, che è ciò che rende la forchetta un metro comparabile.
   const bloccatoMan = (id:number,g:number) =>
-    gt(id,g).some(s=>s.tipo==="X" || (s.man && ["L","ANA","per11","104"].includes(s.tipo)));
+    gt(id,g).some(s=>s.tipo==="X" || (s.man && isLicenza(s.tipo)));
   const puoPortareWk = (m:Medico) => {
     if(m.stato==="ML")    return false;
     if(m.obiettivo<=0)    return false;
