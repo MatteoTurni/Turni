@@ -138,7 +138,8 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
       if(s.man) continue;
       const f = isM(s.tipo)?"M":isP(s.tipo)?"P":isN(s.tipo)?"N":null;
       if(!f) continue;
-      if(!medici.some(a=>a.id!==m.id && cell(a.id,g).some(x=>valido(x as any, f))))
+      // un altro MDC non affianca (v0.3.48)
+      if(!medici.some(a=>a.id!==m.id && a.stato!=="MDC" && cell(a.id,g).some(x=>valido(x as any, f))))
         V.push(`${nome(m)}(MDC): solo in turno ${f} g${g}`);
     }
   }

@@ -77,6 +77,9 @@ export function ambConfigurato(a: Ambulatorio): boolean {
 // regole, distinguendo ordinario e ALPI (sottolineato); in altro ospedale mai.
 const REPARTO_F: Record<string, string[]> = { M:["M","A"], P:["P","Ap"], N:["N"] };
 const PS_F: Record<string, "1"|"2"|"3"> = { M:"1", P:"2", N:"3" };
+/** Chi può fare da compagno (tutor) a un MDC (v0.3.48): chiunque tranne un
+ *  altro MDC — un Decreto Calabria non affianca un Decreto Calabria. */
+export function affiancaMDC(a: Medico): boolean { return a.stato!=="MDC"; }
 export function compagnoMDC(s: Turno, f: string, psAff?: AffiancamentoPS): boolean {
   if(REPARTO_F[f]?.includes(s.tipo)) return true;
   const ps = PS_F[f];

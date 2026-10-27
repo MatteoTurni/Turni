@@ -9,6 +9,8 @@ import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/rego
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
 import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
+import { bilancioNotti, spiegaWeekend, type EsitoProvaWeekend } from "./engine/diagnosiWeekend";
+import { provaWeekendParallelo } from "./provaWeekendParallelo";
 import { generaParallelo } from "./generaParallelo";
 import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
 import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
@@ -112,6 +114,9 @@ export default function App(){
   // generazione (cluster di giorni, vincolo determinante, collo di bottiglia).
   const [diagCaus, setDiagCaus] = useState<DiagnosiCausale|null>(null);
   const [diagOpen, setDiagOpen] = useState(false);
+  // DIAGNOSI WEEKEND LIBERI (v0.3.47): prove "cosa servirebbe" dopo una
+  // generazione con avvisi sui weekend liberi (in parallelo nei worker).
+  const [diagWk, setDiagWk] = useState<{ stato:"incorso"|"fatto"; esito?:EsitoProvaWeekend }|null>(null);
   // EQUILIBRA (v0.3.42): esito dell'ultimo "Equilibra" + tabellone di prima,
   // per l'Annulla. Si chiude da solo se il tabellone cambia per altre vie.
   const [eqRes, setEqRes] = useState<{esito:EsitoEquilibra; prima:TurniAll[string]}|null>(null);
@@ -134,7 +139,7 @@ export default function App(){
   };
 
   useEffect(()=>{ saveS({anno,mese,medici,turniAll}); if(remotoOk.current && editabile) salvaRemoto("stato",{anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
-  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); },[anno,mese]);
+  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); setDiagWk(null); },[anno,mese]);
   useEffect(()=>{ if(eqRes && turni!==eqRes.esito.turni) setEqRes(null); },[turni]);   // la telemetria vale solo per il mese generato
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
@@ -166,6 +171,15 @@ export default function App(){
         if(r.alternativaUC) setAltUC({ alt:r.alternativaUC, rotStart });
         setDiagGen(r.diagnosi ?? null);
         setDiagCaus(r.causale ?? null);
+        // Avvisi sui weekend liberi → prove "cosa servirebbe" in background.
+        setDiagWk(null);
+        if(r.problemi.some(p=>/wk liberi/.test(p))){
+          setDiagWk({ stato:"incorso" });
+          const meseProva = mkKey(anno, mese);
+          provaWeekendParallelo(anno, mese, nd, medici, r.turni)
+            .then(esito=>setDiagWk(prev=> prev && mkKey(anno,mese)===meseProva ? { stato:"fatto", esito } : prev))
+            .catch(()=>setDiagWk(null));
+        }
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
@@ -355,6 +369,10 @@ export default function App(){
     return undefined;
   };
   // Celle bucate MAI coperte (non già certificate): per il pannello.
+  // NOTTI E WEEKEND LIBERI (v0.3.47): bilancio dai soli manuali e spiegazione
+  // degli avvisi sul tabellone corrente.
+  const bilNotti = useMemo(()=>bilancioNotti(anno, mese, nd, medici, turni, regole), [anno, mese, nd, medici, turni, regole]);
+  const spiegaWk = useMemo(()=>spiegaWeekend(anno, mese, nd, medici, turni), [anno, mese, nd, medici, turni, regole]);
   const maiCoperte = useMemo(()=>{
     if(!diagGen || diagGen.tentativi<10) return [] as {g:number;f:"M"|"P"|"N"}[];
     const out:{g:number;f:"M"|"P"|"N"}[]=[];
@@ -585,7 +603,7 @@ export default function App(){
       {/* PANNELLO DIAGNOSI COPERTURA (v0.3.10) — impossibilità certificate (⊘)
           e celle mai coperte in nessun tentativo (⚠). Solo lettura: aiuta a
           capire PERCHÉ certi buchi restano, senza toccare la generazione. */}
-      {tab==="cal" && (nCert>0 || maiCoperte.length>0 || causVis.length>0 || !!diagStat.bilancio) && (()=>{
+      {tab==="cal" && (nCert>0 || maiCoperte.length>0 || causVis.length>0 || !!diagStat.bilancio || spiegaWk.length>0 || bilNotti.tirato || !!diagWk) && (()=>{
         const FL: Record<string,string> = { M:"mattine", P:"pomeriggi", N:"notte" };
         const gLbl = (g:number)=>`${DF[dowOf(anno,mese,g)].slice(0,3)} ${g}`;
         // "mai coperte" raggruppate per giorno: "Mar 4: mattine · pomeriggi"
@@ -596,11 +614,14 @@ export default function App(){
             borderRadius:"10px",fontFamily:"monospace",fontSize:"11px",color:"#e2f0ff",overflow:"hidden"}}>
             <div onClick={()=>setDiagOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:"8px",
               padding:"8px 12px",cursor:"pointer",userSelect:"none"}}>
-              <span style={{color:"#a78bfa",fontWeight:700}}>Diagnosi copertura</span>
+              <span style={{color:"#a78bfa",fontWeight:700}}>Diagnosi</span>
               {diagStat.bilancio && <span style={{color:"#f87171"}}>&#9650; bilancio &#8722;{diagStat.bilancio.servono-diagStat.bilancio.disponibili} turni</span>}
               {nCert>0 && <span style={{color:"#c4b5fd"}}>&#8856; {nCert} impossibil{nCert===1?"e certificata":"i certificate"}</span>}
               {maiCoperte.length>0 && <span style={{color:"#fbbf24"}}>&#9888; {maiCoperte.length} mai copert{maiCoperte.length===1?"a":"e"} in {diagGen?.tentativi} tentativi</span>}
               {causVis.length>0 && <span style={{color:"#34d399"}}>&#9670; {causVis.length} caus{causVis.length===1?"a individuata":"e individuate"}</span>}
+              {bilNotti.tirato && <span style={{color:"#93c5fd"}}>&#9790; notti: margine {bilNotti.margine}</span>}
+              {spiegaWk.length>0 && <span style={{color:"#f9a8d4"}}>&#9671; weekend liberi: {spiegaWk.map(x=>`${x.nome} ${x.liberi}/${x.obiettivo}`).join(", ")}</span>}
+              {diagWk?.stato==="incorso" && <span style={{color:"#64748b"}}>· analisi in corso…</span>}
               <span style={{marginLeft:"auto",color:"#4b7aad"}}>{diagOpen?"▾":"▸"}</span>
             </div>
             {diagOpen && (
@@ -644,6 +665,55 @@ export default function App(){
                     {diagCaus && !diagCaus.completa && (
                       <div style={{color:"#64748b",fontSize:"9px"}}>Analisi interrotta per limite di tempo: alcune finestre potrebbero non essere state esaminate.</div>
                     )}
+                  </div>
+                )}
+                {/* NOTTI E WEEKEND LIBERI (v0.3.47) */}
+                {(bilNotti.tirato || spiegaWk.length>0) && (()=>{
+                  const obbl = bilNotti.medici.filter(x=>x.minimo>0);
+                  return (
+                    <div style={{marginTop:"8px"}}>
+                      <div style={{color:"#93c5fd",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#9790; NOTTI DEL MESE — dai soli turni inseriti a mano</div>
+                      <div style={{color:"#bfdbfe",margin:"3px 0"}}>&#8226; Notti di reparto da coprire: <b>{bilNotti.daCoprire}</b> · la squadra ne può fare al massimo <b>{bilNotti.capacita}</b> · margine <b style={{color:bilNotti.tirato?"#fca5a5":"#bfdbfe"}}>{bilNotti.margine}</b>{bilNotti.tirato?" (mese tirato sulle notti)":""}</div>
+                      <div style={{color:"#93c5fd",margin:"2px 0 0 12px",fontSize:"10px"}}>
+                        &#8627; Al massimo: {bilNotti.medici.map(x=>`${x.nome} ${x.tetto}${x.limite==="obiettivo"?" (obiettivo)":x.limite==="giorni"?" (giorni liberi)":""}${x.manuali.length?` — già ${x.manuali.join(", ")}`:""}`).join(" · ")}
+                      </div>
+                      {obbl.length>0 && <div style={{color:"#93c5fd",margin:"2px 0 0 12px",fontSize:"10px"}}>&#8627; Devono fare almeno: {obbl.map(x=>`${x.nome} ${x.minimo}`).join(" · ")}</div>}
+                      {spiegaWk.length>0 && (
+                        <div style={{marginTop:"8px"}}>
+                          <div style={{color:"#f9a8d4",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#9671; WEEKEND LIBERI MANCANTI — perché i turni di weekend non sono passati a un collega (spostamento diretto, sull'ultimo tabellone)</div>
+                          {spiegaWk.map(x=>(
+                            <div key={x.id} style={{margin:"3px 0 6px"}}>
+                              <div style={{color:"#fbcfe8"}}>&#8226; {x.nome}: {x.liberi}/{x.obiettivo} weekend liberi</div>
+                              {x.weekend.map(w=>(
+                                <div key={w.sab} style={{margin:"2px 0 0 12px",fontSize:"10px",color:"#f5d0e6"}}>
+                                  &#8627; sab {w.sab}–dom {w.dom}: {w.turni.map(t=>`${t.tipo} ${t.g===w.sab?"sab":"dom"}${t.man?" (inserito a mano)":""}`).join(", ")}
+                                  {w.turni.filter(t=>t.motivi.length).map((t,j)=>(
+                                    <div key={j} style={{margin:"1px 0 0 12px",color:"#d8a7c4"}}>{t.tipo} {t.g===w.sab?"sab":"dom"} — {t.motivi.join(" · ")}</div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {diagWk && (
+                  <div style={{marginTop:"8px"}}>
+                    <div style={{color:"#5eead4",fontWeight:700,fontSize:"10px",marginBottom:"4px"}}>&#10003; COSA SERVIREBBE — il mese rigenerato con una modifica alla volta (ogni prova ripetuta; indicativo)</div>
+                    {diagWk.stato==="incorso" && <div style={{color:"#64748b",margin:"3px 0"}}>Analisi in corso, circa 10–20 secondi…</div>}
+                    {diagWk.stato==="fatto" && diagWk.esito && (()=>{
+                      const e = diagWk.esito;
+                      if(e.base.deficit===0) return <div style={{color:"#99f6e4",margin:"3px 0"}}>&#8226; Rigenerando senza modifiche si è trovato un tabellone senza avvisi sui weekend: prova a rigenerare (①).</div>;
+                      const ris = e.prove.filter(p=>p.risolve), mig = e.prove.filter(p=>!p.risolve && p.migliora);
+                      return (<>
+                        {ris.map((p,i)=><div key={"r"+i} style={{color:"#99f6e4",margin:"3px 0"}}>&#10003; {p.etichetta}: nessun weekend libero mancante.</div>)}
+                        {mig.map((p,i)=><div key={"m"+i} style={{color:"#a7f3d0",margin:"3px 0"}}>&#9680; {p.etichetta}: weekend liberi mancanti da {e.base.deficit} a {p.deficit}.</div>)}
+                        {ris.length+mig.length===0 && <div style={{color:"#cbd5e1",margin:"3px 0"}}>&#8226; Nessuna delle prove elimina l'avviso: il mese è stretto per la combinazione di assenze e turni manuali.</div>}
+                        <div style={{color:"#64748b",fontSize:"9px",marginTop:"2px"}}>Sono solo indicazioni: il tabellone non è stato modificato. Prove: {e.prove.map(p=>p.etichetta).join(" · ")}.</div>
+                      </>);
+                    })()}
                   </div>
                 )}
                 <div style={{marginTop:"8px",fontSize:"9px",color:"#64748b"}}>
