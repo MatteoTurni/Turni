@@ -7,6 +7,9 @@ art.11: 1 punto verso l'obiettivo, giorno di riposo, nessun turno automatico
 quel giorno, niente notte alla vigilia, conteggiato fra i permessi del medico
 e nelle assenze del bilancio del mese. Nella finestra della cella è il
 pulsante «a37»; in tabellone ed Excel compare «art37»; in legenda «Art.37».
+Nella finestra della cella i pulsanti sono divisi in sezioni: **Turni**,
+**Ambulatori**, **Licenze e permessi**, **Esclusioni** (solo visivamente:
+la selezione funziona come prima).
 I codici di licenza ora stanno in un elenco unico (`LICENZE` in
 `engine/turni.ts`): una licenza futura si aggiunge in un punto solo.
 
