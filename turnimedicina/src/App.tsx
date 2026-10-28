@@ -997,7 +997,7 @@ export default function App(){
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
               <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Regole del reparto</span>
-              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto })}
+              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto, coperturaSoloVuoti: regole.coperturaSoloVuoti })}
                 style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
                 Ripristina default
               </button>
@@ -1179,9 +1179,10 @@ export default function App(){
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                PULSANTE COPERTURA <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.coperturaSoloVuoti ? "riempie solo i posti vuoti" : "ottimizza tutto"}</span>
+                IMPOSTAZIONI PULSANTI <span style={{fontWeight:400,color:"#4b7aad"}}>· ① Copertura: {regole.coperturaSoloVuoti ? "riempi solo i vuoti" : "ottimizza tutto"}</span>
               </summary>
               <div style={{marginTop:"12px",display:"flex",flexDirection:"column",gap:"10px"}}>
+                <div style={{...LBL,color:"#e2eeff",fontWeight:700,fontSize:"11px"}}>① Copertura</div>
                 {([
                   [false,"Ottimizza tutto","Riempie i posti vuoti e può spostare i turni automatici già presenti (quelli semitrasparenti) per migliorare equilibrio, weekend e notti. Restano fissi solo i turni inseriti a mano."],
                   [true,"Riempi solo i vuoti","Tutti i turni già presenti, anche quelli automatici, restano dove sono: aggiunge turni solo nei posti mancanti, e alla fine i turni automatici restano automatici. Se un posto si potrebbe coprire solo spostando un altro turno, resta scoperto e la diagnosi lo segnala."],
@@ -1195,7 +1196,7 @@ export default function App(){
                     </span>
                   </label>
                 ))}
-                <div style={{...LBL,fontSize:"9px"}}>Su un mese vuoto le due modalità si comportano allo stesso modo. Riguarda solo il pulsante ① Copertura.</div>
+                <div style={{...LBL,fontSize:"9px"}}>Su un mese vuoto le due modalità si comportano allo stesso modo. «Ripristina default» delle regole non cambia questa scelta.</div>
               </div>
             </details>
 

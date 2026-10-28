@@ -2,8 +2,9 @@
 
 ## Novità 0.3.50 — come si comporta il pulsante Copertura
 
-In Regole → **Pulsante Copertura** (tendina) si sceglie il comportamento di
-«① Copertura», senza cambiarne il nome:
+In Regole → **Impostazioni pulsanti** (tendina) si sceglie il comportamento
+di «① Copertura», senza cambiarne il nome («Ripristina default» delle regole
+non la cambia):
 - **Ottimizza tutto** (default, come prima): riempie i vuoti e può spostare i
   turni automatici già presenti per migliorare equilibrio, weekend e notti;
   restano fissi solo i turni inseriti a mano.
