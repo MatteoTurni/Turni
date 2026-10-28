@@ -117,6 +117,12 @@ export default function App(){
   // DIAGNOSI WEEKEND LIBERI (v0.3.47): prove "cosa servirebbe" dopo una
   // generazione con avvisi sui weekend liberi (in parallelo nei worker).
   const [diagWk, setDiagWk] = useState<{ stato:"incorso"|"fatto"; esito?:EsitoProvaWeekend }|null>(null);
+  // La diagnosi in corso si può interrompere (v0.3.51): una nuova generazione
+  // o il cambio di mese la fermano subito, così non toglie CPU alla ricerca e
+  // i suoi risultati non finiscono su un tabellone diverso.
+  const diagWkCtl = useRef<AbortController|null>(null);
+  const fermaDiagWk = () => { diagWkCtl.current?.abort(); diagWkCtl.current = null; setDiagWk(null); };
+  useEffect(()=>()=>{ diagWkCtl.current?.abort(); },[]);
   // EQUILIBRA (v0.3.42): esito dell'ultimo "Equilibra" + tabellone di prima,
   // per l'Annulla. Si chiude da solo se il tabellone cambia per altre vie.
   const [eqRes, setEqRes] = useState<{esito:EsitoEquilibra; prima:TurniAll[string]}|null>(null);
@@ -139,7 +145,7 @@ export default function App(){
   };
 
   useEffect(()=>{ saveS({anno,mese,medici,turniAll}); if(remotoOk.current && editabile) salvaRemoto("stato",{anno,mese,medici,turniAll}); },[anno,mese,medici,turniAll]);
-  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); setDiagWk(null); },[anno,mese]);
+  useEffect(()=>{ setDiagGen(null); setDiagCaus(null); fermaDiagWk(); },[anno,mese]);
   useEffect(()=>{ if(eqRes && turni!==eqRes.esito.turni) setEqRes(null); },[turni]);   // la telemetria vale solo per il mese generato
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
@@ -150,6 +156,7 @@ export default function App(){
   // viene poi ricalcolata dal SOLO tabellone accettato e persistita: i tentativi
   // scartati dal multi-tentativo non la fanno più avanzare.
   const generaCopertura = () => {
+    fermaDiagWk();                       // la diagnosi precedente non deve rubare CPU alla nuova ricerca
     setBusy(true);
     setAltUC(null);
     setTimeout(async ()=>{
@@ -180,13 +187,13 @@ export default function App(){
         setDiagGen(r.diagnosi ?? null);
         setDiagCaus(r.causale ?? null);
         // Avvisi sui weekend liberi → prove "cosa servirebbe" in background.
-        setDiagWk(null);
+        fermaDiagWk();
         if(r.problemi.some(p=>/wk liberi/.test(p))){
+          const ctl = new AbortController(); diagWkCtl.current = ctl;
           setDiagWk({ stato:"incorso" });
-          const meseProva = mkKey(anno, mese);
-          provaWeekendParallelo(anno, mese, nd, medici, r.turni)
-            .then(esito=>setDiagWk(prev=> prev && mkKey(anno,mese)===meseProva ? { stato:"fatto", esito } : prev))
-            .catch(()=>setDiagWk(null));
+          provaWeekendParallelo(anno, mese, nd, medici, r.turni, ctl.signal)
+            .then(esito=>{ if(diagWkCtl.current===ctl){ diagWkCtl.current = null; setDiagWk({ stato:"fatto", esito }); } })
+            .catch(()=>{ if(diagWkCtl.current===ctl){ diagWkCtl.current = null; setDiagWk(null); } });
         }
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);

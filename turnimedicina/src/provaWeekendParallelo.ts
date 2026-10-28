@@ -11,24 +11,32 @@ import type { MsgProva } from "./genWorker";
 
 const RIPETIZIONI = 2, MS_PROVA = 2200;
 
-export function provaWeekendParallelo(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese): Promise<EsitoProvaWeekend> {
+// ANNULLABILE (v0.3.51): con `signal` interrotto i worker vengono terminati
+// subito (la CPU torna libera per una nuova generazione) e la promessa viene
+// rifiutata: nessun risultato vecchio può comparire su un tabellone nuovo.
+export function provaWeekendParallelo(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese, signal?: AbortSignal): Promise<EsitoProvaWeekend> {
   const t0 = Date.now();
   const spec = specProveWeekend(anno, mese, ndim, medici, turni, 4);
   const jobs = spec.flatMap((sp,i)=>Array.from({ length: RIPETIZIONI }, ()=>({ i, sp })));
   const ris: { deficit:number; buchi:number }[][] = spec.map(()=>[]);
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     let next = 0, fatti = 0, chiuso = false;
-    const fine = () => { if(chiuso) return; chiuso = true; for(const w of workers) w.terminate(); resolve(componiEsito(spec, ris.map(r=>r.length?r:[{ deficit:Infinity, buchi:Infinity }]), Date.now()-t0)); };
+    let guardia: ReturnType<typeof setTimeout> | undefined;
+    const fine = () => { if(chiuso) return; chiuso = true; clearTimeout(guardia); for(const w of workers) w.terminate(); resolve(componiEsito(spec, ris.map(r=>r.length?r:[{ deficit:Infinity, buchi:Infinity }]), Date.now()-t0)); };
+    const annulla = () => { if(chiuso) return; chiuso = true; clearTimeout(guardia); for(const w of workers) w.terminate(); reject(new DOMException("Diagnosi annullata", "AbortError")); };
+    if(signal?.aborted){ chiuso = true; reject(new DOMException("Diagnosi annullata", "AbortError")); return; }
+    signal?.addEventListener("abort", annulla, { once: true });
     const workers: Worker[] = [];
     const nW = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
     const seq = () => {                                   // ripiego senza Worker: un job per volta
+      if(chiuso) return;
       if(next>=jobs.length) return fine();
       const j = jobs[next++];
       ris[j.i].push(eseguiProva(anno, mese, ndim, medici, turni, j.sp, MS_PROVA));
       setTimeout(seq, 0);
     };
     const avvia = (w: Worker) => {
-      if(next>=jobs.length) return;
+      if(chiuso || next>=jobs.length) return;
       const job = next++;
       const msg: MsgProva = { tipo:"prova", anno, mese, ndim, medici, turni, regole:getRegole(), prev:ENG.PREV, ambRot:ENG.AMB_ROT_START, spec:jobs[job].sp, ms:MS_PROVA, job };
       w.postMessage(msg);
@@ -46,6 +54,6 @@ export function provaWeekendParallelo(anno:number, mese:number, ndim:number, med
         avvia(w);
       }
     }catch(_){ for(const w of workers) w.terminate(); workers.length = 0; next = 0; setTimeout(seq, 0); return; }
-    setTimeout(fine, 60000);                             // guardia
+    guardia = setTimeout(fine, 60000);                   // guardia
   });
 }
