@@ -6,7 +6,7 @@ import { KC } from "./costanti";
 export function Badge({ tipo, sott, man, lbl: lblIn }: { tipo?: string; sott?: boolean; man?: boolean; lbl?: string }){
   if(!tipo) return null;
   const c = KC[tipo]||{bg:"#1f2937",t:"#9ca3af",b:"#374151"};
-  const lbl = lblIn ?? (tipo==="per11"?"p11":tipo);
+  const lbl = lblIn ?? (tipo==="per11"?"p11":tipo==="art37"?"a37":tipo);
   return (
     <span style={{
       display:"inline-flex",alignItems:"center",justifyContent:"center",

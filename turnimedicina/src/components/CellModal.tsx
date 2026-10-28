@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Medico, Turno, Ambulatorio } from "../engine/types";
 import { MESI, DF, dowOf, isFestivo, isSabN, isDomN } from "../engine/date";
 import { KC, TM, TS } from "./costanti";
-import { ESCL_PARZ, isEscl, escludeFascia, fasciaDi, isAmbT, ambIdDi, etichettaTurno } from "../engine/turni";
+import { ESCL_PARZ, isEscl, isLicenza, escludeFascia, fasciaDi, isAmbT, ambIdDi, etichettaTurno } from "../engine/turni";
 import { Badge } from "./Badge";
 
 // ─── CELL MODAL ───────────────────────────────────────────────────────────────
@@ -67,21 +67,13 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
   };
   const svuota = () => { onSalva([]); onClose(); };
 
-  return (
-    <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,.88)",display:"flex",alignItems:"center",justifyContent:"center"}}
-      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{background:"#08101e",border:"1px solid #1e3a5f",borderRadius:"14px",padding:"22px",width:"410px",boxShadow:"0 30px 80px #000"}}>
-        <div style={{marginBottom:"14px"}}>
-          <div style={{fontFamily:"monospace",fontWeight:700,fontSize:"14px",color:"#e2f0ff"}}>{medico?.nome}</div>
-          <div style={{fontFamily:"monospace",fontSize:"11px",color:"#2d5a8a",marginTop:"2px"}}>
-            {DF[d]} {giorno} {MESI[mese]} {anno}
-            {h&&<span style={{color:"#ef4444",marginLeft:"8px",fontWeight:700}}>FESTIVO</span>}
-            {sat&&!h&&<span style={{color:"#a78bfa",marginLeft:"8px"}}>SAB</span>}
-            {dom&&<span style={{color:"#a78bfa",marginLeft:"8px"}}>DOM</span>}
-          </div>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"14px"}}>
-          {TM.filter(t=>!isAmbT(t)).map(tipo=>{
+  // GRUPPI DI PULSANTI (v0.3.49): turni lavorati, ambulatori, licenze/permessi,
+  // esclusioni — solo una separazione visiva, la logica di selezione non cambia.
+  const gruppo = (titolo:string, tipi:string[]) => (
+    <div key={titolo} style={{marginBottom:"12px"}}>
+          <div style={{color:"#2d5a8a",fontSize:"9px",fontFamily:"monospace",marginBottom:"5px"}}>{titolo}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
+          {tipi.map(tipo=>{
             const s=sel.find(x=>x.tipo===tipo);
             const c=KC[tipo]||{bg:"#1f2937",t:"#6b7280",b:"#374151"};
             return (
@@ -91,7 +83,7 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
                   border:`2px solid ${s?c.b:"#1e293b"}`,borderRadius:"6px",
                   padding:"5px 8px",fontFamily:"monospace",fontWeight:700,fontSize:"11px",
                   cursor:"pointer",minWidth:"38px",transition:"all .1s"
-                }}>{tipo==="per11"?"p11":tipo}</button>
+                }}>{tipo==="per11"?"p11":tipo==="art37"?"a37":tipo}</button>
                 {s&&TS.includes(tipo)&&(
                   <button onClick={()=>togS(tipo)} style={{
                     background:s.sott?"#1e3a5f":"transparent",color:s.sott?"#93c5fd":"#2d5a8a",
@@ -110,7 +102,24 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
               </div>
             );
           })}
+          </div>
         </div>
+  );
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,.88)",display:"flex",alignItems:"center",justifyContent:"center"}}
+      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"#08101e",border:"1px solid #1e3a5f",borderRadius:"14px",padding:"22px",width:"410px",boxShadow:"0 30px 80px #000"}}>
+        <div style={{marginBottom:"14px"}}>
+          <div style={{fontFamily:"monospace",fontWeight:700,fontSize:"14px",color:"#e2f0ff"}}>{medico?.nome}</div>
+          <div style={{fontFamily:"monospace",fontSize:"11px",color:"#2d5a8a",marginTop:"2px"}}>
+            {DF[d]} {giorno} {MESI[mese]} {anno}
+            {h&&<span style={{color:"#ef4444",marginLeft:"8px",fontWeight:700}}>FESTIVO</span>}
+            {sat&&!h&&<span style={{color:"#a78bfa",marginLeft:"8px"}}>SAB</span>}
+            {dom&&<span style={{color:"#a78bfa",marginLeft:"8px"}}>DOM</span>}
+          </div>
+        </div>
+        {gruppo("TURNI", TM.filter(t=>!isAmbT(t) && !isLicenza(t) && !isEscl(t)))}
         {ambulatori.length>0&&(
           <div style={{marginBottom:"14px"}}>
             <div style={{color:"#2d5a8a",fontSize:"9px",fontFamily:"monospace",marginBottom:"5px"}}>AMBULATORI (mattina · pomeriggio)</div>
@@ -131,6 +140,8 @@ export function CellModal({ medico, giorno, anno, mese, esistenti, ambulatori, o
             </div>
           </div>
         )}
+        {gruppo("LICENZE E PERMESSI", TM.filter(t=>isLicenza(t)))}
+        {gruppo("ESCLUSIONI", TM.filter(t=>isEscl(t)))}
         {sel.length>0&&(
           <div style={{background:"#030810",border:"1px solid #0f2035",borderRadius:"7px",
             padding:"7px 10px",marginBottom:"12px",display:"flex",gap:"4px",flexWrap:"wrap",alignItems:"center"}}>

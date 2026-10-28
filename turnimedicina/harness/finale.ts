@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 const [,, file, etich=""] = process.argv;
 const runs: any[] = JSON.parse(fs.readFileSync(file,"utf8"));
 const SC = new Map(scenari().map(s=>[s.nome,s]));
-const ASS = ["L","ANA","104","per11","X"];
+const ASS = ["L","ANA","104","per11","art37","X"];
 const A: Record<string,number[]> = {};
 const add = (k:string,v:number) => (A[k] ||= []).push(v);
 for(const r of runs){

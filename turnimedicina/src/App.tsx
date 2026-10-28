@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Medico, Regole, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
 import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
-import { vt, SPEC, ambConfigurato, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
+import { vt, SPEC, ambConfigurato, fissaTurni, liberaTurni, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
 import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { RepartoPanel } from "./components/RepartoPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
@@ -161,7 +161,15 @@ export default function App(){
         // propria sequenza di semi → più tentativi nello stesso tempo e main
         // thread libero. Fallback automatico al percorso sincrono se i Worker
         // non sono disponibili.
-        const r = await generaParallelo(anno,mese,nd,medici,turni);
+        // PULSANTE COPERTURA «SOLO VUOTI» (v0.3.50): i turni automatici
+        // presenti diventano temporaneamente manuali, così il motore riempie
+        // solo i posti mancanti; poi tornano automatici.
+        const fissati = regole.coperturaSoloVuoti ? fissaTurni(turni) : null;
+        const r = await generaParallelo(anno,mese,nd,medici,fissati ? fissati.turni : turni);
+        if(fissati){
+          liberaTurni(r.turni, fissati.auto);
+          if(r.alternativaUC) liberaTurni(r.alternativaUC.turni, fissati.auto);
+        }
         saveAmbRot({ nextIdx: calcAmbRotNext(r.turni, medici, anno, mese, nd, rotStart) });
         salvaRemoto("ambRot", loadAmbRot());
         setTurni(r.turni);
@@ -273,9 +281,9 @@ export default function App(){
     for(let g=1;g<=nd;g++) for(const s of gT(id,g)) if(isAmbT(s.tipo)) n++;
     return n;
   };
-  // Conta i permessi (L / ANA / 104 / per11) del medico nel mese, con
+  // Conta i permessi (L / ANA / 104 / per11 / art37) del medico nel mese, con
   // dettaglio per tipo. X resta fuori: è un'esclusione, non un permesso.
-  const PERM = ["L","ANA","104","per11"] as const;
+  const PERM = ["L","ANA","104","per11","art37"] as const;
   const cntPerm = (id:number) => {
     const det: Record<string,number> = {};
     let tot=0;
@@ -844,7 +852,7 @@ export default function App(){
 
           <div className="np" style={{padding:"8px 14px",borderTop:"1px solid #1e3a5f",display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center",marginTop:"4px"}}>
             <span style={{color:"#3d5878",fontSize:"8px",marginRight:"4px"}}>LEGENDA:</span>
-            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
+            {[["M","Mattina"],["P","Pomeriggio"],["N","Notte"],["L","Licenza"],["ANA","Permesso"],["104","L.104"],["per11","Art.11"],["art37","Art.37"],["X","Escluso"],["Xm","No mattina"],["Xp","No pomeriggio"],["Xn","No notte"]].map(([tipo,desc])=>(
               <div key={tipo} style={{display:"flex",alignItems:"center",gap:"3px"}}>
                 <Badge tipo={tipo} man/><span style={{color:"#4b7aad",fontSize:"8px"}}>{desc}</span>
               </div>
@@ -977,7 +985,7 @@ export default function App(){
           { k:"mattinaDopoNotte", lbl:"Mattina", spegne:["riposoEsteso"],
             hint:"Due giorni dopo una notte è ammessa anche una Mattina (M, A o 1), non solo il Pomeriggio: vale in generazione, nell'inserimento manuale e nella validazione. Indipendente dall'opzione «Notte»: si possono tenere attive entrambe." },
           { k:"riposoEsteso", lbl:"Nulla — riposo esteso", spegne:["notteLiberoNotte","mattinaDopoNotte"],
-            hint:"Dopo una Notte anche il SECONDO giorno resta completamente libero: nessun turno, ammessi solo X, ANA, per11, 104 o L. Vieta quindi anche il Pomeriggio. Vincolo duro: prevale sulle altre due opzioni e non viene mai derogato, nemmeno dall'ultima chance." },
+            hint:"Dopo una Notte anche il SECONDO giorno resta completamente libero: nessun turno, ammessi solo X, ANA, per11, art37, 104 o L. Vieta quindi anche il Pomeriggio. Vincolo duro: prevale sulle altre due opzioni e non viene mai derogato, nemmeno dall'ultima chance." },
         ];
         const limiti: [CampoTop,string,string][] = [
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
@@ -989,7 +997,7 @@ export default function App(){
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
               <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Regole del reparto</span>
-              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto })}
+              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto, coperturaSoloVuoti: regole.coperturaSoloVuoti })}
                 style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
                 Ripristina default
               </button>
@@ -1168,6 +1176,29 @@ export default function App(){
                 </div>
               )}
             </div>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                IMPOSTAZIONI PULSANTI <span style={{fontWeight:400,color:"#4b7aad"}}>· ① Copertura: {regole.coperturaSoloVuoti ? "riempi solo i vuoti" : "ottimizza tutto"}</span>
+              </summary>
+              <div style={{marginTop:"12px",display:"flex",flexDirection:"column",gap:"10px"}}>
+                <div style={{...LBL,color:"#e2eeff",fontWeight:700,fontSize:"11px"}}>① Copertura</div>
+                {([
+                  [false,"Ottimizza tutto","Riempie i posti vuoti e può spostare i turni automatici già presenti (quelli semitrasparenti) per migliorare equilibrio, weekend e notti. Restano fissi solo i turni inseriti a mano."],
+                  [true,"Riempi solo i vuoti","Tutti i turni già presenti, anche quelli automatici, restano dove sono: aggiunge turni solo nei posti mancanti, e alla fine i turni automatici restano automatici. Se un posto si potrebbe coprire solo spostando un altro turno, resta scoperto e la diagnosi lo segnala."],
+                ] as [boolean,string,string][]).map(([v,lbl,hint])=>(
+                  <label key={lbl} style={{display:"flex",gap:"8px",alignItems:"flex-start",cursor:"pointer"}}>
+                    <input type="radio" name="coperturaModo" checked={regole.coperturaSoloVuoti===v}
+                      onChange={()=>updRegole({...regole,coperturaSoloVuoti:v})} style={{marginTop:"2px"}}/>
+                    <span>
+                      <span style={{...LBL,color:"#e2eeff",fontWeight:700}}>{lbl}</span>
+                      <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
+                    </span>
+                  </label>
+                ))}
+                <div style={{...LBL,fontSize:"9px"}}>Su un mese vuoto le due modalità si comportano allo stesso modo. «Ripristina default» delle regole non cambia questa scelta.</div>
+              </div>
+            </details>
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>

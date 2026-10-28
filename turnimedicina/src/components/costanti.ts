@@ -23,6 +23,7 @@ export const KC: Record<string, { bg: string; t: string; b: string }> = {
   ANA:  { bg:"#2a0e06", t:"#fb923c", b:"#c2410c" },
   "104":{ bg:"#2a0e06", t:"#fca5a5", b:"#dc2626" },
   per11:{ bg:"#261602", t:"#fde68a", b:"#ca8a04" },
+  art37:{ bg:"#1f0f26", t:"#f0abfc", b:"#a21caf" },   // Art.37 (v0.3.49)
   X:    { bg:"#111",    t:"#4b5563", b:"#1f2937" },
   // Esclusioni PARZIALI: tinta spenta della fascia che bloccano, così si
   // riconoscono a colpo d'occhio senza confondersi con un turno vero.
@@ -32,7 +33,7 @@ export const KC: Record<string, { bg: string; t: string; b: string }> = {
 };
 
 // Tipi selezionabili nel CellModal e tipi che ammettono la variante sottolineata.
-export const TM = ["M","P","N","L","A","Ap","1","2","3","104","ANA","per11","X","Xm","Xp","Xn"];
+export const TM = ["M","P","N","L","A","Ap","1","2","3","104","ANA","per11","art37","X","Xm","Xp","Xn"];
 // TS (v0.3.33): la N è sottolineabile come M e P — la variante sottolineata è
 // lo STRAORDINARIO (lavoro reale che non scala l'obiettivo: vt=0), l'analogo
 // per il reparto di quello che 1/2/3 sottolineati sono per il PS (ALPI).

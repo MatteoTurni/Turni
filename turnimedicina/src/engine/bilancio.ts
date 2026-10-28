@@ -1,12 +1,12 @@
 import type { Medico, Turno, TurniMese, Regole } from "./types";
-import { vt, isMatt, isPom, isNot, slotAmbGiorno } from "./turni";
+import { vt, LICENZE, isMatt, isPom, isNot, slotAmbGiorno } from "./turni";
 import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 
 // ─── BILANCIO DEL MESE ────────────────────────────────────────────────────────
 // Quattro numeri, tutti nella STESSA unità di cntM/vt (la colonna "Ob."):
-// notte = 2, M/P/A/L/104/per11/ANA/1/2 = 1, turno sottolineato = 0.
+// notte = 2, M/P/A/L/104/per11/art37/ANA/1/2 = 1, turno sottolineato = 0.
 //
-//   L+P  assenze retribuite inserite a mano (L, 104, per11, ANA)
+//   L+P  assenze retribuite inserite a mano (L, 104, per11, art37, ANA)
 //   S    somma degli obiettivi mensili
 //   PS   turni di pronto soccorso (1, 2, 3) — consumano obiettivo ma NON
 //        coprono il fabbisogno di reparto
@@ -20,13 +20,13 @@ import { dowOf, isFestivo, isSabN, isDomN } from "./date";
 // coprono davvero (M/P/N/A/Ap) si sottraggono da F, che è quindi un fabbisogno
 // NETTO e si abbassa man mano che li inserisci.
 
-export const ASSENZE = ["L", "104", "per11", "ANA"];
+export const ASSENZE = LICENZE;
 export const PS      = ["1", "2", "3"];
 /** Turni che coprono il fabbisogno di reparto (l'ambulatorio è dentro F). */
 export const COPRONO = ["M", "P", "N", "A", "Ap"];
 
 export interface Bilancio {
-  lp: number;   // L + 104 + p11 + ANA (manuali, non-MPS)
+  lp: number;   // L + 104 + p11 + art37 + ANA (manuali, non-MPS)
   s: number;    // Σ obiettivi
   ps: number;   // turni PS dei non-MPS, in vt
   d: number;    // S − LP − PS

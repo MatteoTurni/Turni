@@ -1,6 +1,6 @@
 import type { Medico, TurniMese } from "./types";
 import { DF } from "./date";
-import { isMatt, isPom, isNot, isEscl, isAmbT, ambIdDi, type SlotAmb } from "./turni";
+import { isMatt, isPom, isNot, isEscl, isLicenza, isAmbT, ambIdDi, type SlotAmb } from "./turni";
 import { ENG, mkRng, shuf, scaduto } from "./state";
 import type { Ctx } from "./ctx";
 
@@ -532,13 +532,13 @@ export function ambAssegnabile(ctx: Ctx, m: Medico, g: number, sl: SlotAmb): boo
   if(!abilitatoAmb(m, sl.amb)) return false;              // solo gli abilitati a QUESTO ambulatorio
   if(fascia==="P" && m.stato==="ML") return false;         // l'ML non fa pomeriggi: niente Ap
   if(escluso(m.id,g,fascia)) return false;                // la A è di MATTINA (la blocca Xm), la Ap di POMERIGGIO (Xp)
-  if(gt(m.id,g).some(s=>["L","ANA","per11","104"].includes(s.tipo))) return false;
+  if(gt(m.id,g).some(s=>isLicenza(s.tipo))) return false;
   if(haN(m.id,g)) return false;
   // Regola N: la A (mattina) è vietata a g+1 e g+2 di una notte, la Ap
   // (pomeriggio) segue le regole del P.
   if(fascia==="M" ? !canMatt(m.id,g) : !canPom(m.id,g)) return false;
   if(!canConsec(m.id,g)) return false;
-  const tt=gt(m.id,g).filter(s=>!isEscl(s.tipo)&&!["L","ANA","per11","104"].includes(s.tipo));
+  const tt=gt(m.id,g).filter(s=>!isEscl(s.tipo)&&!isLicenza(s.tipo));
   if(tt.length===0) return true;
   // Unica eccezione: l'altro slot d'ambulatorio dello STESSO giorno (A+Ap =
   // giornata piena d'ambulatorio), nel rispetto della distanza associati.

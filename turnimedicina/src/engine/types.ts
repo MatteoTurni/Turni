@@ -131,6 +131,10 @@ export interface Regole {
    *  giornata: nessun turno di reparto o ambulatorio automatico quel giorno
    *  (v0.3.46). false = come un PS in sede: l'altra fascia resta assegnabile. */
   psEstGiornata: boolean;
+  /** Pulsante «Copertura» (v0.3.50): false (default) = ottimizza tutto, i
+   *  turni automatici già presenti possono essere spostati; true = riempie
+   *  SOLO i posti vuoti, tutti i turni presenti restano dove sono. */
+  coperturaSoloVuoti: boolean;
 }
 
 /** Una cella di copertura scoperta (giorno + fascia). */

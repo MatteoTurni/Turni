@@ -1,4 +1,35 @@
-# TurniMedicina 0.3.48
+# TurniMedicina 0.3.50
+
+## Novità 0.3.50 — come si comporta il pulsante Copertura
+
+In Regole → **Impostazioni pulsanti** (tendina) si sceglie il comportamento
+di «① Copertura», senza cambiarne il nome («Ripristina default» delle regole
+non la cambia):
+- **Ottimizza tutto** (default, come prima): riempie i vuoti e può spostare i
+  turni automatici già presenti per migliorare equilibrio, weekend e notti;
+  restano fissi solo i turni inseriti a mano.
+- **Riempi solo i vuoti**: tutti i turni presenti, anche automatici, restano
+  dove sono; il motore aggiunge turni solo nei posti mancanti (i turni
+  automatici vengono resi manuali per la durata della generazione e poi
+  tornano automatici). Un posto che si coprirebbe solo spostando altri turni
+  resta scoperto e la diagnosi lo segnala.
+Misurato nell'app su un tabellone completo con due posti svuotati: «Ottimizza
+tutto» ha spostato 13 turni automatici, «Riempi solo i vuoti» nessuno.
+
+
+## Novità 0.3.49 — nuova licenza Art.37
+
+Nuovo codice **art37** (Art.37), con la stessa valenza di L, ANA, 104 e
+art.11: 1 punto verso l'obiettivo, giorno di riposo, nessun turno automatico
+quel giorno, niente notte alla vigilia, conteggiato fra i permessi del medico
+e nelle assenze del bilancio del mese. Nella finestra della cella è il
+pulsante «a37»; in tabellone ed Excel compare «art37»; in legenda «Art.37».
+Nella finestra della cella i pulsanti sono divisi in sezioni: **Turni**,
+**Ambulatori**, **Licenze e permessi**, **Esclusioni** (solo visivamente:
+la selezione funziona come prima).
+I codici di licenza ora stanno in un elenco unico (`LICENZE` in
+`engine/turni.ts`): una licenza futura si aggiunge in un punto solo.
+
 
 ## Novità 0.3.48 — un MDC non affianca un altro MDC
 

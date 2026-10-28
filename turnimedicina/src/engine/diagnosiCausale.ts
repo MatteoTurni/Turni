@@ -1,6 +1,6 @@
 import type { Medico, TurniMese, CellaScoperta, CausaVincolo, CausaCluster, DiagnosiCausale } from "./types";
 import { DF, dowOf } from "./date";
-import { cloneT, isAmbT, abilitatoAmb, type SlotAmb } from "./turni";
+import { cloneT, isAmbT, isLicenza, abilitatoAmb, type SlotAmb } from "./turni";
 import { ENG, mkRng } from "./state";
 import { getRegole, setRegole } from "./regole";
 import { makeCtx } from "./ctx";
@@ -130,7 +130,7 @@ export function diagnosiCausale(
     if (pom && m.stato === "ML") return "ML: niente pomeriggi";
     if (ctx.haX(m.id, g)) return "escluso (X)";
     if (ctx.escluso(m.id, g, pom ? "P" : "M")) return pom ? "escluso dal pomeriggio (Xp)" : "escluso dalla mattina (Xm)";
-    if (ctx.gt(m.id, g).some(s => ["L", "ANA", "per11", "104"].includes(s.tipo))) return "assente";
+    if (ctx.gt(m.id, g).some(s => isLicenza(s.tipo))) return "assente";
     if (ctx.haN(m.id, g)) return "notte quel giorno";
     if (!ctx.canLav(m.id, g)) return "riposo obbligatorio (notte il giorno prima)";
     if (pom && !ctx.canPom(m.id, g)) return "pomeriggio vietato (riposo dopo la notte)";
@@ -300,7 +300,7 @@ export function diagnosiCausale(
         // al tetto notti), poi il resto — così, se il tempo stringe, si
         // verificano per primi i sospettati più probabili.
         const giorniFin: number[] = []; for (let g = lo; g <= hi; g++) giorniFin.push(g);
-        const presente = (m: Medico) => giorniFin.some(g => !c0.gt(m.id, g).some(s => s.man && ["L", "ANA", "per11", "104", "X"].includes(s.tipo)));
+        const presente = (m: Medico) => giorniFin.some(g => !c0.gt(m.id, g).some(s => s.man && (isLicenza(s.tipo) || s.tipo === "X")));
         const attivi = [...c0.ml, ...c0.mrMdc].filter(presente);
         const indizio: Partial<Record<CausaVincolo, boolean>> = {
           obiettivo: attivi.some(m => c0.cnt(m.id) >= m.obiettivo),
