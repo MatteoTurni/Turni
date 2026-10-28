@@ -1,4 +1,23 @@
-# TurniMedicina 0.3.51
+# TurniMedicina 0.3.52
+
+## Novità 0.3.52 — «Completa obiettivi» aggiunge anche la mattina a chi ha il pomeriggio
+
+Correzione: «② Completa obiettivi» costruiva le giornate piene in un solo
+verso (a chi aveva la MATTINA aggiungeva il pomeriggio), mai nel verso
+opposto. Così un medico sotto obiettivo con il solo POMERIGGIO in un giorno
+in cui la mattina era libera e permessa da tutte le regole restava sotto
+obiettivo (caso segnalato: un decreto Calabria a 20/21 con il pomeriggio del
+12 novembre e nessun altro giorno disponibile).
+
+Ora c'è anche il verso pomeriggio → mattina, con gli stessi controlli della
+mattina normale (posti liberi, riposi, affiancamento del decreto Calabria,
+limiti di giornate piene per settimana e distanza fra loro). Resta l'ultima
+scelta: si usa solo se non c'è un giorno libero o un'altra giornata piena
+possibile. Non toglie né sposta turni già presenti.
+
+Misura su 60 mesi casuali (30 normali, 30 pesanti), stesso tabellone di
+partenza con la versione vecchia e la nuova: violazioni 0 → 0; punti sotto
+obiettivo 219 → 214 (normali) e 50 → 47 (pesanti); nessun mese peggiorato.
 
 ## Novità 0.3.51 — la diagnosi in corso non rallenta una nuova generazione
 
