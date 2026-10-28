@@ -1580,6 +1580,23 @@ export function completaObiettivi(anno:number, mese:number, ndim:number, medici:
           add(m.id,candP[0],"P"); prog2=true; continue;
         }
       }
+
+      // 3) Mattina ASSOCIATA (v0.3.52): nei giorni in cui il medico ha già il
+      //    POMERIGGIO. Prima si costruivano le giornate piene solo nel verso
+      //    M→P (P aggiunta a chi ha la M): un medico col solo P in un giorno
+      //    con la mattina libera restava sotto obiettivo anche se la M era
+      //    ammessa da tutte le regole. Ultima scelta: entra in gioco solo se
+      //    non c'è nessun'altra mattina o pomeriggio possibile.
+      if(m.stato!=="ML"){
+        const candMA = feriali.filter(g=>haP(m.id,g) && !haM(m.id,g) && !haN(m.id,g)
+          && cf(g,"M")<nmn(g).mx && canR(m,g,"M") && mdcOk(m,g,"M") && canAssSett(m.id,g) && canAssDist(m.id,g));
+        if(candMA.length){
+          candMA.sort((a,b)=>((sottoMin(a,"M")?0:1)-(sottoMin(b,"M")?0:1)) || a-b);
+          const c0 = cnt(m.id);
+          add(m.id,candMA[0],"M");
+          if(cnt(m.id)!==c0){ prog2=true; continue; }
+        }
+      }
     }
   }
 
