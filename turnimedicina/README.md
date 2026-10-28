@@ -1,4 +1,15 @@
-# TurniMedicina 0.3.50
+# TurniMedicina 0.3.51
+
+## Novità 0.3.51 — la diagnosi in corso non rallenta una nuova generazione
+
+Correzione: la diagnosi «cosa servirebbe» (0.3.47) continuava a girare nei
+worker anche se nel frattempo si premeva di nuovo «① Copertura». La nuova
+generazione, che ha un tempo fisso, si trovava così il processore conteso e
+poteva fare meno tentativi; inoltre i risultati della diagnosi vecchia
+potevano comparire sul tabellone nuovo. Ora una nuova Copertura o il cambio
+di mese interrompono subito la diagnosi in corso (worker terminati) e i suoi
+risultati vengono scartati.
+
 
 ## Novità 0.3.50 — come si comporta il pulsante Copertura
 
