@@ -1,4 +1,20 @@
-# TurniMedicina 0.3.49
+# TurniMedicina 0.3.50
+
+## Novità 0.3.50 — come si comporta il pulsante Copertura
+
+In Regole → **Pulsante Copertura** (tendina) si sceglie il comportamento di
+«① Copertura», senza cambiarne il nome:
+- **Ottimizza tutto** (default, come prima): riempie i vuoti e può spostare i
+  turni automatici già presenti per migliorare equilibrio, weekend e notti;
+  restano fissi solo i turni inseriti a mano.
+- **Riempi solo i vuoti**: tutti i turni presenti, anche automatici, restano
+  dove sono; il motore aggiunge turni solo nei posti mancanti (i turni
+  automatici vengono resi manuali per la durata della generazione e poi
+  tornano automatici). Un posto che si coprirebbe solo spostando altri turni
+  resta scoperto e la diagnosi lo segnala.
+Misurato nell'app su un tabellone completo con due posti svuotati: «Ottimizza
+tutto» ha spostato 13 turni automatici, «Riempi solo i vuoti» nessuno.
+
 
 ## Novità 0.3.49 — nuova licenza Art.37
 

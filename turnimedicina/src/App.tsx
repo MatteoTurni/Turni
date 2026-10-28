@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Medico, Regole, Turno, TurniAll, AlternativaUC, DiagnosiGen, DiagnosiCausale } from "./engine/types";
 import { diagnosiStatica } from "./engine/diagnosi";
 import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./engine/date";
-import { vt, SPEC, ambConfigurato, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
+import { vt, SPEC, ambConfigurato, fissaTurni, liberaTurni, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
 import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { RepartoPanel } from "./components/RepartoPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
@@ -161,7 +161,15 @@ export default function App(){
         // propria sequenza di semi → più tentativi nello stesso tempo e main
         // thread libero. Fallback automatico al percorso sincrono se i Worker
         // non sono disponibili.
-        const r = await generaParallelo(anno,mese,nd,medici,turni);
+        // PULSANTE COPERTURA «SOLO VUOTI» (v0.3.50): i turni automatici
+        // presenti diventano temporaneamente manuali, così il motore riempie
+        // solo i posti mancanti; poi tornano automatici.
+        const fissati = regole.coperturaSoloVuoti ? fissaTurni(turni) : null;
+        const r = await generaParallelo(anno,mese,nd,medici,fissati ? fissati.turni : turni);
+        if(fissati){
+          liberaTurni(r.turni, fissati.auto);
+          if(r.alternativaUC) liberaTurni(r.alternativaUC.turni, fissati.auto);
+        }
         saveAmbRot({ nextIdx: calcAmbRotNext(r.turni, medici, anno, mese, nd, rotStart) });
         salvaRemoto("ambRot", loadAmbRot());
         setTurni(r.turni);
@@ -1168,6 +1176,28 @@ export default function App(){
                 </div>
               )}
             </div>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                PULSANTE COPERTURA <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.coperturaSoloVuoti ? "riempie solo i posti vuoti" : "ottimizza tutto"}</span>
+              </summary>
+              <div style={{marginTop:"12px",display:"flex",flexDirection:"column",gap:"10px"}}>
+                {([
+                  [false,"Ottimizza tutto","Riempie i posti vuoti e può spostare i turni automatici già presenti (quelli semitrasparenti) per migliorare equilibrio, weekend e notti. Restano fissi solo i turni inseriti a mano."],
+                  [true,"Riempi solo i vuoti","Tutti i turni già presenti, anche quelli automatici, restano dove sono: aggiunge turni solo nei posti mancanti, e alla fine i turni automatici restano automatici. Se un posto si potrebbe coprire solo spostando un altro turno, resta scoperto e la diagnosi lo segnala."],
+                ] as [boolean,string,string][]).map(([v,lbl,hint])=>(
+                  <label key={lbl} style={{display:"flex",gap:"8px",alignItems:"flex-start",cursor:"pointer"}}>
+                    <input type="radio" name="coperturaModo" checked={regole.coperturaSoloVuoti===v}
+                      onChange={()=>updRegole({...regole,coperturaSoloVuoti:v})} style={{marginTop:"2px"}}/>
+                    <span>
+                      <span style={{...LBL,color:"#e2eeff",fontWeight:700}}>{lbl}</span>
+                      <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
+                    </span>
+                  </label>
+                ))}
+                <div style={{...LBL,fontSize:"9px"}}>Su un mese vuoto le due modalità si comportano allo stesso modo. Riguarda solo il pulsante ① Copertura.</div>
+              </div>
+            </details>
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>

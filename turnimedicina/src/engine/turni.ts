@@ -138,6 +138,27 @@ export function fasciaDi(t:string): "M"|"P"|"N"|null {
 // Codici "speciali": non sono lavoro (assenze/esclusioni) e valgono come riposo.
 export const SPEC = ["X","Xm","Xp","Xn",...LICENZE];
 
+// ─── «RIEMPI SOLO I VUOTI» (v0.3.50) ──────────────────────────────────────────
+// Per il pulsante Copertura in modalità «solo vuoti»: prima della generazione
+// tutti i turni automatici presenti diventano temporaneamente manuali (quindi
+// intoccabili per il motore); dopo, gli stessi tornano automatici.
+const chiaveTurno = (id:string, g:string, s:Turno) => `${id}|${g}|${s.tipo}|${s.amb ?? ""}|${s.sott?1:0}|${s.est?1:0}`;
+export function fissaTurni(T: TurniMese): { turni: TurniMese; auto: Set<string> } {
+  const auto = new Set<string>(); const out: TurniMese = {};
+  for(const id in T) for(const g in T[id]){
+    const c = T[id][g]; if(!c || !Array.isArray(c.t)) continue;
+    ((out[id] ||= {})[g] = { t: c.t.map(s=>{ if(s.man) return { ...s }; auto.add(chiaveTurno(id,g,s)); return { ...s, man:true }; }) });
+  }
+  return { turni: out, auto };
+}
+export function liberaTurni(T: TurniMese, auto: Set<string>): TurniMese {
+  for(const id in T) for(const g in T[id]){
+    const c = T[id][g]; if(!c || !Array.isArray(c.t)) continue;
+    c.t = c.t.map(s=> s.man && auto.has(chiaveTurno(id,g,s)) ? { ...s, man:false } : s);
+  }
+  return T;
+}
+
 // ─── CLONAZIONE VELOCE DI T ───────────────────────────────────────────────────
 // Sostituisce JSON.parse(JSON.stringify(T)) nei punti in cui serve una COPIA
 // PIENA (snapshot "da conservare", copie di lavoro). È molto più veloce perché
