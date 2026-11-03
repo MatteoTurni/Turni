@@ -44,6 +44,11 @@ export const ENG = {
   // ricalcolato dal SOLO tabellone accettato (vedi calcAmbRotNext in genera.ts)
   // e persistito dalla UI.
   AMB_ROT_START: 0,
+
+  // Frazione del tempo di ricerca riservata al MIGLIORAMENTO LNS del miglior
+  // tabellone (v0.3.53, vedi miglioraLNS in genera.ts). 0 = solo restart,
+  // il comportamento precedente.
+  LNS_FRAZ: 0.45,
 };
 
 export function setPrevContext(turniAll: TurniAll | null | undefined, anno: number, mese: number){

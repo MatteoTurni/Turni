@@ -1,4 +1,48 @@
-# TurniMedicina 0.3.52
+# TurniMedicina 0.3.53
+
+## Novità 0.3.53 — tabellone migliore a parità di tempo («svuota e ricostruisci»)
+
+Finora «① Copertura» provava tanti tabelloni da zero e teneva il migliore.
+Misurato: oltre i 4 secondi i tentativi in più non miglioravano quasi nulla
+(4 s, 12 s e 36 s davano la stessa qualità). Ora ogni processo di calcolo
+usa la prima parte del tempo per i tentativi e il resto (45%) per
+MIGLIORARE il tabellone migliore trovato: a ogni passo ne svuota un pezzo
+(qualche giorno; 2-3 medici per una o due settimane; un weekend con il
+venerdì e il lunedì), lo ricostruisce in modo diverso e tiene il
+cambiamento solo se il tabellone nel complesso migliora. Sono migliaia di
+passi in pochi secondi. Il tempo massimo resta quello di prima.
+
+Garanzie di ogni passo:
+- nessun buco in più e nessuna regola violata (stesse regole di sempre;
+  nessun decreto Calabria lasciato solo);
+- non si toccano turni manuali, ALPI/straordinari, PS in altro ospedale,
+  ambulatori, licenze ed esclusioni, né le mattine dell'ML;
+- i punti che, dopo «② Completa obiettivi», resterebbero mancanti agli
+  obiettivi non aumentano (il passo simula Completa, pochi millesimi di
+  secondo).
+
+Nel punteggio entra anche l'equilibrio mattine/pomeriggi fra gli MR (prima
+era solo un controllo di alcune rifiniture).
+
+Misura: 80 mesi casuali (40 normali, 40 con molte assenze), generati come
+nell'app (4 processi, 12 s), tabellone dopo «② Completa obiettivi»; prima →
+dopo, valori medi per mese.
+
+| Misura | Mesi normali | Mesi con molte assenze |
+|---|---|---|
+| Buchi di copertura | 4,78 → 4,72 | 10,03 → 9,82 |
+| Weekend liberi mancanti | 1,80 → 0,30 | 1,95 → 0,53 |
+| MR senza weekend liberi | 0,47 → 0,10 | 0,33 → 0,10 |
+| Carico weekend fuori dalla quota equa | 0,53 → 0,42 | 2,95 → 1,45 |
+| Giorni di lavoro isolati | 7,95 → 5,05 | 10,18 → 5,65 |
+| Continuità nei giorni senza ML (piena) | 55% → 59% | 38% → 46% |
+| Squilibrio mattine/pomeriggi fra MR | 4,41 → 2,24 | 3,89 → 2,67 |
+| Punti mancanti agli obiettivi | 4,15 → 4,17 | 0,28 → 0,30 |
+| Violazioni di regole | invariate | invariate |
+
+I punti mancanti agli obiettivi restano uguali entro la variabilità
+casuale. Le poche violazioni («MDC da solo» in mesi con pochissimo
+personale) c'erano già prima, sugli stessi mesi.
 
 ## Novità 0.3.52 — «Completa obiettivi» aggiunge anche la mattina a chi ha il pomeriggio
 

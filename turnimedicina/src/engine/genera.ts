@@ -1,11 +1,11 @@
-import type { Medico, Risultato, TurniMese, AlternativaUC, CellaScoperta, WeekendPerso } from "./types";
+import type { Medico, Risultato, TurniMese, Turno, AlternativaUC, CellaScoperta, WeekendPerso } from "./types";
 import { dowOf, isHol } from "./date";
 import { getRegole } from "./regole";
 import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche, slotAmbGiorno } from "./turni";
-import { ENG, scaduto, conDeadline } from "./state";
+import { ENG, scaduto, conDeadline, mkRng } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
-         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, type Blocco } from "./fasi";
+         riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, risolviCluster, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -454,8 +454,12 @@ function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici
  *  dopo). Peso 0 dalla v0.3.38: per il reparto il P→M è un passaggio di
  *  consegne utile, non un difetto; il conteggio resta per le misure.
  *  iso pesa MENO di sforo(40) e wkScarto(60): l'organicità non deve
- *  mai comprare frammentazione in cambio di equità weekend o sfori. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0, cont:8 };
+ *  mai comprare frammentazione in cambio di equità weekend o sfori.
+ *  mp (v0.3.53): squilibrio mattine/pomeriggi fra gli MR (somma degli scarti
+ *  di scartoMP). Prima era solo una guardia di alcune rifiniture; con il
+ *  miglioramento LNS, che rimescola molto, senza questo termine il rapporto
+ *  M/P peggiorava (misurato: scarto 4,45 → 5,11). Peso 10 = come iso. */
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0, cont:8, mp:10 };
 
 /** Ordine di preferenza fra tabelloni: duro, poi scarto weekend, poi soft.
  *  Lo stesso metro usato da registra(), prova() e generaParallelo. */
@@ -639,11 +643,14 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
          && c.gt(m2.id,g+1).some(x=>["M","A","1"].includes(x.tipo))) quickPM++;
     }
   }
+  // EQUILIBRIO MATTINE/POMERIGGI fra gli MR (v0.3.53) — vedi PESI.mp.
+  let sbilMP = 0;
+  for(const v of scartoMP(c).values()) sbilMP += Math.abs(v);
   const P = PESI;
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
-             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont;
-  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen, strisceM };
+             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp;
+  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -684,7 +691,7 @@ export interface OpzioniCerca {
 export function cercaMigliorTentativo(
   anno:number, mese:number, ndim:number, medici:Medico[], ex:TurniMese,
   maxMs=12000, opz?:OpzioniCerca,
-): { turni:TurniMese; m:MisuraTab; top:{turni:TurniMese;m:MisuraTab}[]; tentativi:number; conteggi:Record<string,number> } {
+): { turni:TurniMese; m:MisuraTab; top:{turni:TurniMese;m:MisuraTab}[]; tentativi:number; conteggi:Record<string,number>; lns?:{ passi:number; mosse:number } } {
   const misura = (t:TurniMese) => misuraTabellone(anno, mese, ndim, medici, t);
   const BT=ENG.BT, TR=ENG.TRIES, CN=ENG.CLUSTER_NODES, RN=ENG.REBAL_NODES;   // budget originali
   // holder-oggetto (e non due `let`): le assegnazioni avvengono dentro registra()
@@ -695,9 +702,11 @@ export function cercaMigliorTentativo(
   const conteggi: Record<string, number> = {};
   const TOPK = 4;
   const top: { turni:TurniMese; m:MisuraTab }[] = [];
-  const registra = (turni:TurniMese) => {
+  // `conta`=false per il tabellone del miglioramento LNS: non è un tentativo
+  // in più, e la diagnosi "mai coperta" confronta i conteggi con i tentativi.
+  const registra = (turni:TurniMese, conta=true) => {
     const m = misura(turni);
-    for(const c of m.celle){ const k=`${c.g}-${c.f}`; conteggi[k]=(conteggi[k]||0)+1; }
+    if(conta) for(const c of m.celle){ const k=`${c.g}-${c.f}`; conteggi[k]=(conteggi[k]||0)+1; }
     // TOP-K (v0.3.32): la rifinitura è un hill-climb PATH-DEPENDENT — partire
     // dal miglior tabellone grezzo non garantisce il miglior tabellone finale
     // (misurato: da un grezzo peggiore la rifinitura arrivava a soft 521 e
@@ -748,7 +757,11 @@ export function cercaMigliorTentativo(
   const t0 = Date.now();
   let t = 0, perfetto = false, tPerfetto = 0, stadio2 = false, stallo = 0;
   setBudget(ECON);
-  const fineStadio1 = t0 + maxMs*0.55;
+  // RESTART + MIGLIORAMENTO (v0.3.53): i restart ricevono la prima parte del
+  // tempo, il resto va al miglioramento LNS del miglior tabellone (vedi
+  // miglioraLNS). Gli stadi dei restart si misurano sulla loro parte.
+  const msRestart = maxMs*(1 - Math.min(0.9, Math.max(0, ENG.LNS_FRAZ)));
+  const fineStadio1 = t0 + msRestart*0.55;
   // ── OTTIMIZZAZIONE POST-PERFETTO ─────────────────────────────────────────
   // Il primo perfetto non chiude la ricerca: si continua a campionare e
   // registra() tiene il perfetto con il punteggio soft migliore, con limiti:
@@ -759,7 +772,7 @@ export function cercaMigliorTentativo(
   // scarto weekend IDENTICO (1,29 vs 1,29), soft leggermente PEGGIORE (654 vs
   // 639) e +50% di CPU. La ricerca satura presto: conta più la DIVERSITÀ fra
   // worker che la profondità di uno solo. Tetto lasciato com'era.
-  const OTTIM_MS   = Math.min(4000, maxMs*0.4);
+  const OTTIM_MS   = Math.min(4000, msRestart*0.4);
   const STALLO_MAX = 60;
   const SEED = (opz?.saltSeed ?? 0)>>>0;
   // DEADLINE (fix v0.3.28): maxMs era controllato solo FRA i restart, ma un
@@ -768,11 +781,11 @@ export function cercaMigliorTentativo(
   // fatta rispettare DENTRO le fasi: il restart in corso abortisce in
   // best-effort e registra comunque il suo parziale.
   const DL_PREC = ENG.DEADLINE;
-  ENG.DEADLINE = DL_PREC>0 ? Math.min(DL_PREC, t0+maxMs) : t0+maxMs;
+  ENG.DEADLINE = DL_PREC>0 ? Math.min(DL_PREC, t0+msRestart) : t0+msRestart;
   try{
   while(true){
     const now = Date.now();
-    if(t>0 && now - t0 >= maxMs) break;          // almeno UN tentativo, sempre
+    if(t>0 && now - t0 >= msRestart) break;      // almeno UN tentativo, sempre
     if(perfetto){
       if(now - tPerfetto >= OTTIM_MS) break;
       if(stallo >= STALLO_MAX) break;
@@ -799,7 +812,115 @@ export function cercaMigliorTentativo(
   // un ultimo run SENZA catch — se fallisce anche questo, l'errore risale al
   // chiamante con il suo messaggio vero invece di un crash su null.
   if(!best.turni){ registra(generaCoperturaMinima(anno, mese, ndim, medici, ex).turni); }
-  return { turni: best.turni!, m: best.m!, top, tentativi: t, conteggi };
+
+  // ── MIGLIORAMENTO LNS (v0.3.53) ─────────────────────────────────────────
+  // Il tempo che resta migliora il tabellone migliore. Il risultato passa da
+  // registra(): lo stesso metro dei restart, ed entra nei top-K.
+  let lns: { passi:number; mosse:number } | undefined;
+  if(ENG.LNS_FRAZ>0 && Date.now() < t0+maxMs){
+    try{
+      const r = miglioraLNS(anno, mese, ndim, medici, best.turni!, {
+        fino: t0+maxMs, seme: (SEED ^ 0x2545F491)>>>0, onMiglioramento: opz?.onMiglioramento });
+      registra(r.turni, false);
+      lns = { passi: r.passi, mosse: r.mosse };
+    }catch(_){ /* si tiene il migliore dei restart */ }
+  }
+  return { turni: best.turni!, m: best.m!, top, tentativi: t, conteggi, lns };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MIGLIORAMENTO «SVUOTA E RICOSTRUISCI» (LNS, v0.3.53)
+// ═══════════════════════════════════════════════════════════════════════════
+// I restart saturano presto: misurato, 4 s, 12 s e 36 s di ricerca davano
+// quasi la stessa qualità finale. Il tempo rende di più se lo si usa per
+// MIGLIORARE il tabellone migliore: a ogni passo se ne svuota una piccola
+// porzione, la si ricostruisce con il risolutore dei cluster critici
+// (candidati in ordine casuale) e si tiene il risultato solo se il punteggio
+// migliora (cmpMis: duro, poi scarto weekend, poi soft).
+// Porzioni, a caso: una finestra di 2-5 giorni (tutti i medici); 2-3 medici
+// su 5-12 giorni; un weekend con il venerdì e il lunedì.
+// Garanzie, per costruzione prima ancora del punteggio:
+//   · ogni cella della porzione torna ad ALMENO la copertura di prima (mai
+//     oltre il fabbisogno efficace): nessun buco nuovo;
+//   · ogni inserimento passa da canR/mdcOk/add: nessuna regola violata, e
+//     nessun MDC nuovo lasciato solo (controllo esplicito, come riparaBuchi);
+//   · intoccabili: manuali, sottolineati, PS in altro ospedale, ambulatori,
+//     codici speciali e i turni dell'ML (le sue mattine hanno la priorità:
+//     misurato, senza questa tutela l'ML restava più spesso sotto obiettivo);
+//   · obiettivi: una mossa cambia DOVE stanno i turni minimi, e «Completa
+//     obiettivi» poi aggiunge solo nei posti liberi senza spostare nulla.
+//     Misurato: senza controllo, in 5 mesi su 80 un medico restava a 1-2
+//     punti da un obiettivo che prima raggiungeva. Ogni mossa migliorativa
+//     simula Completa (pochi ms) e si tiene solo se i punti che resterebbero
+//     mancanti non aumentano.
+export interface OpzioniLNS {
+  /** Epoch ms entro cui fermarsi. */
+  fino: number;
+  /** Seme del generatore casuale (diverso per worker). */
+  seme: number;
+  /** Stop anticipato dopo tanti ms senza miglioramenti (default 1500). */
+  stalloMs?: number;
+  /** Notifica di un tabellone migliore, al più una volta al secondo. */
+  onMiglioramento?: (turni:TurniMese, m:MisuraTab)=>void;
+}
+export function miglioraLNS(
+  anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese, opz:OpzioniLNS,
+): { turni:TurniMese; m:MisuraTab; passi:number; mosse:number } {
+  const c = makeCtx(anno, mese, ndim, medici, cloneT(turni));
+  const misura = () => misuraTabellone(anno, mese, ndim, medici, c.T);
+  const rng = mkRng(opz.seme);
+  const pick = <X,>(a:readonly X[]) => a[Math.floor(rng()*a.length)];
+  const FASCE = ["M","P","N"] as const;
+  const mobile = (s:Turno) => !s.man && !s.sott && !s.est && (s.tipo==="M" || s.tipo==="P" || s.tipo==="N");
+  const svuotabili = medici.filter(m=>m.stato!=="MPS" && m.stato!=="ML");
+  const mdc0 = mdcViolCount(ndim, medici, c);
+  const mancanti = () => completaObiettivi(anno, mese, ndim, medici, c.T).rimasti.reduce((q,x)=>q+x.mancano, 0);
+  const stallo = opz.stalloMs ?? 1500;
+  let cur = misura(), manc = mancanti(), passi = 0, mosse = 0, tUlt = Date.now(), tAvviso = tUlt;
+  conDeadline(opz.fino, ()=>{
+    while(!scaduto() && Date.now()-tUlt < stallo){
+      passi++;
+      // ── porzione da svuotare
+      let lo:number, hi:number, chi:Set<number>|null = null;
+      const tipo = rng();
+      if(tipo < 1/3){                                   // finestra di giorni
+        const L = Math.min(ndim, 2+Math.floor(rng()*4));
+        lo = 1+Math.floor(rng()*(ndim-L+1)); hi = lo+L-1;
+      } else if(tipo < 2/3){                            // pochi medici, più giorni
+        if(svuotabili.length<2) continue;
+        const L = Math.min(ndim, 5+Math.floor(rng()*8));
+        lo = 1+Math.floor(rng()*(ndim-L+1)); hi = lo+L-1;
+        const k = Math.min(svuotabili.length, 2+Math.floor(rng()*2));
+        chi = new Set<number>();
+        while(chi.size<k) chi.add(pick(svuotabili).id);
+      } else {                                          // un weekend, ven–lun
+        if(!c.wkPairs.length) continue;
+        const [sab,dom] = pick(c.wkPairs);
+        lo = Math.max(1,sab-1); hi = Math.min(ndim,dom+1);
+      }
+      // ── fabbisogno da ricostruire: la copertura di prima, mai oltre needEff
+      const celle: {g:number;f:string;need:number}[] = [];
+      for(let g=lo; g<=hi; g++) for(const f of FASCE){
+        const need = Math.min(c.needEff(g,f), c.cf(g,f));
+        if(need>0) celle.push({ g, f, need });
+      }
+      const m0 = c.mark();
+      for(let g=lo; g<=hi; g++) for(const m of svuotabili){
+        if(chi && !chi.has(m.id)) continue;
+        const sh = c.gt(m.id,g);
+        if(sh.some(mobile)) c.st(m.id,g, sh.filter(x=>!mobile(x)));
+      }
+      if(!risolviCluster(c, celle, rng, 3000) || mdcViolCount(ndim,medici,c)>mdc0){ c.rollback(m0); continue; }
+      const nx = misura();
+      if(cmpMis(nx, cur) < 0){
+        const mx = mancanti();
+        if(mx > manc){ c.rollback(m0); continue; }
+        cur = nx; manc = mx; mosse++; tUlt = Date.now();
+        if(opz.onMiglioramento && tUlt-tAvviso >= 1000){ tAvviso = tUlt; opz.onMiglioramento(pulisciT(cloneT(c.T)), cur); }
+      } else c.rollback(m0);
+    }
+  });
+  return { turni: pulisciT(cloneT(c.T)), m: cur, passi, mosse };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
