@@ -1,4 +1,58 @@
-# TurniMedicina 0.3.52
+# TurniMedicina 0.3.53
+
+## Novità 0.3.53 — tabellone migliore a parità di tempo («svuota e ricostruisci»)
+
+Finora «① Copertura» provava tanti tabelloni da zero e teneva il migliore.
+Misurato: oltre i 4 secondi i tentativi in più non miglioravano quasi nulla
+(4 s, 12 s e 36 s davano la stessa qualità). Ora ogni processo di calcolo
+usa la prima parte del tempo per i tentativi e il resto (45%) per
+MIGLIORARE il tabellone migliore trovato: a ogni passo ne svuota un pezzo
+(qualche giorno; 2-3 medici per una o due settimane; un weekend con il
+venerdì e il lunedì; oppure un weekend da liberare per un medico sotto la
+sua quota di weekend liberi), lo ricostruisce in modo diverso e tiene il
+cambiamento solo se il tabellone nel complesso migliora. Sono migliaia di
+passi in pochi secondi. Il tempo massimo resta quello di prima.
+
+Garanzie di ogni passo:
+- nessun buco in più e nessuna regola violata (stesse regole di sempre;
+  nessun decreto Calabria lasciato solo);
+- non si toccano turni manuali, ALPI/straordinari, PS in altro ospedale,
+  ambulatori, licenze ed esclusioni, né le mattine dell'ML;
+- i punti che, dopo «② Completa obiettivi», resterebbero mancanti agli
+  obiettivi non aumentano (il passo simula Completa, pochi millesimi di
+  secondo);
+- chi ha almeno un weekend libero non scende mai a zero.
+
+Nel punteggio entra anche l'equilibrio mattine/pomeriggi fra gli MR (prima
+era solo un controllo di alcune rifiniture).
+
+Misura: 80 mesi casuali (40 normali, 40 con molte assenze), generati come
+nell'app (4 processi, 12 s), tabellone dopo «② Completa obiettivi»; prima →
+dopo, valori medi per mese.
+
+| Misura | Mesi normali | Mesi con molte assenze |
+|---|---|---|
+| Buchi di copertura | 4,78 → 4,80 | 10,03 → 9,80 |
+| Weekend liberi mancanti | 1,80 → 0,33 | 1,95 → 0,53 |
+| MR senza weekend liberi | 0,47 → 0,07 | 0,33 → 0,07 |
+| Carico weekend fuori dalla quota equa | 0,53 → 0,42 | 2,95 → 1,77 |
+| Giorni di lavoro isolati | 7,95 → 4,92 | 10,18 → 5,85 |
+| Continuità nei giorni senza ML (piena) | 55% → 61% | 38% → 45% |
+| Squilibrio mattine/pomeriggi fra MR | 4,41 → 2,32 | 3,89 → 2,66 |
+| Punti mancanti agli obiettivi | 4,15 → 4,12 | 0,28 → 0,28 |
+| Violazioni di regole | invariate | invariate |
+
+In nessun mese ci sono più weekend liberi mancanti o più medici a zero
+weekend liberi di prima. I buchi oscillano di uno fra una generazione e
+l'altra in pochi mesi, in media restano uguali nei mesi normali e calano in
+quelli con molte assenze. Le poche violazioni («MDC da solo» in mesi con
+pochissimo personale) c'erano già prima, sugli stessi mesi.
+
+Sul novembre 2026 reale (soli turni manuali, 6 generazioni per versione):
+stessi buchi (0), stessi weekend mancanti (2), nessuno a zero weekend
+liberi, tutti all'obiettivo; giorni isolati 16,7 → 12,8, squilibrio
+mattine/pomeriggi 5,5 → 3,1, carico weekend fuori quota 5,8 → 3,0,
+continuità piena nei giorni senza ML 49% → 61%.
 
 ## Novità 0.3.52 — «Completa obiettivi» aggiunge anche la mattina a chi ha il pomeriggio
 
