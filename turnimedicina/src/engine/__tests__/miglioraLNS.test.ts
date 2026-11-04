@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
 import type { Medico, TurniMese } from "../types";
 import { dimOf } from "../date";
 import { setRegole, getRegole, REGOLE_DEFAULT } from "../regole";
-import { ENG, setSalt, setAmbRotStart } from "../state";
+import { ENG, setSalt, setAmbRotStart, conDeadline } from "../state";
 import { makeCtx } from "../ctx";
-import { generaCoperturaMinima, cercaMigliorTentativo, miglioraLNS, misuraTabellone, cmpMis, mdcViolCount } from "../genera";
+import { generaCoperturaMinima, cercaMigliorTentativo, miglioraLNS, misuraTabellone, cmpMis, mdcViolCount, completaObiettivi } from "../genera";
 import { violazioniIndip } from "../../../harness/validatori";
 
 // ── v0.3.53: miglioramento «svuota e ricostruisci» (LNS) ─────────────────────
@@ -62,6 +63,27 @@ describe("miglioraLNS", () => {
       expect(JSON.stringify(man1), `${m.id}/${g}`).toBe(JSON.stringify(man0));
       if(m.stato==="ML" || m.stato==="MPS") expect(chiave(r.turni,m.id,g), `${m.id}/${g}`).toBe(chiave(grezzo,m.id,g));
     }
+  });
+});
+
+describe("miglioraLNS sul novembre reale (anonimizzato, soli turni manuali)", () => {
+  it("chi ha un weekend libero non scende a zero; weekend mancanti e obiettivi non peggiorano", () => {
+    const sc = JSON.parse(fs.readFileSync("src/engine/__tests__/fixtures/novembre2026_manuali.json", "utf8"));
+    const nd = 30;
+    // tabellone di partenza: un solo tentativo, con i budget dei restart e un tetto di tempo
+    const budget = { BT:ENG.BT, TRIES:ENG.TRIES, CN:ENG.CLUSTER_NODES, RN:ENG.REBAL_NODES };
+    Object.assign(ENG, { BT:6, TRIES:3, CLUSTER_NODES:8000, REBAL_NODES:15000 });
+    setSalt(777);
+    const grezzo = conDeadline(Date.now()+3000, ()=>generaCoperturaMinima(2026, 10, nd, sc.medici, sc.ex).turni);
+    setSalt(0);
+    Object.assign(ENG, { BT:budget.BT, TRIES:budget.TRIES, CLUSTER_NODES:budget.CN, REBAL_NODES:budget.RN });
+    const r = miglioraLNS(2026, 10, nd, sc.medici, grezzo, { fino: Date.now()+2000, seme: 5 });
+    const c0 = makeCtx(2026, 10, nd, sc.medici, grezzo), c1 = makeCtx(2026, 10, nd, sc.medici, r.turni);
+    for(const m of c0.att) if(c0.cntWkLiberi(m.id)>0) expect(c1.cntWkLiberi(m.id), m.nome).toBeGreaterThan(0);
+    expect(r.m.wkDef).toBeLessThanOrEqual(misuraTabellone(2026, 10, nd, sc.medici, grezzo).wkDef);
+    const mancanti = (T:TurniMese) => completaObiettivi(2026, 10, nd, sc.medici, T).rimasti.reduce((q,x)=>q+x.mancano, 0);
+    expect(mancanti(r.turni)).toBeLessThanOrEqual(mancanti(grezzo));
+    expect(violazioniIndip({ anno:2026, mese:10, medici:sc.medici, ex:sc.ex, regole:getRegole(), prevT:null }, r.turni)).toEqual([]);
   });
 });
 

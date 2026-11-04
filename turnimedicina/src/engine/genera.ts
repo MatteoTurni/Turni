@@ -838,7 +838,12 @@ export function cercaMigliorTentativo(
 // (candidati in ordine casuale) e si tiene il risultato solo se il punteggio
 // migliora (cmpMis: duro, poi scarto weekend, poi soft).
 // Porzioni, a caso: una finestra di 2-5 giorni (tutti i medici); 2-3 medici
-// su 5-12 giorni; un weekend con il venerdì e il lunedì.
+// su 5-12 giorni; un weekend con il venerdì e il lunedì; oppure un weekend
+// da LIBERARE per un medico sotto la sua quota di weekend liberi (il weekend
+// col venerdì e il lunedì si ricostruisce senza di lui). Quest'ultima mossa
+// serve perché i tentativi da zero, con meno tempo, a volte non trovano la
+// distribuzione dei weekend migliore e le altre porzioni non la ritrovano
+// (misurato sul novembre reale: 3 weekend mancanti invece di 2).
 // Garanzie, per costruzione prima ancora del punteggio:
 //   · ogni cella della porzione torna ad ALMENO la copertura di prima (mai
 //     oltre il fabbisogno efficace): nessun buco nuovo;
@@ -852,7 +857,12 @@ export function cercaMigliorTentativo(
 //     Misurato: senza controllo, in 5 mesi su 80 un medico restava a 1-2
 //     punti da un obiettivo che prima raggiungeva. Ogni mossa migliorativa
 //     simula Completa (pochi ms) e si tiene solo se i punti che resterebbero
-//     mancanti non aumentano.
+//     mancanti non aumentano;
+//   · weekend liberi: il punteggio conta quanti ne mancano in tutto, non a
+//     chi, e una mossa poteva togliere a un medico l'ultimo weekend libero
+//     per darne uno in più a un collega (misurato sul novembre reale: un MR
+//     a zero weekend liberi in una prova su tre). Chi ne ha almeno uno non
+//     scende mai a zero.
 export interface OpzioniLNS {
   /** Epoch ms entro cui fermarsi. */
   fino: number;
@@ -875,6 +885,7 @@ export function miglioraLNS(
   const svuotabili = medici.filter(m=>m.stato!=="MPS" && m.stato!=="ML");
   const mdc0 = mdcViolCount(ndim, medici, c);
   const mancanti = () => completaObiettivi(anno, mese, ndim, medici, c.T).rimasti.reduce((q,x)=>q+x.mancano, 0);
+  const conWkLibero = c.att.filter(m=>c.cntWkLiberi(m.id)>0).map(m=>m.id);
   const stallo = opz.stalloMs ?? 1500;
   let cur = misura(), manc = mancanti(), passi = 0, mosse = 0, tUlt = Date.now(), tAvviso = tUlt;
   conDeadline(opz.fino, ()=>{
@@ -882,11 +893,12 @@ export function miglioraLNS(
       passi++;
       // ── porzione da svuotare
       let lo:number, hi:number, chi:Set<number>|null = null;
+      let libera: { id:number; giorni:number[] } | null = null;
       const tipo = rng();
-      if(tipo < 1/3){                                   // finestra di giorni
+      if(tipo < 0.3){                                   // finestra di giorni
         const L = Math.min(ndim, 2+Math.floor(rng()*4));
         lo = 1+Math.floor(rng()*(ndim-L+1)); hi = lo+L-1;
-      } else if(tipo < 2/3){                            // pochi medici, più giorni
+      } else if(tipo < 0.6){                            // pochi medici, più giorni
         if(svuotabili.length<2) continue;
         const L = Math.min(ndim, 5+Math.floor(rng()*8));
         lo = 1+Math.floor(rng()*(ndim-L+1)); hi = lo+L-1;
@@ -895,8 +907,15 @@ export function miglioraLNS(
         while(chi.size<k) chi.add(pick(svuotabili).id);
       } else {                                          // un weekend, ven–lun
         if(!c.wkPairs.length) continue;
-        const [sab,dom] = pick(c.wkPairs);
-        lo = Math.max(1,sab-1); hi = Math.min(ndim,dom+1);
+        let coppia = pick(c.wkPairs);
+        if(tipo >= 0.85){                               // …da liberare per chi è sotto quota
+          const sotto = c.mrMdc.filter(m=>c.cntWkLiberi(m.id) < c.wkTargetMed(m.id));
+          const m = sotto.length ? pick(sotto) : null;
+          const coppie = m ? c.wkPairs.filter(([sab,dom])=>!(c.isLibWk(m.id,sab) && c.isLibWk(m.id,dom))
+            && [sab,dom].every(g=>c.gt(m.id,g).every(x=>mobile(x) || SPEC.includes(x.tipo)))) : [];
+          if(m && coppie.length){ coppia = pick(coppie); libera = { id:m.id, giorni:coppia }; }
+        }
+        lo = Math.max(1,coppia[0]-1); hi = Math.min(ndim,coppia[1]+1);
       }
       // ── fabbisogno da ricostruire: la copertura di prima, mai oltre needEff
       const celle: {g:number;f:string;need:number}[] = [];
@@ -910,7 +929,14 @@ export function miglioraLNS(
         const sh = c.gt(m.id,g);
         if(sh.some(mobile)) c.st(m.id,g, sh.filter(x=>!mobile(x)));
       }
-      if(!risolviCluster(c, celle, rng, 3000) || mdcViolCount(ndim,medici,c)>mdc0){ c.rollback(m0); continue; }
+      // Weekend da liberare: durante la ricostruzione il medico è escluso da
+      // sabato e domenica con una X provvisoria, tolta subito dopo.
+      const xTemp: Turno = { tipo:"X", sott:false, man:true };
+      if(libera) for(const g of libera.giorni) c.st(libera.id, g, [...c.gt(libera.id,g), xTemp]);
+      const ok = risolviCluster(c, celle, rng, 3000);
+      if(libera) for(const g of libera.giorni) c.st(libera.id, g, c.gt(libera.id,g).filter(x=>x!==xTemp));
+      if(!ok || mdcViolCount(ndim,medici,c)>mdc0
+         || conWkLibero.some(id=>c.cntWkLiberi(id)===0)){ c.rollback(m0); continue; }
       const nx = misura();
       if(cmpMis(nx, cur) < 0){
         const mx = mancanti();
