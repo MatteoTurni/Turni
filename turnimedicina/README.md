@@ -1,6 +1,6 @@
 # TurniMedicina 0.3.54
 
-## Novità 0.3.54 — limite mensile di turni associati per medico
+## Novità 0.3.54 — limite mensile di turni associati per medico; nessuno a zero weekend liberi
 
 Nella scheda del medico (MR e decreto Calabria) c'è il campo «Max turni
 associati al mese». Vuoto = nessun limite, come prima. Oltre il limite il
@@ -26,6 +26,19 @@ Verifica:
   con limite, mai superato; il costo è piccolo — buchi 4,80 → 4,88 (normali)
   e 9,80 → 9,95 (molte assenze), weekend liberi mancanti 0,33 → 0,33 e
   0,53 → 0,75, punti mancanti agli obiettivi 4,13 → 4,24 e 0,28 → 0,33.
+
+Weekend liberi: a parità di weekend mancanti, il motore ora preferisce che
+nessuno resti a zero. Prima il punteggio contava solo il totale dei weekend
+mancanti più un avviso per ogni medico sotto quota: concentrarli tutti su un
+medico (che restava a zero) dava un avviso in meno e risultava preferito.
+Ora un medico a zero weekend liberi pesa 5 punti, meno dei 10 di un weekend
+mancante in più, che resta il criterio principale.
+- novembre 2026 reale, 12 generazioni: nessuno a zero weekend liberi (prima
+  una generazione su sei lasciava un MR a zero), weekend mancanti 2, 0 buchi;
+- 80 mesi casuali senza limiti: mesi con un MR a zero weekend liberi da 5 a 2
+  (i due rimasti in mesi con pochissimo personale); buchi 4,80 → 4,72 e
+  9,80 → 9,88; punti mancanti agli obiettivi invariati (4,12 → 4,10 e
+  0,28 → 0,28); carico weekend fuori quota 0,42 → 0,23 e 1,77 → 1,60.
 
 ## Novità 0.3.53 — tabellone migliore a parità di tempo («svuota e ricostruisci»)
 
