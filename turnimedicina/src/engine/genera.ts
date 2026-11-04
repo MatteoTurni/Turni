@@ -527,8 +527,21 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
     if(c.cf(g,"P")<c.needEff(g,"P")){ buchi++; celle.push({g,f:"P"}); }
     if(c.cf(g,"N")<c.needEff(g,"N")){ buchi++; celle.push({g,f:"N"}); }
   }
-  for(const m of c.mrMdc) wkDef += Math.max(0, c.wkTargetMed(m.id)-c.cntWkLiberi(m.id));
-  s = buchi*1000 + (!c.checkRegolaN()?500:0) + wkDef*10 + probs.length;
+  // NESSUNO A ZERO WEEKEND LIBERI (v0.3.54): wkDef conta quanti weekend liberi
+  // mancano in tutto, non a chi, e la validazione aggiunge un avviso per ogni
+  // medico sotto quota: concentrare i weekend mancanti su un solo medico, che
+  // resta a zero, valeva così UN punto in meno che dividerli fra due (misurato
+  // sul novembre reale: un MR a zero in una generazione su sei). A parità di
+  // weekend mancanti ora si preferisce che nessuno resti a zero: 5 punti per
+  // medico a zero (se per lui un weekend libero è possibile), meno dei 10 di un
+  // weekend mancante in più, che resta il criterio prioritario.
+  let wkZero = 0;
+  for(const m of c.mrMdc){
+    const t = c.wkTargetMed(m.id), l = c.cntWkLiberi(m.id);
+    wkDef += Math.max(0, t-l);
+    if(t>=1 && l===0) wkZero++;
+  }
+  s = buchi*1000 + (!c.checkRegolaN()?500:0) + wkDef*10 + wkZero*5 + probs.length;
   const varOf = (a:number[]) => { if(a.length<2) return 0; const mu=a.reduce((x,y)=>x+y,0)/a.length; return a.reduce((q,v)=>q+(v-mu)*(v-mu),0)/a.length; };
   // EQUITÀ NOTTI (v0.3.38): solo fra gli MR (l'ML non fa notti, l'MDC solo
   // accanto a un «3» di un MPS) e rispetto a una quota PROPORZIONALE ai giorni
@@ -650,7 +663,7 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
              + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp;
-  return { s, soft, probs, buchi, wkDef, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP };
+  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
