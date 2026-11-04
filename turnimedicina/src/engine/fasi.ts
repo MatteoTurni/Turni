@@ -1158,11 +1158,13 @@ export function validazioneGlobale(ctx: Ctx){
   // all'inserimento; ora anche sul tabellone finito, per i turni automatici.
   for(const x of mdcSoli(ctx))
     probs.push(`${x.m.nome.split(" ").pop()}: MDC da solo in turno (${x.f==="M"?"mattina":x.f==="P"?"pomeriggio":"notte"}) G${x.g}`);
-  // Tetto di giornate piene per settimana (v0.3.37): segnalato solo se nella
-  // settimana c'è almeno una giornata piena con un turno AUTOMATICO (quelle
-  // tutte manuali sono una scelta dell'utente, come per gli altri controlli).
+  // Tetto di turni associati per settimana (v0.3.37) e nel mese del medico
+  // (v0.3.54): segnalati solo se c'è almeno un turno associato con un turno
+  // AUTOMATICO (quelli tutti manuali sono una scelta dell'utente, come per gli
+  // altri controlli).
   {
-    const { settDi, inizioSett, assInSett, maxAssSett, pienaReale, gtB, ndim } = ctx;
+    const { settDi, inizioSett, assInSett, maxAssSett, pienaReale, gtB, ndim, assInMese, maxAssMeseDi } = ctx;
+    const conAuto = (id:number, k:number) => { const sh=gtB(id,k); return pienaReale(sh) && sh.some(s=>!s.man&&(isMatt(s.tipo)||isPom(s.tipo))); };
     for(const m of medici){
       if(m.stato==="MPS") continue;
       for(let w=settDi(1); w<=settDi(ndim); w++){
@@ -1170,8 +1172,14 @@ export function validazioneGlobale(ctx: Ctx){
         const n = assInSett(m.id, Math.max(1,da));
         if(n<=maxAssSett) continue;
         let auto=false;
-        for(let k=Math.max(1,da); k<da+7 && k<=ndim; k++){ const sh=gtB(m.id,k); if(pienaReale(sh) && sh.some(s=>!s.man&&(isMatt(s.tipo)||isPom(s.tipo)))) auto=true; }
-        if(auto) probs.push(`${m.nome.split(" ").pop()}: ${n} giornate piene (M+P) nella settimana del ${Math.max(1,da)} (max ${maxAssSett})`);
+        for(let k=Math.max(1,da); k<da+7 && k<=ndim; k++) if(conAuto(m.id,k)) auto=true;
+        if(auto) probs.push(`${m.nome.split(" ").pop()}: ${n} turni associati nella settimana del ${Math.max(1,da)} (max ${maxAssSett})`);
+      }
+      const lim = maxAssMeseDi.get(m.id);
+      if(lim!==undefined && assInMese(m.id)>lim){
+        let auto=false;
+        for(let k=1; k<=ndim; k++) if(conAuto(m.id,k)) auto=true;
+        if(auto) probs.push(`${m.nome.split(" ").pop()}: ${assInMese(m.id)} turni associati nel mese (max ${lim})`);
       }
     }
   }

@@ -29,7 +29,10 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
   const inp: React.CSSProperties = {width:"100%",background:"#030810",border:"1px solid #1e3a5f",color:"#e2f0ff",borderRadius:"7px",padding:"7px 10px",fontSize:"12px",fontFamily:"monospace",boxSizing:"border-box"};
   const salva = () => {
     if(!f.nome?.trim()) return;
-    onSalva(f);
+    // Il limite di turni associati vale solo per MR e decreto Calabria.
+    const out = {...f};
+    if(!(out.stato==="MR"||out.stato==="MDC")) delete out.maxAssMese;
+    onSalva(out);
     onClose();
   };
   const campi: [string, "nome"|"codice"|"obiettivo", string][] = [["Nome","nome","text"],["Codice","codice","text"],["Obiettivo","obiettivo","number"]];
@@ -56,6 +59,14 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
             <option value="MPS">MPS — Pronto Soccorso</option>
           </select>
         </div>
+        {(f.stato==="MR"||f.stato==="MDC") && (
+          <div style={{marginBottom:"16px"}}>
+            <label htmlFor="max-ass-mese" style={{color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace",display:"block",marginBottom:"3px"}}>Max turni associati al mese</label>
+            <input id="max-ass-mese" type="number" min={0} value={f.maxAssMese ?? ""} placeholder="nessun limite" style={inp}
+              onChange={e=>{ const v=e.target.value; setF(p=>({...p, maxAssMese: v==="" ? undefined : Math.max(0, Math.floor(+v))})); }}/>
+            <div style={{color:"#3d5878",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Giorni con mattina e pomeriggio, anche di PS o sottolineati. Vuoto = nessun limite.</div>
+          </div>
+        )}
         <div style={{marginBottom:"16px"}}>
           <label style={{color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace",display:"block",marginBottom:"5px"}}>Abilitato agli ambulatori</label>
           {ambulatori.length===0 && <div style={{color:"#3d5878",fontSize:"10px",fontFamily:"monospace"}}>Nessun ambulatorio configurato (pannello Regole).</div>}

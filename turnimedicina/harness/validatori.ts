@@ -105,14 +105,21 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
       for(let k=g+1;k<=Math.min(nd,g+2);k++)
         if(piena(k) && !(pienaMan(g)&&pienaMan(k))) V.push(`${nome(m)}: giornate piene troppo vicine g${g}/g${k}`);
     }
-    // ── max giornate piene REALI per settimana lun–dom (v0.3.37)
-    const reale = (g:number) => { const sh=cellB(m.id,g); return sh.some(s=>isM(s.tipo)&&s.tipo!=="1")&&sh.some(s=>isP(s.tipo)&&s.tipo!=="2"); };
+    // ── max turni associati per settimana lun–dom (v0.3.37) e nel mese per
+    //    medico (v0.3.54). Turno associato = una mattina e un pomeriggio di
+    //    qualunque tipo, PS 1/2 e sottolineati compresi (v0.3.54).
+    const reale = (g:number) => { const sh=cellB(m.id,g); return sh.some(s=>isM(s.tipo))&&sh.some(s=>isP(s.tipo)); };
     const realeAuto = (g:number) => g>=1 && reale(g) && cell(m.id,g).some(s=>!s.man&&(isM(s.tipo)||isP(s.tipo)));
     const dw1 = dowOf(anno,mese,1);
     for(let da=1-dw1; da<=nd; da+=7){
       let n=0, a=false;
       for(let k=da;k<da+7&&k<=nd;k++){ if(k<-6) continue; if(reale(k)) n++; if(realeAuto(k)) a=true; }
-      if(n>R.maxAssSett && a) V.push(`${nome(m)}: ${n} giornate piene nella settimana del ${Math.max(1,da)} (max ${R.maxAssSett})`);
+      if(n>R.maxAssSett && a) V.push(`${nome(m)}: ${n} turni associati nella settimana del ${Math.max(1,da)} (max ${R.maxAssSett})`);
+    }
+    if(typeof m.maxAssMese==="number" && m.maxAssMese>=0){
+      let n=0, a=false;
+      for(let g=1;g<=nd;g++){ if(reale(g)) n++; if(realeAuto(g)) a=true; }
+      if(n>Math.floor(m.maxAssMese) && a) V.push(`${nome(m)}: ${n} turni associati nel mese (max ${Math.floor(m.maxAssMese)})`);
     }
     // ── obiettivo: sforo massimo +1 (una notte vale 2) sui soli automatici
     // (misurato a parte: non è una violazione dura, vedi `sforo` in metriche)

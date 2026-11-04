@@ -72,9 +72,15 @@ export function makeCtx(
   // così il contatore riassuntivo e l'equità soft byWk restano SEMPRE identici.
   // Include sabato (mattina esclusa), domenica/festivi, e la notte PREFESTIVA.
   const cellWkVal = (g: number, a: Turno[]) => pesoWeekend(anno, mese, ndim, g, a);
+  // TURNI ASSOCIATI (v0.3.54): giorno con un turno di mattina e uno di
+  // pomeriggio, di qualunque tipo — reparto, ambulatorio o PS (1/2), anche
+  // sottolineati. È la definizione unica di distanza, tetto settimanale e
+  // tetto mensile del medico.
+  const cellAss = (a: Turno[]) => (a.some(s=>isMatt(s.tipo)) && a.some(s=>isPom(s.tipo))) ? 1 : 0;
   const cntMap  = new Map<number, number>();
   const cntNMap = new Map<number, number>();
   const cntWkMap= new Map<number, number>();
+  const cntAssMap = new Map<number, number>();
   // Contatori di FABBISOGNO per giorno (solo turni reali M/P/N, solo medici
   // della lista — stessa semantica della vecchia cf, che iterava `medici`).
   const inMedici = new Set(medici.map(m=>m.id));
@@ -84,14 +90,14 @@ export function makeCtx(
   const cellMPN = (a: Turno[]) => { let m=0,p=0,n=0; for(const s of a){ if(s.tipo==="M")m++; else if(s.tipo==="P")p++; else if(s.tipo==="N")n++; } return [m,p,n] as const; };
   for(const idS in T){
     const id=+idS; const gi=T[idS]; if(!gi) continue;
-    let v=0,n=0,wk=0;
+    let v=0,n=0,wk=0,as=0;
     for(const gS in gi){
       const g=+gS; if(g<1||g>ndim) continue;   // come i vecchi cnt/cntN: solo 1..ndim
       const c=gi[gS]?.t; if(!c) continue;
-      v+=cellVal(c); n+=cellNot(c); wk+=cellWkVal(g,c);
+      v+=cellVal(c); n+=cellNot(c); wk+=cellWkVal(g,c); as+=cellAss(c);
       if(inMedici.has(id)){ const [dm,dp,dn]=cellMPN(c); cfM[g]+=dm; cfP[g]+=dp; cfN[g]+=dn; }
     }
-    cntMap.set(id,v); cntNMap.set(id,n); cntWkMap.set(id,wk);
+    cntMap.set(id,v); cntNMap.set(id,n); cntWkMap.set(id,wk); cntAssMap.set(id,as);
   }
   const aggCf = (id:number,g:number,a:Turno[],segno:1|-1) => {
     if(!inMedici.has(id) || g<1 || g>ndim) return;
@@ -111,6 +117,7 @@ export function makeCtx(
     cntMap.set(id,(cntMap.get(id)||0) + cellVal(a) - (prev?cellVal(prev):0));
     cntNMap.set(id,(cntNMap.get(id)||0) + cellNot(a) - (prev?cellNot(prev):0));
     cntWkMap.set(id,(cntWkMap.get(id)||0) + cellWkVal(g,a) - (prev?cellWkVal(g,prev):0));
+    cntAssMap.set(id,(cntAssMap.get(id)||0) + cellAss(a) - (prev?cellAss(prev):0));
     if(prev) aggCf(id,g,prev,-1);
     aggCf(id,g,a,1);
     if(!T[id])T[id]={};
@@ -126,6 +133,7 @@ export function makeCtx(
       cntMap.set(e.id,(cntMap.get(e.id)||0) + (e.prev?cellVal(e.prev):0) - (cur?cellVal(cur):0));
       cntNMap.set(e.id,(cntNMap.get(e.id)||0) + (e.prev?cellNot(e.prev):0) - (cur?cellNot(cur):0));
       cntWkMap.set(e.id,(cntWkMap.get(e.id)||0) + (e.prev?cellWkVal(e.g,e.prev):0) - (cur?cellWkVal(e.g,cur):0));
+      cntAssMap.set(e.id,(cntAssMap.get(e.id)||0) + (e.prev?cellAss(e.prev):0) - (cur?cellAss(cur):0));
       if(cur) aggCf(e.id,e.g,cur,-1);
       if(e.prev) aggCf(e.id,e.g,e.prev,1);
       if(e.prev===undefined){ if(T[e.id]) delete T[e.id][e.g]; }
@@ -190,10 +198,9 @@ export function makeCtx(
       const assocPrima = c.some(s=>isMatt(s.tipo)) && c.some(s=>isPom(s.tipo));
       const assocDopo  = nc.some(s=>isMatt(s.tipo)) && nc.some(s=>isPom(s.tipo));
       if(assocDopo && !assocPrima && !canAssDist(id,g)) return;
-      // 1b) Tetto di giornate piene REALI (M+P di reparto/ambulatorio) per
-      //     settimana di calendario (v0.3.37): era solo una preferenza della
-      //     fase diurni, ora è una regola per ogni inserimento automatico.
-      if(assocDopo && !assocPrima && pienaReale(nc) && !canAssSett(id,g)) return;
+      // 1b) Tetto di turni associati per settimana di calendario (v0.3.37) e
+      //     per mese del medico (v0.3.54): regola di ogni inserimento automatico.
+      if(assocDopo && !assocPrima && !canAssSett(id,g)) return;
       // 2) Riposo post-notte (Regola N): non aggiungere turni che rompono una notte adiacente.
       if(!SPEC.includes(tipo)){
         if(postN1(id,g)) return;                                 // g+1 di una notte: deve restare libero
@@ -359,17 +366,18 @@ export function makeCtx(
   const MAX_NOTTI = REG.maxNotti;
   const maxAssSett = REG.maxAssSett;
 
-  // ── MAX GIORNATE PIENE PER SETTIMANA (v0.3.37) ─────────────────────────────
+  // ── MAX TURNI ASSOCIATI PER SETTIMANA (v0.3.37) ────────────────────────────
   // "Max turni associati / settimana" del pannello Regole. Prima valeva solo
   // come PREFERENZA nella fase diurni, con settimane contate a blocchi di 7
   // giorni dal giorno 1: impostato a 1, 4 tabelloni su 5 lo superavano senza
   // alcun avviso. Ora è un vincolo di ogni inserimento automatico, sulla
   // settimana di CALENDARIO lunedì–domenica (la prima settimana del mese
-  // include la coda del mese precedente). Si contano le giornate piene REALI
-  // (mattina + pomeriggio di reparto o d'ambulatorio): i codici PS 1/2, come
-  // già per haAss, non entrano nella quota.
-  const pienaReale = (sh:{tipo:string}[]) =>
-    sh.some(s=>isMatt(s.tipo)&&s.tipo!=="1") && sh.some(s=>isPom(s.tipo)&&s.tipo!=="2");
+  // include la coda del mese precedente).
+  // DEFINIZIONE UNIFORME (v0.3.54, scelta del reparto): conta ogni giorno con
+  // una mattina e un pomeriggio di qualunque tipo, codici PS 1/2 e
+  // sottolineati compresi — la stessa della distanza (haAssB) e del tetto
+  // mensile del medico. Prima M+2, 1+P e 1+2 restavano fuori dalla quota.
+  const pienaReale = (sh:Turno[]) => cellAss(sh)===1;
   const DW1 = dw(1);
   /** Indice della settimana di calendario (lun–dom) del giorno g, anche per g ≤ 0. */
   const settDi = (g:number) => Math.floor((g - 1 + DW1) / 7);
@@ -380,13 +388,25 @@ export function makeCtx(
     for(let k=da; k<da+7 && k<=ndim; k++){ if(k<1-TAIL) continue; if(pienaReale(gtB(id,k))) n++; }
     return n;
   };
-  /** Il medico può avere UN'ALTRA giornata piena nella settimana di g? */
-  const canAssSett = (id:number,g:number) => assInSett(id,g) < maxAssSett;
-  /** Aggiungere la fascia f in g creerebbe una NUOVA giornata piena reale? */
+  // ── MAX TURNI ASSOCIATI NEL MESE, PER MEDICO (v0.3.54) ─────────────────────
+  // Preferenza del medico (scheda medico): oltre il limite il motore non crea
+  // turni associati nuovi; quelli manuali contano ma non si toccano. Contano i
+  // giorni del mese corrente (contatore incrementale cntAssMap).
+  const maxAssMeseDi = new Map<number, number>();
+  for(const m of medici){
+    const x = m.maxAssMese;
+    if(typeof x==="number" && Number.isFinite(x) && x>=0) maxAssMeseDi.set(m.id, Math.floor(x));
+  }
+  const assInMese = (id:number) => cntAssMap.get(id) || 0;
+  const canAssMese = (id:number) => { const lim = maxAssMeseDi.get(id); return lim===undefined || assInMese(id) < lim; };
+  /** Il medico può avere UN ALTRO turno associato nella settimana di g (e nel
+   *  mese, col suo limite personale)? */
+  const canAssSett = (id:number,g:number) => assInSett(id,g) < maxAssSett && canAssMese(id);
+  /** Aggiungere la fascia f in g creerebbe un NUOVO turno associato? */
   const creaPiena = (id:number,g:number,f:string) => {
     const sh = gt(id,g);
-    if(f==="M") return !sh.some(s=>isMatt(s.tipo)) && sh.some(s=>isPom(s.tipo)&&s.tipo!=="2");
-    if(f==="P") return !sh.some(s=>isPom(s.tipo))  && sh.some(s=>isMatt(s.tipo)&&s.tipo!=="1");
+    if(f==="M") return !sh.some(s=>isMatt(s.tipo)) && sh.some(s=>isPom(s.tipo));
+    if(f==="P") return !sh.some(s=>isPom(s.tipo))  && sh.some(s=>isMatt(s.tipo));
     return false;
   };
 
@@ -801,7 +821,7 @@ export function makeCtx(
     dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, psEstOccupa, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
-    settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB,
+    settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB, assInMese, canAssMese, maxAssMeseDi,
     att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
     pesoSlot, wkPortatori: wkPortatoriL, wkCapacita, wkPavimento, wkQuota, byWkQuota,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,

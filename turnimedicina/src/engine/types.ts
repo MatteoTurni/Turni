@@ -13,6 +13,11 @@ export interface Medico {
   /** Ambulatori (id di Regole.ambulatori) a cui il medico è abilitato
    *  (v0.3.36). Assente = storico: `ambulatorio` vale per l'ambulatorio "A". */
   ambulatori?: string[];
+  /** Massimo di TURNI ASSOCIATI nel mese, preferenza del medico (v0.3.54):
+   *  giorni con un turno di mattina (M, A, 1) e uno di pomeriggio (P, Ap, 2),
+   *  sottolineati compresi. Assente = nessun limite. I turni manuali contano
+   *  ma non si toccano: il motore non ne crea di nuovi oltre il limite. */
+  maxAssMese?: number;
 }
 
 export interface Turno {
