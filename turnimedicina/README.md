@@ -1,4 +1,42 @@
-# TurniMedicina 0.3.56
+# TurniMedicina 0.3.57
+
+## Novità 0.3.57 — equità dei superfestivi fra gli anni
+
+Nel pannello Regole c'è la sezione «Superfestivi»: Natale, Capodanno, Pasqua
+e Ferragosto di default, e se ne possono aggiungere altri (data fissa,
+Pasqua o Pasquetta). Per ognuno contano quattro turni: la notte prima, la
+mattina, il pomeriggio e la notte del giorno (PS e sottolineati compresi).
+
+Regole, tutte preferenze (vengono dopo buchi, regole, weekend e obiettivi):
+- lo stesso identico turno dell'anno scorso (es. la notte di Natale) non
+  ricapita allo stesso medico;
+- lo stesso superfestivo non due anni di fila, se possibile;
+- alternanza Natale / Capodanno (spuntabile): chi lavora a Natale (notte del
+  24 o il 25) non lavora a Capodanno (notte del 31 o l'1), e viceversa;
+- pareggio annuo: chi negli ultimi 12 mesi ha fatto più turni superfestivi
+  riceve per ultimo quelli del mese.
+
+L'equità dei superfestivi si può spegnere (l'elenco resta) e può guardare da
+1 a 5 anni indietro (default 2): l'anno scorso conta per intero, quello prima
+a metà, poi un terzo… Lo storico viene dai mesi salvati nell'app: per gli
+anni scorsi basta inserire a mano, nel calendario, i turni di quei giorni
+(es. dicembre dell'anno scorso).
+
+Pannello Regole riordinato: in alto ciò che si controlla ogni mese
+(limiti per medico, regola della notte, continuità delle mattine,
+fabbisogno giornaliero), sotto, a tendina, le impostazioni che si
+cambiano di rado (ambulatori, equità fra mesi e anni, turni PS e
+affiancamento MDC, pulsanti, reparto).
+
+Verifica: 8 squadre seguite su dicembre 2025, gennaio, aprile e agosto 2026,
+dicembre 2026 e gennaio 2027, con e senza le regole (media per squadra):
+stesso identico turno dell'anno prima 1,4 → 0; stesso superfestivo due anni
+di fila 3,5 → 1,8 medici; Natale e Capodanno nella stessa stagione 3,0 → 1,0
+medici; distanza fra l'MR con più turni superfestivi e quello con meno
+4,3 → 2,0. Buchi, weekend liberi e obiettivi invariati. Con tre stagioni
+(2024/25, 2025/26, 2026/27) e 2 anni di memoria invece di 1: stesso identico
+turno di due anni prima 1,6 → 0,25; stesso superfestivo di due anni prima
+5,3 → 3,4 medici.
 
 ## Novità 0.3.56 — rotazione dei turni festivi fra mesi
 

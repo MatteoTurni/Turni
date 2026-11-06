@@ -54,6 +54,13 @@ export const ENG = {
   // turni festivi per tipo nei mesi precedenti (vedi storico.ts). Iniettato
   // dalla UI prima di generare; null = nessuna rotazione.
   STORICO_FEST: null as null | Record<number, number[]>,
+
+  // SUPERFESTIVI (v0.3.57): turni superfestivi dei mesi salvati che servono
+  // al mese corrente (vedi superfestivi.ts). Iniettato dalla UI; null = nessuno.
+  STORICO_SF: null as null | {
+    nAnno: Record<number, number>; identici: Record<number, Record<string, number>>;
+    stessi: Record<number, Record<string, number>>; stagione: Record<number, string[]>;
+  },
 };
 
 export function setPrevContext(turniAll: TurniAll | null | undefined, anno: number, mese: number){
