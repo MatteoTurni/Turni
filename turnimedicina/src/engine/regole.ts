@@ -18,6 +18,7 @@ export const REGOLE_DEFAULT: Regole = {
   maxConsec: 7,     // max giorni consecutivi di lavoro
   wkTarget: 2,      // obiettivo weekend liberi (resta ADATTIVO: è il tetto)
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
+  rotazioneFestiviMesi: 3, // rotazione dei turni festivi: mesi precedenti considerati (0 = off)
   blocchiMattina: 4,// catena di continuità mattine: blocchi da ~4 giorni (0 = off)
   // Ambulatori (v0.3.36): default un solo ambulatorio il martedì mattina.
   ambulatori: [{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:{ 1:"M" } }],
@@ -66,9 +67,12 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   // ma non intero ≥ 0 → default. Lo 0 è LEGITTIMO: catena disattivata.
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
+  // rotazioneFestiviMesi: ASSENTE (salvataggi pre-v0.3.56) o non intero 0–9 → default.
+  const rFM = Number.isInteger(s.rotazioneFestiviMesi) && (s.rotazioneFestiviMesi as number)>=0 && (s.rotazioneFestiviMesi as number)<=9
+    ? (s.rotazioneFestiviMesi as number) : d.rotazioneFestiviMesi;
   const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
   return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti, notteLiberoNotte: nLN, riposoEsteso: rE,
-           mattinaDopoNotte: mDN, blocchiMattina: bM, fabb:{
+           mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},
