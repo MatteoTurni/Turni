@@ -1,7 +1,7 @@
 import type { Medico, Risultato, TurniMese, Turno, AlternativaUC, CellaScoperta, WeekendPerso } from "./types";
 import { dowOf, isHol } from "./date";
 import { getRegole } from "./regole";
-import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche, slotAmbGiorno } from "./turni";
+import { cloneT, pulisciT, SPEC, isAmbT, ambIdDi, abilitatoAmb, abilitatoQualche, slotAmbGiorno, isMatt, isPom, isNot } from "./turni";
 import { ENG, scaduto, conDeadline, mkRng } from "./state";
 import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
@@ -458,8 +458,12 @@ function generaConUltimaChanceImpl(anno:number, mese:number, ndim:number, medici
  *  mp (v0.3.53): squilibrio mattine/pomeriggi fra gli MR (somma degli scarti
  *  di scartoMP). Prima era solo una guardia di alcune rifiniture; con il
  *  miglioramento LNS, che rimescola molto, senza questo termine il rapporto
- *  M/P peggiorava (misurato: scarto 4,45 → 5,11). Peso 10 = come iso. */
-export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0, cont:8, mp:10 };
+ *  M/P peggiorava (misurato: scarto 4,45 → 5,11). Peso 10 = come iso.
+ *  festVar (v0.3.55): coppie di turni festivi dello STESSO tipo fatti dallo
+ *  stesso medico (vedi varietaFestivi). Peso 20 scelto misurando 10/20/40 sul
+ *  novembre reale: 20 dimezza le ripetizioni senza toccare il resto, 40 non
+ *  migliora la varietà e peggiora l'equilibrio mattine/pomeriggi. */
+export const PESI = { notti:100, wkScarto:60, carichi:10, wkLib:5, wkExtra:2, strisce:8, sforo:40, iso:10, quickPM:0, cont:8, mp:10, festVar:20 };
 
 /** Ordine di preferenza fra tabelloni: duro, poi scarto weekend, poi soft.
  *  Lo stesso metro usato da registra(), prova() e generaParallelo. */
@@ -507,6 +511,34 @@ export function continuitaScoperti(c: ReturnType<typeof makeCtx>) {
     else nessuna++;
   }
   return { piena, minima, nessuna };
+}
+
+// ── VARIETÀ DEI TURNI FESTIVI (v0.3.55) ──────────────────────────────────
+// Il carico weekend pesato pareggia le SOMME (una notte vale 2, un diurno
+// festivo 1): due notti di sabato valevano quanto quattro diurni festivi, e
+// misurato in 3 mesi su 4 un MR faceva 2 notti di sabato mentre un collega
+// disponibile nessuna. Qui si contano i turni festivi per TIPO — pomeriggio
+// e notte del sabato (la notte prima di un festivo vale come notte di
+// sabato), mattina, pomeriggio e notte della domenica o del festivo; la
+// mattina del sabato non è festiva — compresi PS e sottolineati. Per ogni
+// medico (MR e decreto Calabria) e tipo, ogni COPPIA di turni dello stesso
+// tipo costa un punto: c·(c−1)/2, quindi 0 con un turno, 1 con due, 3 con
+// tre. Il motore preferisce così dare a ognuno tipi diversi e il secondo
+// turno di un tipo solo dopo che i colleghi disponibili ne hanno fatto uno.
+export function varietaFestivi(c: ReturnType<typeof makeCtx>): number {
+  const tipo = (g:number, t:string): number => {
+    const fest = c.isSp(g);
+    if(fest) return isMatt(t) ? 0 : isPom(t) ? 1 : isNot(t) ? 2 : -1;    // mattina, pomeriggio, notte festiva
+    if(c.isS(g)) return isPom(t) ? 3 : isNot(t) ? 4 : -1;              // pomeriggio, notte del sabato
+    return g<c.ndim && c.isSp(g+1) && isNot(t) ? 4 : -1;               // notte prefestiva
+  };
+  let coppie = 0;
+  for(const m of c.mrMdc){
+    const k = [0,0,0,0,0];
+    for(let g=1; g<=c.ndim; g++) for(const s of c.gt(m.id,g)){ const t = tipo(g, s.tipo); if(t>=0) k[t]++; }
+    for(const x of k) coppie += x*(x-1)/2;
+  }
+  return coppie;
 }
 
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){
@@ -659,11 +691,13 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // EQUILIBRIO MATTINE/POMERIGGI fra gli MR (v0.3.53) — vedi PESI.mp.
   let sbilMP = 0;
   for(const v of scartoMP(c).values()) sbilMP += Math.abs(v);
+  // VARIETÀ DEI TURNI FESTIVI (v0.3.55) — vedi varietaFestivi.
+  const festRip = varietaFestivi(c);
   const P = PESI;
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
-             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp;
-  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP };
+             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar;
+  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
