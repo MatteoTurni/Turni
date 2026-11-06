@@ -1,4 +1,31 @@
-# TurniMedicina 0.3.54
+# TurniMedicina 0.3.55
+
+## Novità 0.3.55 — varietà dei turni festivi
+
+Il carico weekend pareggiava le SOMME (una notte vale 2, una mattina o un
+pomeriggio festivo 1): due notti di sabato contavano quanto quattro turni
+diurni festivi. Misurato: in circa 3 mesi su 4 un MR faceva 2 notti di
+sabato mentre un collega disponibile nessuna.
+
+Ora il motore guarda anche il TIPO di turno festivo: pomeriggio e notte del
+sabato (la notte prima di un festivo vale come notte di sabato), mattina,
+pomeriggio e notte della domenica o del festivo. La mattina del sabato non è
+festiva. Contano anche i turni di PS e i sottolineati; i decreti Calabria
+partecipano nei limiti delle loro regole. Il motore preferisce dare a ogni
+medico tipi diversi e il secondo turno dello stesso tipo solo dopo che i
+colleghi disponibili ne hanno fatto uno. È una preferenza: non costa mai
+buchi, regole, weekend liberi o punti per l'obiettivo.
+
+Verifica (peso scelto provando 10, 20 e 40):
+- novembre 2026 reale, 12 generazioni: turni festivi dello stesso tipo
+  ripetuti 4,7 → 3,3 per mese; generazioni con un medico a 2 notti di sabato
+  da 7 a 2 su 12; buchi, obiettivi e weekend liberi invariati;
+- 80 mesi casuali: ripetizioni 4,78 → 2,12 (normali) e 4,53 → 2,52 (molte
+  assenze); mesi con un MR a 2 o più notti di sabato mentre un collega
+  disponibile ne ha 0: da 29 a 13 su 40 e da 28 a 23 su 40; buchi invariati
+  (4,72 e 9,88); punti mancanti agli obiettivi 4,10 → 4,12 e 0,28 → 0,30.
+  Il prezzo: qualche giorno di lavoro isolato in più (4,60 → 5,00 e
+  5,83 → 6,55 per mese).
 
 ## Novità 0.3.54 — limite mensile di turni associati per medico; nessuno a zero weekend liberi
 

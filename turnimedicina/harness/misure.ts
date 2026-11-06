@@ -66,6 +66,19 @@ export function misure(sc: CasoM, T: TurniMese): Record<string,number> {
   o["pomeriggi: max sopra media"] = Ptutti.length ? Math.max(...Ptutti)-muP : 0;
   o["quota pomeriggi: forbice tutti MR %"] = 100*forb(mp.filter(x=>x.M+x.P>=4).map(x=>x.P/(x.M+x.P)));
   o["totali: forbice MR"] = forb(pieni.map(m=>c.cnt(m.id)));
+  // ── varietà dei turni festivi (v0.3.55): per MR e decreto Calabria, turni
+  //    per tipo — pomeriggio e notte del sabato (o notte prefestiva), mattina,
+  //    pomeriggio e notte festiva; PS e sottolineati compresi.
+  const tipoF = (g:number, t:string) => {
+    const isMt = ["M","A","1"].includes(t), isPm = ["P","Ap","2"].includes(t), isNt = ["N","3"].includes(t);
+    if(c.isSp(g)) return isMt ? 0 : isPm ? 1 : isNt ? 2 : -1;
+    if(c.isS(g)) return isPm ? 3 : isNt ? 4 : -1;
+    return g<nd && c.isSp(g+1) && isNt ? 4 : -1;
+  };
+  const perTipo = c.mrMdc.map(m=>{ const k=[0,0,0,0,0]; for(let g=1;g<=nd;g++) for(const sh of c.gt(m.id,g)){ const t=tipoF(g,sh.tipo); if(t>=0) k[t]++; } return k; });
+  o["festivi: turni dello stesso tipo ripetuti"] = perTipo.reduce((q,k)=>q+k.reduce((a,x)=>a+Math.max(0,x-1),0),0);
+  o["festivi: medici con 2+ notti di sabato"] = perTipo.filter(k=>k[4]>=2).length;
+  o["festivi: forbice media per tipo"] = perTipo.length>1 ? [0,1,2,3,4].reduce((q,t)=>q+forb(perTipo.map(k=>k[t])),0)/5 : 0;
   // ── obiettivi
   o["punti sotto obiettivo MR"] = c.mr.reduce((q,m)=>q+Math.max(0,m.obiettivo-c.cnt(m.id)),0);
   o["punti oltre obiettivo"] = c.att.reduce((q,m)=>q+Math.max(0,c.cnt(m.id)-m.obiettivo),0);
