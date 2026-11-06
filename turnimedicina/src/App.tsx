@@ -1025,28 +1025,6 @@ export default function App(){
 
             <div style={{...LBL,fontWeight:700,color:"#93c5fd",letterSpacing:".08em",margin:"4px 0 8px"}}>DA CONTROLLARE OGNI MESE</div>
             <div style={BOX}>
-              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>FABBISOGNO GIORNALIERO (min–max)</div>
-              <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
-                <thead><tr>
-                  <th style={{...LBL,textAlign:"left",padding:"4px 14px 4px 0"}}></th>
-                  <th style={{...LBL,padding:"4px 8px"}}>Mattine min</th><th style={{...LBL,padding:"4px 8px"}}>max</th>
-                  <th style={{...LBL,padding:"4px 8px"}}>Pomeriggi min</th><th style={{...LBL,padding:"4px 8px"}}>max</th>
-                </tr></thead>
-                <tbody>
-                  {righe.map(([k,lbl])=>(
-                    <tr key={k}>
-                      <td style={{...LBL,color:"#e2eeff",padding:"4px 14px 4px 0"}}>{lbl}</td>
-                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMin,v=>setFabb(k,"mMin",v))}</td>
-                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMax,v=>setFabb(k,"mMax",v))}</td>
-                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMin,v=>setFabb(k,"pMin",v))}</td>
-                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMax,v=>setFabb(k,"pMax",v))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>LIMITI PER MEDICO</div>
               {limiti.map(([k,lbl,hint])=>(
                 <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
@@ -1140,6 +1118,28 @@ export default function App(){
                   <div style={{...LBL,fontSize:"9px"}}>{HINT_BLOCCHI}</div>
                 </div>
               </div>
+            </div>
+
+            <div style={BOX}>
+              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>FABBISOGNO GIORNALIERO (min–max)</div>
+              <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
+                <thead><tr>
+                  <th style={{...LBL,textAlign:"left",padding:"4px 14px 4px 0"}}></th>
+                  <th style={{...LBL,padding:"4px 8px"}}>Mattine min</th><th style={{...LBL,padding:"4px 8px"}}>max</th>
+                  <th style={{...LBL,padding:"4px 8px"}}>Pomeriggi min</th><th style={{...LBL,padding:"4px 8px"}}>max</th>
+                </tr></thead>
+                <tbody>
+                  {righe.map(([k,lbl])=>(
+                    <tr key={k}>
+                      <td style={{...LBL,color:"#e2eeff",padding:"4px 14px 4px 0"}}>{lbl}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMin,v=>setFabb(k,"mMin",v))}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].mMax,v=>setFabb(k,"mMax",v))}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMin,v=>setFabb(k,"pMin",v))}</td>
+                      <td style={{padding:"4px 8px",textAlign:"center"}}>{numInp(regole.fabb[k].pMax,v=>setFabb(k,"pMax",v))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             <div style={{...LBL,fontWeight:700,color:"#93c5fd",letterSpacing:".08em",margin:"18px 0 8px"}}>IMPOSTAZIONI CHE SI CAMBIANO DI RADO</div>

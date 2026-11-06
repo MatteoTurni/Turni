@@ -23,10 +23,10 @@ anni scorsi basta inserire a mano, nel calendario, i turni di quei giorni
 (es. dicembre dell'anno scorso).
 
 Pannello Regole riordinato: in alto ciò che si controlla ogni mese
-(fabbisogno, limiti per medico, regola della notte, continuità delle
-mattine), sotto, a tendina, le impostazioni che si cambiano di rado
-(ambulatori, equità fra mesi e anni, turni PS e affiancamento MDC, pulsanti,
-reparto).
+(limiti per medico, regola della notte, continuità delle mattine,
+fabbisogno giornaliero), sotto, a tendina, le impostazioni che si
+cambiano di rado (ambulatori, equità fra mesi e anni, turni PS e
+affiancamento MDC, pulsanti, reparto).
 
 Verifica: 8 squadre seguite su dicembre 2025, gennaio, aprile e agosto 2026,
 dicembre 2026 e gennaio 2027, con e senza le regole (media per squadra):
