@@ -7,6 +7,7 @@ import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { RepartoPanel } from "./components/RepartoPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
+import { setStoricoFestivi } from "./engine/storico";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
 import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
 import { bilancioNotti, spiegaWeekend, type EsitoProvaWeekend } from "./engine/diagnosiWeekend";
@@ -162,6 +163,7 @@ export default function App(){
     setTimeout(async ()=>{
       try{
         setPrevContext(turniAll,anno,mese);
+        setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
         // GENERAZIONE PARALLELA (v0.3.9): pool di Web Worker, ognuno con la
@@ -219,6 +221,7 @@ export default function App(){
     setTimeout(()=>{
       try{
         setPrevContext(turniAll,anno,mese);
+        setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
         if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!");
@@ -243,6 +246,7 @@ export default function App(){
     setTimeout(()=>{
       try{
         setPrevContext(turniAll,anno,mese);
+        setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
         if(e.scambiNotti+e.scambiMP===0){ showMsg("Il tabellone è già equilibrato: nessuno scambio possibile senza peggiorare altro."); }
@@ -971,7 +975,7 @@ export default function App(){
           if(campo.endsWith("Max") && f[campo.replace("Max","Min") as CampoFabb]>v) f[campo.replace("Max","Min") as CampoFabb]=v;
           updRegole({...regole,fabb:{...regole.fabb,[fascia]:f}});
         };
-        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett"|"blocchiMattina";
+        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett"|"blocchiMattina"|"rotazioneFestiviMesi";
         const setTop = (campo:CampoTop,v:number) => updRegole({...regole,[campo]:v});
         const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
         const BOX: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
@@ -998,6 +1002,7 @@ export default function App(){
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
           ["maxAssSett","Max turni associati / settimana","Massimo di giorni con mattina e pomeriggio (anche di PS o sottolineati) per medico, per settimana."],
+          ["rotazioneFestiviMesi","Rotazione festivi fra mesi","Mesi salvati da considerare: chi vi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese. 0 = nessuna rotazione."],
           ["blocchiMattina","Continuità mattine (blocchi)","Nei giorni SENZA mattina del ML (assenze, domeniche, festivi) una catena di medici dà continuità: il primo affianca l'ultima mattina del ML, ogni blocco dura ~N giorni e il successivo inizia nel suo ultimo giorno (passaggio di consegne), l'ultimo accompagna il rientro del ML. Solo entro il fabbisogno MINIMO; preferenza, mai vincolante: non toglie weekend liberi né altro. 0 = disattivata."],
         ];
         return (

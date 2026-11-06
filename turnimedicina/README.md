@@ -1,4 +1,30 @@
-# TurniMedicina 0.3.55
+# TurniMedicina 0.3.56
+
+## Novità 0.3.56 — rotazione dei turni festivi fra mesi
+
+In un solo mese la parità perfetta dei turni festivi non è possibile (per
+esempio 3 notti di sabato per 7 MR): qualcuno resta a zero. Ora conta che
+non siano sempre gli stessi. Per ogni MR e decreto Calabria il motore guarda
+i turni festivi per tipo (gli stessi della 0.3.55: pomeriggio e notte del
+sabato, mattina, pomeriggio e notte festiva) fatti negli ultimi mesi salvati
+nell'app, in media al mese: chi ne ha fatti di più di un tipo lo riceve per
+ultimo. Chi in un mese non ha lavorato (nuovo in squadra, assente tutto il
+mese) prende per quel mese la media dei colleghi, così non viene caricato di
+festivi per "recuperare".
+
+Nel pannello Regole: «Rotazione festivi fra mesi» = quanti mesi precedenti
+considerare (default 3; 0 = nessuna rotazione). È una preferenza: buchi,
+regole, weekend liberi e obiettivi restano più importanti.
+
+Verifica: 8 squadre seguite per 6 mesi consecutivi, ogni mese generato come
+nell'app e salvato, con e senza rotazione. Sommando i 6 mesi, la distanza fra
+l'MR con più turni di un tipo e quello con meno scende: mattine festive
+3,6 → 2,6; pomeriggi festivi 3,9 → 2,0; notti festive 3,3 → 2,4; pomeriggi
+di sabato 3,8 → 2,8; notti di sabato 3,8 → 2,6; tutti i festivi 4,3 → 2,5.
+Qualità del singolo mese invariata (buchi 0,38 → 0,42, punti mancanti agli
+obiettivi 2,27 → 2,42, giorni isolati 4,5 → 4,2); dentro il mese un turno
+dello stesso tipo si ripete un po' più spesso (1,1 → 1,5), perché la
+rotazione pareggia sui mesi.
 
 ## Novità 0.3.55 — varietà dei turni festivi
 

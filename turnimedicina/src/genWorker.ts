@@ -30,6 +30,7 @@ export interface MsgRifinisci {
   medici:Medico[]; ex:TurniMese;
   regole:Regole;
   prev: null | { ndim:number; T:TurniMese };
+  storico?: Record<number, number[]> | null;   // rotazione dei festivi (v0.3.56)
   ambRot:number;
   bestT:TurniMese;
   cand:{ turni:TurniMese; m:MisuraTab }[];
@@ -43,6 +44,7 @@ export interface MsgProva {
   medici:Medico[]; turni:TurniMese;
   regole:Regole;
   prev: null | { ndim:number; T:TurniMese };
+  storico?: Record<number, number[]> | null;   // rotazione dei festivi (v0.3.56)
   ambRot:number;
   spec:SpecProva; ms:number; job:number;
 }
@@ -52,6 +54,7 @@ export interface MsgAvvio {
   medici:Medico[]; ex:TurniMese;
   regole:Regole;
   prev: null | { ndim:number; T:TurniMese };
+  storico?: Record<number, number[]> | null;   // rotazione dei festivi (v0.3.56)
   ambRot:number;
   saltSeed:number;
   maxMs:number;
@@ -67,6 +70,7 @@ ws.onmessage = (e: MessageEvent) => {
     try{
       setRegole(q.regole);
       ENG.PREV = q.prev ?? null;
+      ENG.STORICO_FEST = q.storico ?? null;
       ENG.AMB_ROT_START = q.ambRot ?? 0;
       const r = eseguiProva(q.anno, q.mese, q.ndim, q.medici, q.turni, q.spec, q.ms);
       ws.postMessage({ tipo:"provato", job:q.job, ...r });
@@ -80,6 +84,7 @@ ws.onmessage = (e: MessageEvent) => {
     try{
       setRegole(q.regole);
       ENG.PREV = q.prev ?? null;
+      ENG.STORICO_FEST = q.storico ?? null;
       ENG.AMB_ROT_START = q.ambRot ?? 0;
       const res = rifinituraFinale(q.anno, q.mese, q.ndim, q.medici, q.ex, q.bestT, 2000);
       const out = rifinisciCandidati(q.anno, q.mese, q.ndim, q.medici, q.ex, q.bestT, q.cand, res, Date.now() + 1800);
@@ -93,6 +98,7 @@ ws.onmessage = (e: MessageEvent) => {
   try{
     setRegole(p.regole);
     ENG.PREV = p.prev ?? null;
+    ENG.STORICO_FEST = p.storico ?? null;
     ENG.AMB_ROT_START = p.ambRot ?? 0;
     const r = cercaMigliorTentativo(p.anno, p.mese, p.ndim, p.medici, p.ex, p.maxMs, {
       saltSeed: p.saltSeed,

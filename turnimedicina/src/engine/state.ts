@@ -49,6 +49,11 @@ export const ENG = {
   // tabellone (v0.3.53, vedi miglioraLNS in genera.ts). 0 = solo restart,
   // il comportamento precedente.
   LNS_FRAZ: 0.45,
+
+  // ROTAZIONE DEI FESTIVI FRA MESI (v0.3.56): per medico, media mensile dei
+  // turni festivi per tipo nei mesi precedenti (vedi storico.ts). Iniettato
+  // dalla UI prima di generare; null = nessuna rotazione.
+  STORICO_FEST: null as null | Record<number, number[]>,
 };
 
 export function setPrevContext(turniAll: TurniAll | null | undefined, anno: number, mese: number){

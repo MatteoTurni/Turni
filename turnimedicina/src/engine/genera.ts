@@ -7,6 +7,7 @@ import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
          riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, risolviCluster, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
+import { tipoFestivo, N_TIPI_FEST } from "./storico";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PULSANTE 1 — GENERA COPERTURA MINIMA
@@ -513,32 +514,29 @@ export function continuitaScoperti(c: ReturnType<typeof makeCtx>) {
   return { piena, minima, nessuna };
 }
 
-// ── VARIETÀ DEI TURNI FESTIVI (v0.3.55) ──────────────────────────────────
+// ── VARIETÀ DEI TURNI FESTIVI (v0.3.55) e ROTAZIONE FRA MESI (v0.3.56) ────
 // Il carico weekend pesato pareggia le SOMME (una notte vale 2, un diurno
 // festivo 1): due notti di sabato valevano quanto quattro diurni festivi, e
 // misurato in 3 mesi su 4 un MR faceva 2 notti di sabato mentre un collega
-// disponibile nessuna. Qui si contano i turni festivi per TIPO — pomeriggio
-// e notte del sabato (la notte prima di un festivo vale come notte di
-// sabato), mattina, pomeriggio e notte della domenica o del festivo; la
-// mattina del sabato non è festiva — compresi PS e sottolineati. Per ogni
+// disponibile nessuna. Qui si contano i turni festivi per TIPO (tipoFestivo:
+// pomeriggio e notte del sabato o prefestiva, mattina, pomeriggio e notte
+// festiva; PS e sottolineati compresi, la mattina del sabato no). Per ogni
 // medico (MR e decreto Calabria) e tipo, ogni COPPIA di turni dello stesso
-// tipo costa un punto: c·(c−1)/2, quindi 0 con un turno, 1 con due, 3 con
-// tre. Il motore preferisce così dare a ognuno tipi diversi e il secondo
-// turno di un tipo solo dopo che i colleghi disponibili ne hanno fatto uno.
+// tipo costa un punto: c·(c−1)/2, quindi 0 con un turno, 1 con due, 3 con tre.
+// ROTAZIONE: con lo storico dei mesi precedenti (h = media mensile per tipo,
+// ENG.STORICO_FEST) ogni turno del mese costa in più h: chi negli ultimi mesi
+// ha fatto più turni di quel tipo lo riceve per ultimo.
 export function varietaFestivi(c: ReturnType<typeof makeCtx>): number {
-  const tipo = (g:number, t:string): number => {
-    const fest = c.isSp(g);
-    if(fest) return isMatt(t) ? 0 : isPom(t) ? 1 : isNot(t) ? 2 : -1;    // mattina, pomeriggio, notte festiva
-    if(c.isS(g)) return isPom(t) ? 3 : isNot(t) ? 4 : -1;              // pomeriggio, notte del sabato
-    return g<c.ndim && c.isSp(g+1) && isNot(t) ? 4 : -1;               // notte prefestiva
-  };
-  let coppie = 0;
+  const tipo = (g:number, t:string) => tipoFestivo(c.isSp(g), c.isS(g) && !c.isSp(g), g<c.ndim && c.isSp(g+1), t);
+  const H = ENG.STORICO_FEST;
+  let costo = 0;
   for(const m of c.mrMdc){
-    const k = [0,0,0,0,0];
+    const k = new Array<number>(N_TIPI_FEST).fill(0);
     for(let g=1; g<=c.ndim; g++) for(const s of c.gt(m.id,g)){ const t = tipo(g, s.tipo); if(t>=0) k[t]++; }
-    for(const x of k) coppie += x*(x-1)/2;
+    const h = H?.[m.id];
+    for(let t=0; t<N_TIPI_FEST; t++) costo += k[t]*(k[t]-1)/2 + (h ? h[t]*k[t] : 0);
   }
-  return coppie;
+  return costo;
 }
 
 export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Medico[], turni:TurniMese){

@@ -113,6 +113,10 @@ export interface Regole {
   maxConsec: number;
   wkTarget: number;
   maxAssSett: number;
+  /** ROTAZIONE DEI FESTIVI FRA MESI (v0.3.56): quanti mesi salvati precedenti
+   *  considerare. Chi in quei mesi ha fatto più turni festivi di un tipo (es.
+   *  notti di sabato) ne riceve meno. 0 = nessuna rotazione. */
+  rotazioneFestiviMesi: number;
   /** CATENA DI CONTINUITÀ delle mattine (v0.3.17): nei tratti di giorni SENZA
    *  una mattina del ML, un unico medico "portatore" prende le mattine per
    *  blocchi di ~N giorni, con passaggio di consegne (l'ultima mattina
