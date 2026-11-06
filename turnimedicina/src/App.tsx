@@ -8,6 +8,8 @@ import { RepartoPanel } from "./components/RepartoPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { setStoricoFestivi } from "./engine/storico";
+import { setStoricoSuperfestivi } from "./engine/superfestivi";
+import { SuperfestiviPanel } from "./components/SuperfestiviPanel";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
 import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
 import { bilancioNotti, spiegaWeekend, type EsitoProvaWeekend } from "./engine/diagnosiWeekend";
@@ -164,6 +166,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
         // GENERAZIONE PARALLELA (v0.3.9): pool di Web Worker, ognuno con la
@@ -222,6 +225,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
         if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!");
@@ -247,6 +251,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi);
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
         if(e.scambiNotti+e.scambiMP===0){ showMsg("Il tabellone è già equilibrato: nessuno scambio possibile senza peggiorare altro."); }
@@ -1009,7 +1014,7 @@ export default function App(){
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
               <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Regole del reparto</span>
-              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto, coperturaSoloVuoti: regole.coperturaSoloVuoti })}
+              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto, coperturaSoloVuoti: regole.coperturaSoloVuoti, superfestivi: regole.superfestivi })}
                 style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
                 Ripristina default
               </button>
@@ -1188,6 +1193,15 @@ export default function App(){
                 </div>
               )}
             </div>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                SUPERFESTIVI <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.superfestivi.length ? regole.superfestivi.map(x=>x.nome||x.data).join(", ") : "nessuno"}</span>
+              </summary>
+              <div style={{marginTop:"12px"}}>
+                <SuperfestiviPanel regole={regole} onRegole={updRegole} avviso={showMsg}/>
+              </div>
+            </details>
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>

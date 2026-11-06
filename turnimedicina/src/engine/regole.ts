@@ -1,4 +1,4 @@
-import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale, AffiancamentoPS } from "./types";
+import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale, AffiancamentoPS, Superfestivo } from "./types";
 import { setFestiviLocali } from "./date";
 
 // ─── REGOLE CONFIGURABILI ─────────────────────────────────────────────────────
@@ -41,6 +41,14 @@ export const REGOLE_DEFAULT: Regole = {
   psEstGiornata: true,
   // Pulsante Copertura: ottimizza tutto (comportamento storico) (v0.3.50).
   coperturaSoloVuoti: false,
+  // Superfestivi (v0.3.57): i quattro classici, più quelli che aggiunge il reparto.
+  superfestivi: [
+    { id:"natale", nome:"Natale", data:"12-25" },
+    { id:"capodanno", nome:"Capodanno", data:"01-01" },
+    { id:"pasqua", nome:"Pasqua", data:"pasqua" },
+    { id:"ferragosto", nome:"Ferragosto", data:"08-15" },
+  ],
+  alternanzaNataleCapodanno: true,
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -71,12 +79,38 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const rFM = Number.isInteger(s.rotazioneFestiviMesi) && (s.rotazioneFestiviMesi as number)>=0 && (s.rotazioneFestiviMesi as number)<=9
     ? (s.rotazioneFestiviMesi as number) : d.rotazioneFestiviMesi;
   const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
-  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti, notteLiberoNotte: nLN, riposoEsteso: rE,
+  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti,
+           superfestivi: sanaSuperfestivi(s.superfestivi, d.superfestivi),
+           alternanzaNataleCapodanno: typeof s.alternanzaNataleCapodanno==="boolean" ? s.alternanzaNataleCapodanno : d.alternanzaNataleCapodanno, notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},
   }};
+}
+
+// ── SUPERFESTIVI (v0.3.57) ───────────────────────────────────────────────────
+// Assente (salvataggi precedenti) → i quattro predefiniti. Presente: si tengono
+// le voci con data valida ("MM-GG", "pasqua", "pasquetta"), senza doppioni.
+function sanaSuperfestivi(x: unknown, d: Superfestivo[]): Superfestivo[] {
+  if(!Array.isArray(x)) return JSON.parse(JSON.stringify(d));
+  const out: Superfestivo[] = []; const ids = new Set<string>(), date = new Set<string>();
+  for(const v of x){
+    if(!v || typeof v!=="object") continue;
+    const data = (v as Superfestivo).data;
+    if(typeof data!=="string") continue;
+    if(data!=="pasqua" && data!=="pasquetta"){
+      const m = /^(\d\d)-(\d\d)$/.exec(data); if(!m) continue;
+      const mm = +m[1], gg = +m[2]; if(mm<1||mm>12||gg<1||gg>31) continue;
+    }
+    if(date.has(data)) continue;
+    let id = typeof (v as Superfestivo).id==="string" && (v as Superfestivo).id ? (v as Superfestivo).id.slice(0,40) : "sf-"+data;
+    if(ids.has(id)) id = "sf-"+data;
+    ids.add(id); date.add(data);
+    const nome = typeof (v as Superfestivo).nome==="string" ? (v as Superfestivo).nome.slice(0,100) : "";
+    out.push({ id, nome, data });
+  }
+  return out;
 }
 
 // ── AFFIANCAMENTO MDC CON TURNI PS (v0.3.45) ─────────────────────────────────

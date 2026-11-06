@@ -8,6 +8,7 @@ import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
          riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, risolviCluster, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 import { tipoFestivo, N_TIPI_FEST } from "./storico";
+import { costoSuperfestivi } from "./superfestivi";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PULSANTE 1 — GENERA COPERTURA MINIMA
@@ -691,11 +692,13 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   for(const v of scartoMP(c).values()) sbilMP += Math.abs(v);
   // VARIETÀ DEI TURNI FESTIVI (v0.3.55) — vedi varietaFestivi.
   const festRip = varietaFestivi(c);
+  // SUPERFESTIVI (v0.3.57) — vedi superfestivi.ts (i pesi sono lì).
+  const sfCosto = costoSuperfestivi(c, anno, mese);
   const P = PESI;
   const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
-             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar;
-  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip };
+             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar + sfCosto;
+  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip, sfCosto };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
