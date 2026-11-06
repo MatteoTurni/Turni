@@ -1131,6 +1131,17 @@ export default function App(){
               )}
             </div>
 
+            <div style={BOX}>
+              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>CONTINUITÀ DELLE MATTINE</div>
+              <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+                {numInp(regole.blocchiMattina,v=>setTop("blocchiMattina",v))}
+                <div>
+                  <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Blocchi di mattine (giorni)</div>
+                  <div style={{...LBL,fontSize:"9px"}}>{HINT_BLOCCHI}</div>
+                </div>
+              </div>
+            </div>
+
             <div style={{...LBL,fontWeight:700,color:"#93c5fd",letterSpacing:".08em",margin:"18px 0 8px"}}>IMPOSTAZIONI CHE SI CAMBIANO DI RADO</div>
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
@@ -1157,16 +1168,6 @@ export default function App(){
                 </div>
                 <div style={{...LBL,color:"#60a5fa",fontWeight:700,marginBottom:"6px"}}>Superfestivi</div>
                 <SuperfestiviPanel regole={regole} onRegole={updRegole} avviso={showMsg}/>
-              </div>
-            </details>
-
-            <details style={BOX}>
-              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                CONTINUITÀ DELLE MATTINE <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.blocchiMattina ? `blocchi di ~${regole.blocchiMattina} giorni` : "spenta"}</span>
-              </summary>
-              <div style={{display:"flex",alignItems:"center",gap:"12px",marginTop:"12px"}}>
-                {numInp(regole.blocchiMattina,v=>setTop("blocchiMattina",v))}
-                <div style={{...LBL,fontSize:"9px"}}>{HINT_BLOCCHI}</div>
               </div>
             </details>
 
