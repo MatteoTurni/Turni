@@ -49,6 +49,8 @@ export const REGOLE_DEFAULT: Regole = {
     { id:"ferragosto", nome:"Ferragosto", data:"08-15" },
   ],
   alternanzaNataleCapodanno: true,
+  superfestiviAttivi: true,
+  superfestiviAnni: 2,
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -81,7 +83,10 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
   return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti,
            superfestivi: sanaSuperfestivi(s.superfestivi, d.superfestivi),
-           alternanzaNataleCapodanno: typeof s.alternanzaNataleCapodanno==="boolean" ? s.alternanzaNataleCapodanno : d.alternanzaNataleCapodanno, notteLiberoNotte: nLN, riposoEsteso: rE,
+           alternanzaNataleCapodanno: typeof s.alternanzaNataleCapodanno==="boolean" ? s.alternanzaNataleCapodanno : d.alternanzaNataleCapodanno,
+           superfestiviAttivi: typeof s.superfestiviAttivi==="boolean" ? s.superfestiviAttivi : d.superfestiviAttivi,
+           superfestiviAnni: Number.isInteger(s.superfestiviAnni) && (s.superfestiviAnni as number)>=1 && (s.superfestiviAnni as number)<=5 ? (s.superfestiviAnni as number) : d.superfestiviAnni,
+           notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM, fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},

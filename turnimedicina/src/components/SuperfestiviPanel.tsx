@@ -43,12 +43,31 @@ export function SuperfestiviPanel({ regole, onRegole, avviso }: {
     setNuovo({ ...nuovo, nome: "" });
   };
 
+  const attivi = regole.superfestiviAttivi;
   return (
     <div>
+      <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", cursor: "pointer", marginBottom: "10px" }}>
+        <input type="checkbox" checked={attivi}
+          onChange={e => onRegole({ ...regole, superfestiviAttivi: e.target.checked })} style={{ marginTop: "2px" }} />
+        <span>
+          <span style={{ ...LBL, color: "#e2eeff", fontWeight: 700 }}>Equità dei superfestivi attiva</span>
+          <div style={{ ...LBL, fontSize: "9px" }}>Spenta: l'elenco resta, ma il motore tratta questi giorni come festivi normali.</div>
+        </span>
+      </label>
+      <div style={{ opacity: attivi ? 1 : 0.45 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+        <input type="number" min={1} max={5} value={regole.superfestiviAnni} disabled={!attivi}
+          onChange={e => onRegole({ ...regole, superfestiviAnni: Math.max(1, Math.min(5, Math.floor(+e.target.value || 1))) })}
+          style={{ ...inp, width: "52px", textAlign: "center" }} />
+        <div>
+          <div style={{ ...LBL, color: "#e2eeff", fontWeight: 700 }}>Anni precedenti da considerare</div>
+          <div style={{ ...LBL, fontSize: "9px" }}>L'anno scorso conta per intero, quello prima a metà, poi un terzo… (da 1 a 5).</div>
+        </div>
+      </div>
       <div style={{ ...LBL, fontSize: "9px", marginBottom: "8px" }}>
         Per ogni superfestivo contano quattro turni: la notte prima, la mattina, il pomeriggio e la notte. Il motore
-        evita di ridare a un medico lo stesso identico turno dell'anno scorso e, se possibile, lo stesso superfestivo;
-        pareggia i superfestivi fatti negli ultimi 12 mesi. Lo storico viene dai mesi salvati: per l'anno scorso basta
+        evita di ridare a un medico lo stesso identico turno degli anni scorsi e, se possibile, lo stesso superfestivo;
+        pareggia i superfestivi fatti negli anni considerati. Lo storico viene dai mesi salvati: per gli anni scorsi basta
         inserire a mano i turni di quei giorni nel calendario (es. dicembre dell'anno scorso).
       </div>
       {lista.length === 0 && <div style={{ ...LBL, marginBottom: "6px" }}>Nessun superfestivo: l'equità fra gli anni è spenta.</div>}
@@ -87,6 +106,7 @@ export function SuperfestiviPanel({ regole, onRegole, avviso }: {
           <div style={{ ...LBL, fontSize: "9px" }}>Chi lavora a Natale (notte del 24 o il 25) non lavora a Capodanno (notte del 31 o l'1), e viceversa, se possibile.</div>
         </span>
       </label>
+      </div>
     </div>
   );
 }

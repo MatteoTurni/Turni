@@ -11,13 +11,16 @@ import { ENG } from "./state";
 // aggiunge il reparto) ha quattro turni: la NOTTE PRIMA, la mattina, il
 // pomeriggio e la notte del giorno. Contano anche PS e sottolineati. Le
 // regole, tutte preferenze (vengono dopo buchi, regole, weekend e obiettivi):
-//   1. lo STESSO IDENTICO turno dell'anno scorso (es. la notte di Natale) non
-//      ricapita allo stesso medico;
-//   2. lo stesso superfestivo non due anni di fila;
+//   1. lo STESSO IDENTICO turno degli anni scorsi (es. la notte di Natale)
+//      non ricapita allo stesso medico;
+//   2. lo stesso superfestivo non negli anni subito prima;
 //   3. alternanza: chi lavora a Natale non lavora a Capodanno, e viceversa;
-//   4. pareggio annuo: chi negli ultimi 12 mesi ha fatto più turni
-//      superfestivi riceve per ultimo quelli del mese, e uno stesso medico non
-//      ne accumula più di uno se altri possono.
+//   4. pareggio: chi negli ultimi anni ha fatto più turni superfestivi (media
+//      per anno) riceve per ultimo quelli del mese, e uno stesso medico non ne
+//      accumula più di uno se altri possono.
+// Si guardano gli ultimi `superfestiviAnni` anni (1-5): l'anno scorso conta
+// per intero, quello prima a metà, poi un terzo... Con l'equità spenta
+// (superfestiviAttivi = false) il motore li tratta come festivi normali.
 // Lo storico viene dai mesi salvati nell'app (anche quelli dell'anno scorso
 // inseriti a mano): la UI lo calcola prima di generare (setStoricoSuperfestivi).
 export type SlotNome = "vigilia" | "M" | "P" | "N";
@@ -56,32 +59,33 @@ const fatto = (turniAll: TurniAll, id:number, s:SlotSF) => {
 };
 
 export interface StoricoSF {
-  n12: Record<number, number>;          // turni superfestivi negli ultimi 12 mesi
-  identici: Record<number, string[]>;   // "sf|turno" fatti l'anno scorso (dei superfestivi di questo mese)
-  stessi: Record<number, string[]>;     // superfestivi fatti l'anno scorso (idem)
-  stagione: Record<number, string[]>;   // turni della stessa ricorrenza fatti nei mesi prima (la notte del 31 per il Capodanno di gennaio; Natale per l'alternanza)
+  nAnno: Record<number, number>;                     // turni superfestivi per anno (media sugli anni considerati)
+  identici: Record<number, Record<string, number>>;  // "sf|turno" fatti negli anni scorsi → peso (1, ½, ⅓...)
+  stessi: Record<number, Record<string, number>>;    // superfestivi fatti negli anni scorsi → peso
+  stagione: Record<number, string[]>;                // turni della stessa ricorrenza fatti nei mesi prima (la notte del 31 per il Capodanno di gennaio; Natale per l'alternanza)
 }
 
 export function calcolaStoricoSuperfestivi(turniAll: TurniAll | null | undefined, anno:number, mese:number,
-                                           medici: Medico[], lista: Superfestivo[]): StoricoSF | null {
-  if(!turniAll || !lista.length) return null;
+                                           medici: Medico[], lista: Superfestivo[], anni = 1): StoricoSF | null {
+  if(!turniAll || !lista.length || anni<1) return null;
   const ids = medici.filter(m=>m.stato!=="MPS").map(m=>m.id);
-  const st: StoricoSF = { n12:{}, identici:{}, stessi:{}, stagione:{} };
-  for(const id of ids){ st.n12[id]=0; st.identici[id]=[]; st.stessi[id]=[]; st.stagione[id]=[]; }
-  const inizio = new Date(anno, mese, 1).getTime(), da12 = new Date(anno, mese-12, 1).getTime();
+  const st: StoricoSF = { nAnno:{}, identici:{}, stessi:{}, stagione:{} };
+  for(const id of ids){ st.nAnno[id]=0; st.identici[id]={}; st.stessi[id]={}; st.stagione[id]=[]; }
+  const inizio = new Date(anno, mese, 1).getTime(), daQui = new Date(anno, mese-12*anni, 1).getTime();
   const quando = (s:SlotSF) => new Date(s.y, s.m, s.d).getTime();
-  // pareggio annuo: tutti i turni superfestivi degli ultimi 12 mesi
-  for(const sf of lista) for(const y of [anno-2, anno-1, anno, anno+1]) for(const s of slotOccorrenza(sf, y)){
-    const t = quando(s); if(t<da12 || t>=inizio) continue;
-    for(const id of ids) if(fatto(turniAll, id, s)) st.n12[id]++;
+  // pareggio: i turni superfestivi degli ultimi `anni` anni, in media per anno
+  for(const sf of lista) for(let y=anno-anni-1; y<=anno+1; y++) for(const s of slotOccorrenza(sf, y)){
+    const t = quando(s); if(t<daQui || t>=inizio) continue;
+    for(const id of ids) if(fatto(turniAll, id, s)) st.nAnno[id] += 1/anni;
   }
-  // per le ricorrenze che hanno turni in questo mese: l'anno scorso e i mesi prima
+  // per le ricorrenze che hanno turni in questo mese: gli anni scorsi e i mesi prima
   const ricorrenze = new Map<string, { sf:Superfestivo; anno:number }>();
   for(const s of slotDelMese(lista, anno, mese)){ const sf = lista.find(x=>x.id===s.sf)!; ricorrenze.set(`${s.sf}@${s.anno}`, { sf, anno:s.anno }); }
   for(const { sf, anno:a } of ricorrenze.values()){
-    for(const s of slotOccorrenza(sf, a-1)) for(const id of ids) if(fatto(turniAll, id, s)){
-      st.identici[id].push(`${sf.id}|${s.slot}`);
-      if(!st.stessi[id].includes(sf.id)) st.stessi[id].push(sf.id);
+    for(let k=1; k<=anni; k++) for(const s of slotOccorrenza(sf, a-k)) for(const id of ids) if(fatto(turniAll, id, s)){
+      const ki = `${sf.id}|${s.slot}`;
+      st.identici[id][ki] = (st.identici[id][ki] ?? 0) + 1/k;
+      st.stessi[id][sf.id] = Math.max(st.stessi[id][sf.id] ?? 0, 1/k);
     }
     for(const s of slotOccorrenza(sf, a)) if(quando(s)<inizio) for(const id of ids) if(fatto(turniAll, id, s)) st.stagione[id].push(sf.id);
     // alternanza: per il Capodanno conta il Natale appena passato (dicembre dell'anno prima)
@@ -93,15 +97,16 @@ export function calcolaStoricoSuperfestivi(turniAll: TurniAll | null | undefined
   return st;
 }
 
-export function setStoricoSuperfestivi(turniAll: TurniAll | null | undefined, anno:number, mese:number, medici: Medico[], lista: Superfestivo[]){
-  ENG.STORICO_SF = calcolaStoricoSuperfestivi(turniAll, anno, mese, medici, lista);
+export function setStoricoSuperfestivi(turniAll: TurniAll | null | undefined, anno:number, mese:number, medici: Medico[],
+                                      lista: Superfestivo[], attivi = true, anni = 1){
+  ENG.STORICO_SF = attivi ? calcolaStoricoSuperfestivi(turniAll, anno, mese, medici, lista, anni) : null;
 }
 
 /** Costo dei superfestivi del mese nel tabellone (soft, vedi le regole sopra). */
 export function costoSuperfestivi(c: { att: Medico[]; gt: (id:number,g:number)=>Turno[] }, anno:number, mese:number): number {
   const R = getRegole();
   const lista = R.superfestivi ?? [];
-  if(!lista.length) return 0;
+  if(!lista.length || R.superfestiviAttivi===false) return 0;
   const slots = slotDelMese(lista, anno, mese);
   if(!slots.length) return 0;
   const H = ENG.STORICO_SF;
@@ -112,12 +117,12 @@ export function costoSuperfestivi(c: { att: Medico[]; gt: (id:number,g:number)=>
     if(!miei.length) continue;
     const prima = H?.stagione[m.id] ?? [];
     const n = miei.length, p = prima.filter(x=>miei.some(s=>s.sf===x)).length;
-    costo += PESI_SF.conteggio * (H?.n12[m.id] ?? 0) * n;
+    costo += PESI_SF.conteggio * (H?.nAnno[m.id] ?? 0) * n;
     costo += PESI_SF.coppia * ((n+p)*(n+p-1)/2 - p*(p-1)/2);
-    const ident = H?.identici[m.id] ?? [], stessi = H?.stessi[m.id] ?? [];
-    for(const s of miei) if(ident.includes(`${s.sf}|${s.slot}`)) costo += PESI_SF.identico;
+    const ident = H?.identici[m.id] ?? {}, stessi = H?.stessi[m.id] ?? {};
+    for(const s of miei) costo += PESI_SF.identico * (ident[`${s.sf}|${s.slot}`] ?? 0);
     const sfs = new Set(miei.map(s=>s.sf));
-    for(const sf of sfs) if(stessi.includes(sf)) costo += PESI_SF.stesso;
+    for(const sf of sfs) costo += PESI_SF.stesso * (stessi[sf] ?? 0);
     if(alt && (sfs.has("natale") || prima.includes("natale")) && (sfs.has("capodanno") || prima.includes("capodanno"))) costo += PESI_SF.alternanza;
   }
   return costo;

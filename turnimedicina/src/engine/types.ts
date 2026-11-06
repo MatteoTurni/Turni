@@ -150,6 +150,12 @@ export interface Regole {
   coperturaSoloVuoti: boolean;
   /** SUPERFESTIVI (v0.3.57): elenco e regole di equità fra gli anni. */
   superfestivi: Superfestivo[];
+  /** Equità dei superfestivi accesa (v0.3.57). Spenta: l'elenco resta, il
+   *  motore li tratta come festivi normali. */
+  superfestiviAttivi: boolean;
+  /** Anni precedenti da considerare (1-5): l'anno scorso conta per intero,
+   *  quello prima a metà, poi un terzo... */
+  superfestiviAnni: number;
   /** Chi lavora a Natale (notte del 24 o il 25) non lavora a Capodanno (notte
    *  del 31 o l'1), e viceversa: preferenza. */
   alternanzaNataleCapodanno: boolean;

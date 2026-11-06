@@ -58,8 +58,8 @@ export const ENG = {
   // SUPERFESTIVI (v0.3.57): turni superfestivi dei mesi salvati che servono
   // al mese corrente (vedi superfestivi.ts). Iniettato dalla UI; null = nessuno.
   STORICO_SF: null as null | {
-    n12: Record<number, number>; identici: Record<number, string[]>;
-    stessi: Record<number, string[]>; stagione: Record<number, string[]>;
+    nAnno: Record<number, number>; identici: Record<number, Record<string, number>>;
+    stessi: Record<number, Record<string, number>>; stagione: Record<number, string[]>;
   },
 };
 

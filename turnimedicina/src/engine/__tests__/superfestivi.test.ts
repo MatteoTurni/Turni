@@ -31,18 +31,40 @@ describe("turni superfestivi", () => {
   });
   it("storico: l'anno scorso, i 12 mesi e la stagione", () => {
     const h = calcolaStoricoSuperfestivi(annoScorso, 2026, 11, medici, dft().superfestivi)!;
-    expect(h.identici[1]).toEqual(["natale|N"]);
-    expect(h.identici[2]).toEqual(["natale|vigilia"]);
-    expect(h.identici[3]).toEqual(["capodanno|vigilia"]);   // il Capodanno 2027 ha la notte del 31 in questo dicembre
-    expect(h.identici[4]).toEqual(["capodanno|M"]);
-    expect(h.stessi[1]).toEqual(["natale"]);
-    expect([1,2,3,4,5].map(id=>h.n12[id])).toEqual([1,1,1,1,0]);
-    expect(h.n12[6]).toBeUndefined();                       // MPS fuori
+    expect(h.identici[1]).toEqual({ "natale|N":1 });
+    expect(h.identici[2]).toEqual({ "natale|vigilia":1 });
+    expect(h.identici[3]).toEqual({ "capodanno|vigilia":1 });   // il Capodanno 2027 ha la notte del 31 in questo dicembre
+    expect(h.identici[4]).toEqual({ "capodanno|M":1 });
+    expect(h.stessi[1]).toEqual({ natale:1 });
+    expect([1,2,3,4,5].map(id=>h.nAnno[id])).toEqual([1,1,1,1,0]);
+    expect(h.nAnno[6]).toBeUndefined();                       // MPS fuori
     // gennaio 2026: la notte del 31 dicembre 2025 e il Natale 2025 sono "stagione"
     const g = calcolaStoricoSuperfestivi(annoScorso, 2026, 0, medici, dft().superfestivi)!;
     expect(g.stagione[3]).toEqual(["capodanno"]);
     expect(g.stagione[1]).toEqual(["natale"]);
     expect(calcolaStoricoSuperfestivi(annoScorso, 2026, 11, medici, [])).toBeNull();
+  });
+  it("più anni indietro: due anni fa conta a metà; la media per anno", () => {
+    const dueAnni: TurniAll = { ...annoScorso, "2024-12": { 5:{ 25:c("M") }, 1:{ 25:c("N") } } };
+    const h1 = calcolaStoricoSuperfestivi(dueAnni, 2026, 11, medici, dft().superfestivi, 1)!;
+    expect(h1.identici[5]).toEqual({});                          // con un anno solo il 2024 non conta
+    const h2 = calcolaStoricoSuperfestivi(dueAnni, 2026, 11, medici, dft().superfestivi, 2)!;
+    expect(h2.identici[5]).toEqual({ "natale|M":0.5 });
+    expect(h2.identici[1]).toEqual({ "natale|N":1.5 });          // anche due anni fa: 1 + ½
+    expect(h2.stessi[5]).toEqual({ natale:0.5 });
+    expect(h2.nAnno[1]).toBe(1);                                 // 2 turni in 2 anni
+    expect(h2.nAnno[5]).toBe(0.5);
+  });
+  it("spenta: nessuno storico e nessun costo", () => {
+    setStoricoSuperfestivi(annoScorso, 2026, 11, medici, dft().superfestivi, false, 2);
+    expect(ENG.STORICO_SF).toBeNull();
+    setStoricoSuperfestivi(annoScorso, 2026, 11, medici, dft().superfestivi, true, 1);
+    setRegole({ ...dft(), superfestiviAttivi:false });
+    const T: TurniMese = { 1:{ 25:{ t:[{ tipo:"N", sott:false, man:false }] } } };
+    expect(costoSuperfestivi(makeCtx(2026, 11, 31, medici, T), 2026, 11)).toBe(0);
+    expect(mergeRegole({}).superfestiviAttivi).toBe(true);
+    expect(mergeRegole({}).superfestiviAnni).toBe(2);
+    expect(mergeRegole({ superfestiviAnni: 9 } as any).superfestiviAnni).toBe(2);
   });
   it("lo stesso identico turno dell'anno scorso costa più di un turno nuovo", () => {
     setStoricoSuperfestivi(annoScorso, 2026, 11, medici, dft().superfestivi);

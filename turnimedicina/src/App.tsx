@@ -166,7 +166,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
-        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi);
+        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
         // GENERAZIONE PARALLELA (v0.3.9): pool di Web Worker, ognuno con la
@@ -225,7 +225,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
-        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi);
+        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
         if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!");
@@ -251,7 +251,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
-        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi);
+        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
         if(e.scambiNotti+e.scambiMP===0){ showMsg("Il tabellone è già equilibrato: nessuno scambio possibile senza peggiorare altro."); }
@@ -1003,12 +1003,11 @@ export default function App(){
           { k:"riposoEsteso", lbl:"Nulla — riposo esteso", spegne:["notteLiberoNotte","mattinaDopoNotte"],
             hint:"Dopo una Notte anche il SECONDO giorno resta completamente libero: nessun turno, ammessi solo X, ANA, per11, art37, 104 o L. Vieta quindi anche il Pomeriggio. Vincolo duro: prevale sulle altre due opzioni e non viene mai derogato, nemmeno dall'ultima chance." },
         ];
+        const HINT_BLOCCHI = "Nei giorni SENZA mattina del ML (assenze, domeniche, festivi) una catena di medici dà continuità: il primo affianca l'ultima mattina del ML, ogni blocco dura ~N giorni e il successivo inizia nel suo ultimo giorno (passaggio di consegne), l'ultimo accompagna il rientro del ML. Solo entro il fabbisogno MINIMO; preferenza, mai vincolante: non toglie weekend liberi né altro. 0 = disattivata.";
         const limiti: [CampoTop,string,string][] = [
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
           ["maxAssSett","Max turni associati / settimana","Massimo di giorni con mattina e pomeriggio (anche di PS o sottolineati) per medico, per settimana."],
-          ["rotazioneFestiviMesi","Rotazione festivi fra mesi","Mesi salvati da considerare: chi vi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese. 0 = nessuna rotazione."],
-          ["blocchiMattina","Continuità mattine (blocchi)","Nei giorni SENZA mattina del ML (assenze, domeniche, festivi) una catena di medici dà continuità: il primo affianca l'ultima mattina del ML, ogni blocco dura ~N giorni e il successivo inizia nel suo ultimo giorno (passaggio di consegne), l'ultimo accompagna il rientro del ML. Solo entro il fabbisogno MINIMO; preferenza, mai vincolante: non toglie weekend liberi né altro. 0 = disattivata."],
         ];
         return (
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
@@ -1024,6 +1023,7 @@ export default function App(){
               La <b>Notte</b> resta fissa a 1/giorno: è un invariante dell'algoritmo, non un parametro.
             </div>
 
+            <div style={{...LBL,fontWeight:700,color:"#93c5fd",letterSpacing:".08em",margin:"4px 0 8px"}}>DA CONTROLLARE OGNI MESE</div>
             <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>FABBISOGNO GIORNALIERO (min–max)</div>
               <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
@@ -1045,69 +1045,6 @@ export default function App(){
                 </tbody>
               </table>
             </div>
-
-            <div style={BOX}>
-              <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>AMBULATORI</div>
-              <AmbulatoriPanel ambulatori={regole.ambulatori} medici={medici}
-                onAmbulatori={amb=>updRegole({...regole,ambulatori:amb})}
-                onMedici={setMedici}/>
-            </div>
-
-            {/* ── TURNI PS E AFFIANCAMENTO MDC (v0.3.45) ── */}
-            <details style={BOX}>
-              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                TURNI PS E AFFIANCAMENTO MDC <span style={{fontWeight:400,color:"#4b7aad"}}>
-                  · {(["1","2","3"] as const).every(k=>regole.psAff[k].ord&&regole.psAff[k].alpi) ? "tutti validi" :
-                     (["1","2","3"] as const).flatMap(k=>[...(regole.psAff[k].ord?[]:[k]),...(regole.psAff[k].alpi?[]:[k+" ALPI"])]).join(", ")+" non validi"}
-                </span>
-              </summary>
-              <div style={{...LBL,margin:"10px 0",lineHeight:1.6}}>
-                L'MDC non può stare solo in turno. Oltre ai turni di reparto (M/A, P/Ap, N), qui scegli quali turni
-                PS di un collega lo affiancano: 1 di mattina, 2 di pomeriggio, 3 di notte. I turni PS segnati
-                «altro osp.» (in tabellone con l'asterisco, es. 3*) non lo affiancano mai. Per chi li fa valgono
-                come sempre: punti, riposo dopo la notte, conteggio notti.
-              </div>
-              <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
-                <thead><tr>
-                  <th style={{...LBL,textAlign:"left",padding:"4px 14px 4px 0"}}>Codice</th>
-                  <th style={{...LBL,padding:"4px 10px"}}>Ordinario</th>
-                  <th style={{...LBL,padding:"4px 10px"}}>ALPI (sottolineato)</th>
-                  <th style={{...LBL,padding:"4px 10px"}}>Altro ospedale</th>
-                </tr></thead>
-                <tbody>
-                  {([["1","mattina"],["2","pomeriggio"],["3","notte"]] as const).map(([k,lbl])=>(
-                    <tr key={k}>
-                      <td style={{...LBL,color:"#e2eeff",padding:"4px 14px 4px 0"}}><b>{k}</b> {lbl}</td>
-                      {(["ord","alpi"] as const).map(c=>{
-                        const on = regole.psAff[k][c];
-                        return (
-                          <td key={c} style={{padding:"4px 10px",textAlign:"center"}}>
-                            <button onClick={()=>updRegole({...regole,psAff:{...regole.psAff,[k]:{...regole.psAff[k],[c]:!on}}})}
-                              style={{background:on?"#052e16":"#1a0606",color:on?"#34d399":"#f87171",
-                                border:`1px solid ${on?"#059669":"#7f1d1d"}`,borderRadius:"5px",padding:"3px 10px",
-                                cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace",minWidth:"78px"}}>
-                              {on?"valido":"non valido"}
-                            </button>
-                          </td>
-                        );
-                      })}
-                      <td style={{...LBL,padding:"4px 10px",textAlign:"center",color:"#f87171"}}>mai</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <label style={{display:"flex",gap:"8px",alignItems:"flex-start",marginTop:"12px",cursor:"pointer"}}>
-                <input type="checkbox" checked={regole.psEstGiornata}
-                  onChange={e=>updRegole({...regole,psEstGiornata:e.target.checked})} style={{marginTop:"2px"}}/>
-                <span>
-                  <span style={{...LBL,color:"#e2eeff",fontWeight:700}}>Un turno PS in altro ospedale occupa tutta la giornata</span>
-                  <div style={{...LBL,fontSize:"9px"}}>
-                    Con 1* (mattina) o 2* (pomeriggio) il medico non riceve turni di reparto né ambulatori in quel giorno.
-                    Senza spunta l'altra fascia resta assegnabile, come per un PS in sede.
-                  </div>
-                </span>
-              </label>
-            </details>
 
             <div style={BOX}>
               <div style={{...LBL,fontWeight:700,marginBottom:"10px",color:"#60a5fa"}}>LIMITI PER MEDICO</div>
@@ -1194,13 +1131,99 @@ export default function App(){
               )}
             </div>
 
+            <div style={{...LBL,fontWeight:700,color:"#93c5fd",letterSpacing:".08em",margin:"18px 0 8px"}}>IMPOSTAZIONI CHE SI CAMBIANO DI RADO</div>
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                SUPERFESTIVI <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.superfestivi.length ? regole.superfestivi.map(x=>x.nome||x.data).join(", ") : "nessuno"}</span>
+                AMBULATORI <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.ambulatori.length ? regole.ambulatori.map(a=>a.sigla).join(", ") : "nessuno"}</span>
               </summary>
               <div style={{marginTop:"12px"}}>
+              <AmbulatoriPanel ambulatori={regole.ambulatori} medici={medici}
+                onAmbulatori={amb=>updRegole({...regole,ambulatori:amb})}
+                onMedici={setMedici}/>
+              </div>
+            </details>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                EQUITÀ FRA MESI E ANNI <span style={{fontWeight:400,color:"#4b7aad"}}>· festivi: {regole.rotazioneFestiviMesi ? `ultimi ${regole.rotazioneFestiviMesi} mesi` : "senza rotazione"} · superfestivi: {regole.superfestiviAttivi && regole.superfestivi.length ? `${regole.superfestivi.map(x=>x.nome||x.data).join(", ")}, ${regole.superfestiviAnni} ann${regole.superfestiviAnni===1?"o":"i"}` : "spenti"}</span>
+              </summary>
+              <div style={{marginTop:"12px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"14px"}}>
+                  {numInp(regole.rotazioneFestiviMesi,v=>setTop("rotazioneFestiviMesi",v))}
+                  <div>
+                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Rotazione festivi fra mesi</div>
+                    <div style={{...LBL,fontSize:"9px"}}>Mesi salvati da considerare: chi vi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese. 0 = nessuna rotazione.</div>
+                  </div>
+                </div>
+                <div style={{...LBL,color:"#60a5fa",fontWeight:700,marginBottom:"6px"}}>Superfestivi</div>
                 <SuperfestiviPanel regole={regole} onRegole={updRegole} avviso={showMsg}/>
               </div>
+            </details>
+
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                CONTINUITÀ DELLE MATTINE <span style={{fontWeight:400,color:"#4b7aad"}}>· {regole.blocchiMattina ? `blocchi di ~${regole.blocchiMattina} giorni` : "spenta"}</span>
+              </summary>
+              <div style={{display:"flex",alignItems:"center",gap:"12px",marginTop:"12px"}}>
+                {numInp(regole.blocchiMattina,v=>setTop("blocchiMattina",v))}
+                <div style={{...LBL,fontSize:"9px"}}>{HINT_BLOCCHI}</div>
+              </div>
+            </details>
+
+            {/* ── TURNI PS E AFFIANCAMENTO MDC (v0.3.45) ── */}
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                TURNI PS E AFFIANCAMENTO MDC <span style={{fontWeight:400,color:"#4b7aad"}}>
+                  · {(["1","2","3"] as const).every(k=>regole.psAff[k].ord&&regole.psAff[k].alpi) ? "tutti validi" :
+                     (["1","2","3"] as const).flatMap(k=>[...(regole.psAff[k].ord?[]:[k]),...(regole.psAff[k].alpi?[]:[k+" ALPI"])]).join(", ")+" non validi"}
+                </span>
+              </summary>
+              <div style={{...LBL,margin:"10px 0",lineHeight:1.6}}>
+                L'MDC non può stare solo in turno. Oltre ai turni di reparto (M/A, P/Ap, N), qui scegli quali turni
+                PS di un collega lo affiancano: 1 di mattina, 2 di pomeriggio, 3 di notte. I turni PS segnati
+                «altro osp.» (in tabellone con l'asterisco, es. 3*) non lo affiancano mai. Per chi li fa valgono
+                come sempre: punti, riposo dopo la notte, conteggio notti.
+              </div>
+              <table style={{borderCollapse:"collapse",fontFamily:"monospace"}}>
+                <thead><tr>
+                  <th style={{...LBL,textAlign:"left",padding:"4px 14px 4px 0"}}>Codice</th>
+                  <th style={{...LBL,padding:"4px 10px"}}>Ordinario</th>
+                  <th style={{...LBL,padding:"4px 10px"}}>ALPI (sottolineato)</th>
+                  <th style={{...LBL,padding:"4px 10px"}}>Altro ospedale</th>
+                </tr></thead>
+                <tbody>
+                  {([["1","mattina"],["2","pomeriggio"],["3","notte"]] as const).map(([k,lbl])=>(
+                    <tr key={k}>
+                      <td style={{...LBL,color:"#e2eeff",padding:"4px 14px 4px 0"}}><b>{k}</b> {lbl}</td>
+                      {(["ord","alpi"] as const).map(c=>{
+                        const on = regole.psAff[k][c];
+                        return (
+                          <td key={c} style={{padding:"4px 10px",textAlign:"center"}}>
+                            <button onClick={()=>updRegole({...regole,psAff:{...regole.psAff,[k]:{...regole.psAff[k],[c]:!on}}})}
+                              style={{background:on?"#052e16":"#1a0606",color:on?"#34d399":"#f87171",
+                                border:`1px solid ${on?"#059669":"#7f1d1d"}`,borderRadius:"5px",padding:"3px 10px",
+                                cursor:"pointer",fontSize:"10px",fontWeight:700,fontFamily:"monospace",minWidth:"78px"}}>
+                              {on?"valido":"non valido"}
+                            </button>
+                          </td>
+                        );
+                      })}
+                      <td style={{...LBL,padding:"4px 10px",textAlign:"center",color:"#f87171"}}>mai</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <label style={{display:"flex",gap:"8px",alignItems:"flex-start",marginTop:"12px",cursor:"pointer"}}>
+                <input type="checkbox" checked={regole.psEstGiornata}
+                  onChange={e=>updRegole({...regole,psEstGiornata:e.target.checked})} style={{marginTop:"2px"}}/>
+                <span>
+                  <span style={{...LBL,color:"#e2eeff",fontWeight:700}}>Un turno PS in altro ospedale occupa tutta la giornata</span>
+                  <div style={{...LBL,fontSize:"9px"}}>
+                    Con 1* (mattina) o 2* (pomeriggio) il medico non riceve turni di reparto né ambulatori in quel giorno.
+                    Senza spunta l'altra fascia resta assegnabile, come per un PS in sede.
+                  </div>
+                </span>
+              </label>
             </details>
 
             <details style={BOX}>
