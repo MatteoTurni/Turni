@@ -4,6 +4,7 @@ import { isMatt, isPom, isNot, vt, SPEC, LICENZE, isLicenza, cloneT, isEscl, esc
 import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
+import { EQ_MESI, spostaEq } from "./storico";
 
 // ─── CONTEXT FACTORY: helper condivisi tra i due generatori ───────────────────
 //
@@ -514,7 +515,10 @@ export function makeCtx(
   };
 
   const byL = (a:Medico[]) => [...a].sort((x,y)=>cnt(x.id)-cnt(y.id));
-  const byN = (a:Medico[]) => [...a].sort((x,y)=>cntN(x.id)-cntN(y.id));
+  // A parità di notti nel mese, prima chi ne ha fatte meno nei mesi scorsi
+  // (v0.3.58: lo spostamento è sotto 1, quindi decide solo i pari merito).
+  const spN = (id:number) => ENG.STORICO_EQ ? spostaEq(ENG.STORICO_EQ.notti[id], EQ_MESI.betaNotti) : 0;
+  const byN = (a:Medico[]) => [...a].sort((x,y)=>(cntN(x.id)+spN(x.id))-(cntN(y.id)+spN(y.id)));
   // EQUITÀ WEEKEND (v0.3.19): meno carico weekend prima; a parità, meno carico
   // totale (byL). Soft, analogo a byN per le notti.
   const byWk= (a:Medico[]) => [...a].sort((x,y)=>(cntWk(x.id)-cntWk(y.id))||(cnt(x.id)-cnt(y.id)));

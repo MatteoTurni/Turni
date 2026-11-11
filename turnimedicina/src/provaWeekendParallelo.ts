@@ -38,7 +38,7 @@ export function provaWeekendParallelo(anno:number, mese:number, ndim:number, med
     const avvia = (w: Worker) => {
       if(chiuso || next>=jobs.length) return;
       const job = next++;
-      const msg: MsgProva = { tipo:"prova", anno, mese, ndim, medici, turni, regole:getRegole(), prev:ENG.PREV, storico:ENG.STORICO_FEST, storicoSF:ENG.STORICO_SF, ambRot:ENG.AMB_ROT_START, spec:jobs[job].sp, ms:MS_PROVA, job };
+      const msg: MsgProva = { tipo:"prova", anno, mese, ndim, medici, turni, regole:getRegole(), prev:ENG.PREV, storico:ENG.STORICO_FEST, storicoEq:ENG.STORICO_EQ, storicoSF:ENG.STORICO_SF, ambRot:ENG.AMB_ROT_START, spec:jobs[job].sp, ms:MS_PROVA, job };
       w.postMessage(msg);
     };
     try{

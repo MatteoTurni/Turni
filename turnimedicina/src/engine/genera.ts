@@ -7,7 +7,7 @@ import { makeCtx } from "./ctx";
 import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
          riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, risolviCluster, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
-import { tipoFestivo, N_TIPI_FEST } from "./storico";
+import { tipoFestivo, N_TIPI_FEST, EQ_MESI, spostamentiEq } from "./storico";
 import { costoSuperfestivi } from "./superfestivi";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -483,6 +483,24 @@ export function quoteNotti(c: ReturnType<typeof makeCtx>): Map<number, number> {
   const media = c.mr.length ? tot/c.mr.length : 0;
   return new Map(c.mr.map(m=>[m.id, media]));
 }
+// NOTTI FRA MESI (v0.3.58) — vedi storico.ts. La quota del mese resta uguale
+// per tutti; a parte, ogni notte costa lo spostamento del medico (chi nei mesi
+// scorsi ne ha fatte più dei colleghi ha spostamento positivo): la notte in
+// più va a chi ne ha fatte meno. Le notti si contano solo dentro la forchetta
+// [⌊media⌋, ⌈media⌉]: dare a un medico una notte OLTRE la forchetta non fa
+// guadagnare nulla, quindi lo storico non compra uno squilibrio nel mese.
+// Il risultato è in «notti»: va moltiplicato per 2·PESI.notti/n, la scala del
+// termine di equità del mese.
+export function nottiFraMesi(c: ReturnType<typeof makeCtx>): number {
+  const H = ENG.STORICO_EQ;
+  if(!H || c.mr.length<2) return 0;
+  const tot = c.mr.reduce((q,m)=>q+c.cntN(m.id),0), media = tot/c.mr.length;
+  const lo = Math.floor(media), hi = Math.ceil(media);
+  const sp = spostamentiEq(H.notti, c.mr.map(m=>m.id), EQ_MESI.betaNotti);
+  let costo = 0;
+  for(const m of c.mr) costo += sp.get(m.id)! * Math.max(lo, Math.min(hi, c.cntN(m.id)));
+  return costo;
+}
 export function scartoNotti(c: ReturnType<typeof makeCtx>): number {
   if(c.mr.length<2) return 0;
   const q = quoteNotti(c);
@@ -694,11 +712,24 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const festRip = varietaFestivi(c);
   // SUPERFESTIVI (v0.3.57) — vedi superfestivi.ts (i pesi sono lì).
   const sfCosto = costoSuperfestivi(c, anno, mese);
+  // WEEKEND LIBERI FRA MESI (v0.3.58) — vedi storico.ts: chi nei mesi scorsi
+  // ne ha avuti più dei colleghi li riceve per ultimo.
+  // Con lo storico il peso dell'equità del MESE sale di (1 + max): una notte
+  // spostata dentro la forchetta può far guadagnare allo storico al più
+  // max·2·P.notti/n, e così uno squilibrio nel mese costa almeno quanto prima.
+  const pesoNotti = PESI.notti * (ENG.STORICO_EQ ? 1 + EQ_MESI.max : 1);
+  const nottiStor = nottiFraMesi(c) * (2*PESI.notti/Math.max(1,c.mr.length));
+  let wkStor = 0;
+  if(ENG.STORICO_EQ){
+    const sp = spostamentiEq(ENG.STORICO_EQ.wk, c.mrMdc.map(m2=>m2.id), EQ_MESI.betaWk);
+    for(const m2 of c.mrMdc) wkStor += sp.get(m2.id)! * c.cntWkLiberi(m2.id);
+  }
   const P = PESI;
-  const soft = nottiDev*P.notti + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
+  const soft = nottiDev*pesoNotti + nottiStor + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
-             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar + sfCosto;
-  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip, sfCosto };
+             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar + sfCosto
+             + wkStor*EQ_MESI.pesoWk;
+  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip, sfCosto, wkStor, nottiStor, pesoNotti };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 
@@ -1143,7 +1174,11 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
   for(let iter=0; iter<30; iter++){
     if(scaduto()) break;
     const q=quoteNotti(c);
-    const sc=(id:number)=>c.cntN(id)-q.get(id)!;
+    // Con lo storico (v0.3.58) lo scarto di ciascuno include lo spostamento dei
+    // mesi scorsi (sotto 1 in tutto): si prova anche a passare la notte IN PIÙ
+    // da chi ne ha fatte di più a chi ne ha fatte meno. Decide sempre il soft.
+    const sp=ENG.STORICO_EQ ? spostamentiEq(ENG.STORICO_EQ.notti, c.mr.map(m=>m.id), EQ_MESI.betaNotti) : null;
+    const sc=(id:number)=>c.cntN(id)-q.get(id)!+(sp?.get(id) ?? 0);
     const donatori =[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
     const riceventi=[...c.mr].sort((a,z)=>sc(a.id)-sc(z.id));
     let mossa=false;
@@ -1501,7 +1536,7 @@ export function rifinituraFinale(
   try{
     const copia = cloneT(bestT);
     const c = makeCtx(anno, mese, ndim, medici, copia);
-    if(scartoNotti(c)>0.3 && conDeadline(Date.now()+capMs(1200), ()=>riequilibraNotti(anno, mese, ndim, medici, c))) prova(copia);
+    if((scartoNotti(c)>0.3 || ENG.STORICO_EQ) && conDeadline(Date.now()+capMs(1200), ()=>riequilibraNotti(anno, mese, ndim, medici, c))) prova(copia);
   }catch(_){ /* si tiene il best già trovato */ }
 
   // ── COMPATTAZIONE DEI DIURNI (v0.3.28) ──────────────────────────────────

@@ -7,7 +7,7 @@ import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { RepartoPanel } from "./components/RepartoPanel";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
-import { setStoricoFestivi } from "./engine/storico";
+import { setStoricoFestivi, setStoricoEquita } from "./engine/storico";
 import { setStoricoSuperfestivi } from "./engine/superfestivi";
 import { SuperfestiviPanel } from "./components/SuperfestiviPanel";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
@@ -166,6 +166,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoEquita(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
@@ -225,6 +226,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoEquita(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
@@ -251,6 +253,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoEquita(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
@@ -1156,14 +1159,14 @@ export default function App(){
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                EQUITÀ FRA MESI E ANNI <span style={{fontWeight:400,color:"#4b7aad"}}>· festivi: {regole.rotazioneFestiviMesi ? `ultimi ${regole.rotazioneFestiviMesi} mesi` : "senza rotazione"} · superfestivi: {regole.superfestiviAttivi && regole.superfestivi.length ? `${regole.superfestivi.map(x=>x.nome||x.data).join(", ")}, ${regole.superfestiviAnni} ann${regole.superfestiviAnni===1?"o":"i"}` : "spenti"}</span>
+                EQUITÀ FRA MESI E ANNI <span style={{fontWeight:400,color:"#4b7aad"}}>· festivi, notti e weekend liberi: {regole.rotazioneFestiviMesi ? `ultimi ${regole.rotazioneFestiviMesi} mesi` : "senza memoria"} · superfestivi: {regole.superfestiviAttivi && regole.superfestivi.length ? `${regole.superfestivi.map(x=>x.nome||x.data).join(", ")}, ${regole.superfestiviAnni} ann${regole.superfestiviAnni===1?"o":"i"}` : "spenti"}</span>
               </summary>
               <div style={{marginTop:"12px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"14px"}}>
                   {numInp(regole.rotazioneFestiviMesi,v=>setTop("rotazioneFestiviMesi",v))}
                   <div>
-                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Rotazione festivi fra mesi</div>
-                    <div style={{...LBL,fontSize:"9px"}}>Mesi salvati da considerare: chi vi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese. 0 = nessuna rotazione.</div>
+                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Equità fra mesi</div>
+                    <div style={{...LBL,fontSize:"9px"}}>Mesi salvati da considerare. Chi vi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese; la notte in più del mese va a chi ne ha fatte meno; il weekend libero in più a chi ne ha avuti meno. 0 = nessuna memoria.</div>
                   </div>
                 </div>
                 <div style={{...LBL,color:"#60a5fa",fontWeight:700,marginBottom:"6px"}}>Superfestivi</div>
