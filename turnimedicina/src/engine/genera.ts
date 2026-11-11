@@ -717,7 +717,8 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // Con lo storico il peso dell'equità del MESE sale di (1 + max): una notte
   // spostata dentro la forchetta può far guadagnare allo storico al più
   // max·2·P.notti/n, e così uno squilibrio nel mese costa almeno quanto prima.
-  const pesoNotti = PESI.notti * (ENG.STORICO_EQ ? 1 + EQ_MESI.max : 1);
+  const conNotti = !!ENG.STORICO_EQ && c.mr.some(m2=>!!ENG.STORICO_EQ!.notti[m2.id]);   // la memoria delle notti è accesa e dice qualcosa
+  const pesoNotti = PESI.notti * (conNotti ? 1 + EQ_MESI.max : 1);
   const nottiStor = nottiFraMesi(c) * (2*PESI.notti/Math.max(1,c.mr.length));
   let wkStor = 0;
   if(ENG.STORICO_EQ){

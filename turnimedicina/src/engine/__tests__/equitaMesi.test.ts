@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Medico, TurniMese } from "../types";
-import { setRegole, REGOLE_DEFAULT } from "../regole";
+import { setRegole, mergeRegole, REGOLE_DEFAULT } from "../regole";
 import { ENG, setSalt, setAmbRotStart } from "../state";
 import { makeCtx } from "../ctx";
 import { misuraTabellone, nottiFraMesi } from "../genera";
@@ -48,6 +48,21 @@ describe("storico di notti e weekend liberi", () => {
     expect(calcolaStoricoEquita({}, 2026, 10, medici, 3)).toBeNull();
     setStoricoEquita({ "2026-10": ottobre }, 2026, 10, medici, 0);
     expect(ENG.STORICO_EQ).toBeNull();
+  });
+  it("memorie separate: notti e weekend liberi si accendono e si spengono da soli", () => {
+    const soloNotti = calcolaStoricoEquita({ "2026-10": ottobre }, 2026, 10, medici, 3, 0)!;
+    expect(soloNotti.notti[1]).toBe(1);
+    expect(soloNotti.wk[1]).toBe(0);
+    const soloWk = calcolaStoricoEquita({ "2026-10": ottobre }, 2026, 10, medici, 0, 3)!;
+    expect(soloWk.notti[1]).toBe(0);
+    expect(soloWk.wk[1]).toBe(-0.5);
+    expect(calcolaStoricoEquita({ "2026-10": ottobre }, 2026, 10, medici, 0, 0)).toBeNull();
+    // le regole: default 3, si salvano e si sanificano
+    expect(mergeRegole({}).equitaNottiMesi).toBe(3);
+    expect(mergeRegole({}).equitaWeekendMesi).toBe(3);
+    expect(mergeRegole({ equitaNottiMesi: 0, equitaWeekendMesi: 6 } as any).equitaNottiMesi).toBe(0);
+    expect(mergeRegole({ equitaNottiMesi: 0, equitaWeekendMesi: 6 } as any).equitaWeekendMesi).toBe(6);
+    expect(mergeRegole({ equitaNottiMesi: 99 } as any).equitaNottiMesi).toBe(3);
   });
 });
 

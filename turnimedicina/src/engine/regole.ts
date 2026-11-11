@@ -19,6 +19,8 @@ export const REGOLE_DEFAULT: Regole = {
   wkTarget: 2,      // obiettivo weekend liberi (resta ADATTIVO: è il tetto)
   maxAssSett: 2,    // max turni associati (M+P) per settimana per medico
   rotazioneFestiviMesi: 3, // rotazione dei turni festivi: mesi precedenti considerati (0 = off)
+  equitaNottiMesi: 3,      // notte in più a chi ne ha fatte meno nei mesi precedenti (0 = off)
+  equitaWeekendMesi: 3,    // weekend libero in più a chi ne ha avuti meno (0 = off)
   blocchiMattina: 4,// catena di continuità mattine: blocchi da ~4 giorni (0 = off)
   // Ambulatori (v0.3.36): default un solo ambulatorio il martedì mattina.
   ambulatori: [{ id:"A", nome:"Ambulatorio", sigla:"A", giorni:{ 1:"M" } }],
@@ -77,6 +79,8 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   // ma non intero ≥ 0 → default. Lo 0 è LEGITTIMO: catena disattivata.
   const bM  = Number.isInteger(s.blocchiMattina) && (s.blocchiMattina as number)>=0
     ? (s.blocchiMattina as number) : d.blocchiMattina;
+  // equitaNottiMesi / equitaWeekendMesi (v0.3.58): assenti o non interi 0–9 → default.
+  const mesi09 = (v:unknown, def:number) => Number.isInteger(v) && (v as number)>=0 && (v as number)<=9 ? (v as number) : def;
   // rotazioneFestiviMesi: ASSENTE (salvataggi pre-v0.3.56) o non intero 0–9 → default.
   const rFM = Number.isInteger(s.rotazioneFestiviMesi) && (s.rotazioneFestiviMesi as number)>=0 && (s.rotazioneFestiviMesi as number)<=9
     ? (s.rotazioneFestiviMesi as number) : d.rotazioneFestiviMesi;
@@ -87,7 +91,8 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
            superfestiviAttivi: typeof s.superfestiviAttivi==="boolean" ? s.superfestiviAttivi : d.superfestiviAttivi,
            superfestiviAnni: Number.isInteger(s.superfestiviAnni) && (s.superfestiviAnni as number)>=1 && (s.superfestiviAnni as number)<=5 ? (s.superfestiviAnni as number) : d.superfestiviAnni,
            notteLiberoNotte: nLN, riposoEsteso: rE,
-           mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM, fabb:{
+           mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM,
+           equitaNottiMesi: mesi09(s.equitaNottiMesi, d.equitaNottiMesi), equitaWeekendMesi: mesi09(s.equitaWeekendMesi, d.equitaWeekendMesi), fabb:{
     fer: {...d.fabb.fer,  ...(s.fabb?.fer ||{})},
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},

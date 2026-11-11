@@ -119,11 +119,12 @@ export function contiEqMese(T: TurniMese, anno:number, mese:number, ids:number[]
   return { notti, wk, presenti };
 }
 
-/** Scostamenti di notti (MR) e weekend liberi (MR, decreto Calabria) negli
- *  ultimi `nMesi` mesi salvati. null senza mesi salvati o con nMesi = 0. */
+/** Scostamenti di notti (MR) negli ultimi `mesiNotti` mesi salvati e di
+ *  weekend liberi (MR, decreto Calabria) negli ultimi `mesiWk`: le due memorie
+ *  sono separate (0 = spenta). null senza mesi salvati o con entrambe spente. */
 export function calcolaStoricoEquita(turniAll: TurniAll | null | undefined, anno:number, mese:number,
-                                     medici: Medico[], nMesi:number): StoricoEq | null {
-  if(!turniAll || nMesi<=0) return null;
+                                     medici: Medico[], mesiNotti:number, mesiWk:number = mesiNotti): StoricoEq | null {
+  if(!turniAll || (mesiNotti<=0 && mesiWk<=0)) return null;
   const mr = medici.filter(m=>m.stato==="MR").map(m=>m.id), mdc = medici.filter(m=>m.stato==="MDC").map(m=>m.id);
   const ids = [...mr, ...mdc];
   if(!ids.length) return null;
@@ -131,7 +132,7 @@ export function calcolaStoricoEquita(turniAll: TurniAll | null | undefined, anno
   for(const id of mr) st.notti[id] = 0;
   for(const id of ids) st.wk[id] = 0;
   let usati = 0;
-  for(let k=1; k<=nMesi; k++){
+  for(let k=1; k<=Math.max(mesiNotti, mesiWk); k++){
     const d = new Date(anno, mese-k, 1);
     const T = turniAll[mkKey(d.getFullYear(), d.getMonth())];
     if(!T) continue;
@@ -144,14 +145,15 @@ export function calcolaStoricoEquita(turniAll: TurniAll | null | undefined, anno
       const media = pres.reduce((q,id)=>q+conti[id],0)/pres.length;
       for(const id of pres) out[id] += conti[id]-media;
     };
-    scosta(mr, notti, st.notti); scosta(mr, wk, st.wk); scosta(mdc, wk, st.wk);
+    if(k<=mesiNotti) scosta(mr, notti, st.notti);
+    if(k<=mesiWk){ scosta(mr, wk, st.wk); scosta(mdc, wk, st.wk); }
   }
   return usati ? st : null;
 }
 
 /** Iniettato dalla UI prima di generare (come setStoricoFestivi). */
-export function setStoricoEquita(turniAll: TurniAll | null | undefined, anno:number, mese:number, medici: Medico[], nMesi:number){
-  ENG.STORICO_EQ = calcolaStoricoEquita(turniAll, anno, mese, medici, nMesi);
+export function setStoricoEquita(turniAll: TurniAll | null | undefined, anno:number, mese:number, medici: Medico[], mesiNotti:number, mesiWk:number = mesiNotti){
+  ENG.STORICO_EQ = calcolaStoricoEquita(turniAll, anno, mese, medici, mesiNotti, mesiWk);
 }
 
 /** Spostamento di un medico: beta × scostamento, entro ±max. */

@@ -166,7 +166,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
-        setStoricoEquita(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
         setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
@@ -226,7 +226,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
-        setStoricoEquita(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
         setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
@@ -253,7 +253,7 @@ export default function App(){
       try{
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
-        setStoricoEquita(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
+        setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
         setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
@@ -983,7 +983,7 @@ export default function App(){
           if(campo.endsWith("Max") && f[campo.replace("Max","Min") as CampoFabb]>v) f[campo.replace("Max","Min") as CampoFabb]=v;
           updRegole({...regole,fabb:{...regole.fabb,[fascia]:f}});
         };
-        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett"|"blocchiMattina"|"rotazioneFestiviMesi";
+        type CampoTop = "maxNotti"|"maxNottiConsec"|"maxConsec"|"wkTarget"|"maxAssSett"|"blocchiMattina"|"rotazioneFestiviMesi"|"equitaNottiMesi"|"equitaWeekendMesi";
         const setTop = (campo:CampoTop,v:number) => updRegole({...regole,[campo]:v});
         const LBL: React.CSSProperties = {color:"#2d5a8a",fontSize:"10px",fontFamily:"monospace"};
         const BOX: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",borderRadius:"8px",padding:"14px",marginBottom:"12px"};
@@ -1159,16 +1159,24 @@ export default function App(){
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                EQUITÀ FRA MESI E ANNI <span style={{fontWeight:400,color:"#4b7aad"}}>· festivi, notti e weekend liberi: {regole.rotazioneFestiviMesi ? `ultimi ${regole.rotazioneFestiviMesi} mesi` : "senza memoria"} · superfestivi: {regole.superfestiviAttivi && regole.superfestivi.length ? `${regole.superfestivi.map(x=>x.nome||x.data).join(", ")}, ${regole.superfestiviAnni} ann${regole.superfestiviAnni===1?"o":"i"}` : "spenti"}</span>
+                EQUITÀ FRA MESI E ANNI <span style={{fontWeight:400,color:"#4b7aad"}}>· mesi di memoria: festivi {regole.rotazioneFestiviMesi}, notti {regole.equitaNottiMesi}, weekend liberi {regole.equitaWeekendMesi} · superfestivi: {regole.superfestiviAttivi && regole.superfestivi.length ? `${regole.superfestivi.map(x=>x.nome||x.data).join(", ")}, ${regole.superfestiviAnni} ann${regole.superfestiviAnni===1?"o":"i"}` : "spenti"}</span>
               </summary>
               <div style={{marginTop:"12px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"14px"}}>
-                  {numInp(regole.rotazioneFestiviMesi,v=>setTop("rotazioneFestiviMesi",v))}
-                  <div>
-                    <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>Equità fra mesi</div>
-                    <div style={{...LBL,fontSize:"9px"}}>Mesi salvati da considerare. Chi vi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese; la notte in più del mese va a chi ne ha fatte meno; il weekend libero in più a chi ne ha avuti meno. 0 = nessuna memoria.</div>
+                <div style={{...LBL,fontSize:"9px",marginBottom:"10px"}}>Mesi salvati da considerare per ciascuna equità. 0 = spenta.</div>
+                {([
+                  ["rotazioneFestiviMesi","Turni festivi","Chi nei mesi scorsi ha fatto più turni festivi di un tipo (es. notti di sabato, domeniche mattina) ne riceve meno questo mese."],
+                  ["equitaNottiMesi","Notti","Quando le notti non si dividono in parti uguali, la notte in più va a chi nei mesi scorsi ne ha fatte meno. Nel mese la differenza fra gli MR non aumenta."],
+                  ["equitaWeekendMesi","Weekend liberi","Quando c'è un weekend libero in più da dare, va a chi nei mesi scorsi ne ha avuti meno (ferie comprese)."],
+                ] as const).map(([k,lbl,hint])=>(
+                  <div key={k} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"10px"}}>
+                    {numInp(regole[k],v=>setTop(k,v))}
+                    <div>
+                      <div style={{...LBL,color:"#e2eeff",fontWeight:700}}>{lbl}</div>
+                      <div style={{...LBL,fontSize:"9px"}}>{hint}</div>
+                    </div>
                   </div>
-                </div>
+                ))}
+                <div style={{height:"4px"}}/>
                 <div style={{...LBL,color:"#60a5fa",fontWeight:700,marginBottom:"6px"}}>Superfestivi</div>
                 <SuperfestiviPanel regole={regole} onRegole={updRegole} avviso={showMsg}/>
               </div>

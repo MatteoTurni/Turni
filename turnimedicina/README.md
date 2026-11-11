@@ -20,12 +20,13 @@ dei festivi:
   contano, come già nel mese (le ferie non spostano la quota di notti), e il
   recupero è graduale: al più la notte in più del mese.
 
-Nel pannello Regole «Rotazione festivi fra mesi» diventa «Equità fra mesi»:
-un solo numero di mesi (default 3, 0 = nessuna memoria) per festivi, notti e
-weekend liberi. È una preferenza: buchi, regole, weekend liberi mancanti,
-carico weekend e obiettivi restano più importanti. Dentro il mese l'equità
-delle notti è protetta: una notte oltre la forchetta del mese non fa
-guadagnare nulla dalla memoria dei mesi. Senza mesi salvati il motore si
+Nel pannello Regole, sezione «Equità fra mesi e anni», ci sono tre numeri
+separati: mesi salvati da considerare per i turni festivi (era «Rotazione
+festivi fra mesi»), per le notti e per i weekend liberi (default 3 ciascuno;
+0 spegne quella sola equità). Sono preferenze: buchi, regole, weekend liberi
+mancanti, carico weekend e obiettivi restano più importanti. Dentro il mese
+l'equità delle notti è protetta: una notte oltre la forchetta del mese non
+fa guadagnare nulla dalla memoria dei mesi. Senza mesi salvati il motore si
 comporta esattamente come la 0.3.57.
 
 Verifica: 12 squadre seguite per 6 mesi consecutivi (72 mesi), ogni mese
