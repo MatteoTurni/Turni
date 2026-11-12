@@ -58,6 +58,7 @@ export function bilancioNotti(anno:number, mese:number, ndim:number, medici:Medi
       const sh = man(m.id,g);
       if(sh.some(s=>isNot(s.tipo))) manuali.push(`${etichettaTurno(sh.find(s=>isNot(s.tipo))!, [])}${sh.find(s=>isNot(s.tipo))!.sott?" (ALPI)":""} il ${g}`);
       if(sh.length) continue;                                         // giorno già occupato (anche assenze ed esclusioni)
+      if(m.noNotti) continue;                                         // esentato dalle notti (v0.3.59)
       if(notteMan(m.id,g-1)) continue;                                // riposo dopo una notte manuale
       if(m.stato==="MDC" && !medici.some(a=>a.id!==m.id && affiancaMDC(a) && man(a.id,g).some(s=>compagnoMDC(s,"N",REG.psAff)))) continue;
       giorni++;
@@ -89,6 +90,7 @@ function motivoNo(c:Ctx, m:Medico, g:number, f:"M"|"P"|"N"): string|null {
   const sh = c.gt(m.id,g);
   if(m.stato==="MPS") return null;
   if(sh.some(s=>ASSENZE.includes(s.tipo))) return "assente";
+  if(f==="N" && c.esentiNotti.has(m.id)) return "esentato dalle notti";
   if(c.escluso(m.id,g,f)) return "escluso";
   if(m.stato==="ML" && f!=="M") return null;                           // l'ML non è un candidato: non lo si elenca
   if(sh.some(s=>!SPEC.includes(s.tipo))) return "già in turno quel giorno";

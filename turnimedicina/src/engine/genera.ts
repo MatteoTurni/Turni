@@ -479,9 +479,9 @@ export function cmpMis(a:{s:number;wkScarto:number;soft:number}, b:{s:number;wkS
 // sporcava il confronto. Ora conta solo fra gli MR, con la stessa quota per
 // tutti (la media): le ferie non spostano la quota, per scelta del reparto.
 export function quoteNotti(c: ReturnType<typeof makeCtx>): Map<number, number> {
-  const tot = c.mr.reduce((q,m)=>q+c.cntN(m.id),0);
-  const media = c.mr.length ? tot/c.mr.length : 0;
-  return new Map(c.mr.map(m=>[m.id, media]));
+  const tot = c.mrNotti.reduce((q,m)=>q+c.cntN(m.id),0);
+  const media = c.mrNotti.length ? tot/c.mrNotti.length : 0;
+  return new Map(c.mrNotti.map(m=>[m.id, media]));
 }
 // NOTTI FRA MESI (v0.3.58) — vedi storico.ts. La quota del mese resta uguale
 // per tutti; a parte, ogni notte costa lo spostamento del medico (chi nei mesi
@@ -493,18 +493,18 @@ export function quoteNotti(c: ReturnType<typeof makeCtx>): Map<number, number> {
 // termine di equità del mese.
 export function nottiFraMesi(c: ReturnType<typeof makeCtx>): number {
   const H = ENG.STORICO_EQ;
-  if(!H || c.mr.length<2) return 0;
-  const tot = c.mr.reduce((q,m)=>q+c.cntN(m.id),0), media = tot/c.mr.length;
+  if(!H || c.mrNotti.length<2) return 0;
+  const tot = c.mrNotti.reduce((q,m)=>q+c.cntN(m.id),0), media = tot/c.mrNotti.length;
   const lo = Math.floor(media), hi = Math.ceil(media);
-  const sp = spostamentiEq(H.notti, c.mr.map(m=>m.id), EQ_MESI.betaNotti);
+  const sp = spostamentiEq(H.notti, c.mrNotti.map(m=>m.id), EQ_MESI.betaNotti);
   let costo = 0;
-  for(const m of c.mr) costo += sp.get(m.id)! * Math.max(lo, Math.min(hi, c.cntN(m.id)));
+  for(const m of c.mrNotti) costo += sp.get(m.id)! * Math.max(lo, Math.min(hi, c.cntN(m.id)));
   return costo;
 }
 export function scartoNotti(c: ReturnType<typeof makeCtx>): number {
-  if(c.mr.length<2) return 0;
+  if(c.mrNotti.length<2) return 0;
   const q = quoteNotti(c);
-  return c.mr.reduce((s,m)=>{ const d=c.cntN(m.id)-q.get(m.id)!; return s+d*d; },0) / c.mr.length;
+  return c.mrNotti.reduce((s,m)=>{ const d=c.cntN(m.id)-q.get(m.id)!; return s+d*d; },0) / c.mrNotti.length;
 }
 
 // ── CONTINUITÀ NEI GIORNI SENZA ML (v0.3.40) ─────────────────────────────
@@ -717,9 +717,9 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   // Con lo storico il peso dell'equità del MESE sale di (1 + max): una notte
   // spostata dentro la forchetta può far guadagnare allo storico al più
   // max·2·P.notti/n, e così uno squilibrio nel mese costa almeno quanto prima.
-  const conNotti = !!ENG.STORICO_EQ && c.mr.some(m2=>!!ENG.STORICO_EQ!.notti[m2.id]);   // la memoria delle notti è accesa e dice qualcosa
+  const conNotti = !!ENG.STORICO_EQ && c.mrNotti.some(m2=>!!ENG.STORICO_EQ!.notti[m2.id]);   // la memoria delle notti è accesa e dice qualcosa
   const pesoNotti = PESI.notti * (conNotti ? 1 + EQ_MESI.max : 1);
-  const nottiStor = nottiFraMesi(c) * (2*PESI.notti/Math.max(1,c.mr.length));
+  const nottiStor = nottiFraMesi(c) * (2*PESI.notti/Math.max(1,c.mrNotti.length));
   let wkStor = 0;
   if(ENG.STORICO_EQ){
     const sp = spostamentiEq(ENG.STORICO_EQ.wk, c.mrMdc.map(m2=>m2.id), EQ_MESI.betaWk);
@@ -1178,10 +1178,10 @@ export function riequilibraNotti(anno:number, mese:number, ndim:number, medici:M
     // Con lo storico (v0.3.58) lo scarto di ciascuno include lo spostamento dei
     // mesi scorsi (sotto 1 in tutto): si prova anche a passare la notte IN PIÙ
     // da chi ne ha fatte di più a chi ne ha fatte meno. Decide sempre il soft.
-    const sp=ENG.STORICO_EQ ? spostamentiEq(ENG.STORICO_EQ.notti, c.mr.map(m=>m.id), EQ_MESI.betaNotti) : null;
+    const sp=ENG.STORICO_EQ ? spostamentiEq(ENG.STORICO_EQ.notti, c.mrNotti.map(m=>m.id), EQ_MESI.betaNotti) : null;
     const sc=(id:number)=>c.cntN(id)-q.get(id)!+(sp?.get(id) ?? 0);
-    const donatori =[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
-    const riceventi=[...c.mr].sort((a,z)=>sc(a.id)-sc(z.id));
+    const donatori =[...c.mrNotti].sort((a,z)=>sc(z.id)-sc(a.id));
+    const riceventi=[...c.mrNotti].sort((a,z)=>sc(a.id)-sc(z.id));
     let mossa=false;
     outer:
     for(const o of donatori) for(const u of riceventi){

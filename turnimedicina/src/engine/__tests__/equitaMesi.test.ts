@@ -36,11 +36,11 @@ describe("storico di notti e weekend liberi", () => {
     expect(h.wk[6]).toBeUndefined();
   });
   it("più mesi si sommano; i mesi non salvati si saltano", () => {
-    const settembre: TurniMese = { 1:{ 1:cella("N") }, 2:{ 2:cella("M") }, 3:{ 3:cella("N") } };   // medie: notti 2/3
+    const settembre: TurniMese = { 1:{ 1:cella("N"), 8:cella("N") }, 2:{ 2:cella("N") }, 3:{ 3:cella("N") } };   // media: notti 4/3
     const h = calcolaStoricoEquita({ "2026-10": ottobre, "2026-09": settembre }, 2026, 10, medici, 3)!;
-    expect(h.notti[1]).toBeCloseTo(1 + 1/3);
-    expect(h.notti[2]).toBeCloseTo(-1 - 2/3);
-    expect(h.notti[3]).toBeCloseTo(1/3);
+    expect(h.notti[1]).toBeCloseTo(1 + 2/3);
+    expect(h.notti[2]).toBeCloseTo(-1 - 1/3);
+    expect(h.notti[3]).toBeCloseTo(-1/3);
     expect(calcolaStoricoEquita({ "2026-10": ottobre, "2026-09": settembre }, 2026, 10, medici, 1)!.notti[1]).toBe(1);
   });
   it("spenta (0 mesi) o senza mesi salvati: nessuno storico", () => {

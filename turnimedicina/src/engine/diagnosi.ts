@@ -49,7 +49,9 @@ export function diagnosiStatica(
   const haX      = (id:number,g:number) => man(id,g).some(s=>s.tipo==="X");
   // ESCLUSIONI PER FASCIA (v0.3.30): come in ctx, ma sui SOLI manuali (qui è
   // tutto manuale per definizione: X/Xm/Xp/Xn si inseriscono solo a mano).
-  const esclF    = (id:number,g:number,f:"M"|"P"|"N") => man(id,g).some(s=>escludeFascia(s.tipo,f));
+  // Esentati dalle notti (v0.3.59): come una Xn ogni giorno.
+  const esentiN  = new Set(medici.filter(m=>m.noNotti===true && (m.stato==="MR"||m.stato==="MDC")).map(m=>m.id));
+  const esclF    = (id:number,g:number,f:"M"|"P"|"N") => (f==="N" && esentiN.has(id)) || man(id,g).some(s=>escludeFascia(s.tipo,f));
   const assenza  = (id:number,g:number) => man(id,g).some(s=>isLicenza(s.tipo));
   // Notte manuale ai fini del riposo: come manNight in ctx, include il codice PS "3".
   const manNotte = (id:number,g:number) => g>=1 && man(id,g).some(s=>isNot(s.tipo));
@@ -171,7 +173,8 @@ export function diagnosiStatica(
     const budget = Math.max(0, REG.maxNotti - nMan);
     const c = Math.min(budget, gg);
     capNotti += c;
-    if(c<REG.maxNotti) dett.push(`${m.nome.split(" ").pop()} max ${c}${nMan?` (${nMan} nott${nMan===1?"e":"i"} manuali nel mese)`:""}${m.stato==="MDC"?" (MDC: serve un \u00AB3\u00BB in giornata)":""}`);
+    if(esentiN.has(m.id)) dett.push(`${m.nome.split(" ").pop()} esentato dalle notti`);
+    else if(c<REG.maxNotti) dett.push(`${m.nome.split(" ").pop()} max ${c}${nMan?` (${nMan} nott${nMan===1?"e":"i"} manuali nel mese)`:""}${m.stato==="MDC"?" (MDC: serve un \u00AB3\u00BB in giornata)":""}`);
   }
   const mesi: CertMese[] = [];
   if(richieste > capNotti){
