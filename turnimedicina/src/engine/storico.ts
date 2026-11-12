@@ -70,3 +70,97 @@ export function calcolaStoricoFestivi(turniAll: TurniAll | null | undefined, ann
 export function setStoricoFestivi(turniAll: TurniAll | null | undefined, anno:number, mese:number, medici: Medico[], nMesi:number){
   ENG.STORICO_FEST = calcolaStoricoFestivi(turniAll, anno, mese, medici, nMesi);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EQUITÀ FRA MESI: NOTTI E WEEKEND LIBERI (v0.3.58)
+// ═══════════════════════════════════════════════════════════════════════════
+// Nel singolo mese notti e weekend liberi sono già pari (differenza al più 1),
+// ma quando il conto non torna — 30 notti per 7 MR: due ne fanno 5 — a chi
+// tocca la notte in più lo decideva il caso, ogni mese da capo. Misurato su 8
+// squadre seguite per 6 mesi: fra l'MR con più notti e quello con meno 2,25 in
+// media (fino a 4); lo stesso per i weekend liberi.
+// Qui, per ogni medico, lo SCOSTAMENTO dei mesi salvati precedenti: quante
+// notti (o weekend liberi) in più o in meno della media dei colleghi presenti,
+// sommando i mesi. Le notti si contano come nel mese (N e 3, anche
+// sottolineate) e solo fra gli MR; i weekend liberi come nel riepilogo
+// (sabato e domenica senza lavoro, ferie comprese), MR fra MR e decreto
+// Calabria fra decreto Calabria. Chi in un mese non ha lavorato (nuovo in
+// squadra, assente tutto il mese) non accumula scostamento: non deve
+// recuperare. Le assenze parziali contano: come nel mese, le ferie non
+// spostano la quota.
+// Il motore usa lo scostamento così (vedi nottiFraMesi e misuraTabellone):
+//  · notti: ogni notte del mese costa lo spostamento del medico (betaNotti
+//    per ogni notte di scostamento, al più `max`), contata solo dentro la
+//    forchetta [⌊media⌋, ⌈media⌉] del mese: cambia A CHI tocca la notte in
+//    più, e una notte oltre la forchetta non fa guadagnare nulla;
+//  · weekend liberi: ogni weekend libero del mese costa pesoWk × spostamento
+//    (stesso tetto): chi ne ha avuti di più li riceve per ultimo. È dentro il
+//    soft: quanti weekend liberi mancano in tutto e il carico weekend, che
+//    vengono prima, non cambiano.
+export const EQ_MESI = { betaNotti: 0.8, betaWk: 0.8, max: 0.4, pesoWk: 25 };
+export interface StoricoEq { notti: Record<number, number>; wk: Record<number, number> }
+
+/** Notti e weekend liberi di ciascun medico in un mese salvato, e chi ha lavorato. */
+export function contiEqMese(T: TurniMese, anno:number, mese:number, ids:number[]) {
+  const nd = dimOf(anno, mese);
+  const notti: Record<number, number> = {}, wk: Record<number, number> = {};
+  const presenti = new Set<number>();
+  const libero = (id:number, g:number) => (T[id]?.[g]?.t || []).every(s=>SPEC.includes(s.tipo));
+  for(const id of ids){
+    let n = 0, w = 0;
+    for(let g=1; g<=nd; g++){
+      const sh = T[id]?.[g]?.t || [];
+      if(sh.some(s=>!SPEC.includes(s.tipo))) presenti.add(id);
+      for(const s of sh) if(isNot(s.tipo)) n++;
+      if(g<nd && isSabN(dowOf(anno, mese, g)) && libero(id,g) && libero(id,g+1)) w++;
+    }
+    notti[id] = n; wk[id] = w;
+  }
+  return { notti, wk, presenti };
+}
+
+/** Scostamenti di notti (MR) negli ultimi `mesiNotti` mesi salvati e di
+ *  weekend liberi (MR, decreto Calabria) negli ultimi `mesiWk`: le due memorie
+ *  sono separate (0 = spenta). null senza mesi salvati o con entrambe spente. */
+export function calcolaStoricoEquita(turniAll: TurniAll | null | undefined, anno:number, mese:number,
+                                     medici: Medico[], mesiNotti:number, mesiWk:number = mesiNotti): StoricoEq | null {
+  if(!turniAll || (mesiNotti<=0 && mesiWk<=0)) return null;
+  const mr = medici.filter(m=>m.stato==="MR").map(m=>m.id), mdc = medici.filter(m=>m.stato==="MDC").map(m=>m.id);
+  const ids = [...mr, ...mdc];
+  if(!ids.length) return null;
+  const st: StoricoEq = { notti:{}, wk:{} };
+  for(const id of mr) st.notti[id] = 0;
+  for(const id of ids) st.wk[id] = 0;
+  let usati = 0;
+  for(let k=1; k<=Math.max(mesiNotti, mesiWk); k++){
+    const d = new Date(anno, mese-k, 1);
+    const T = turniAll[mkKey(d.getFullYear(), d.getMonth())];
+    if(!T) continue;
+    const { notti, wk, presenti } = contiEqMese(T, d.getFullYear(), d.getMonth(), ids);
+    if(!ids.some(id=>presenti.has(id))) continue;
+    usati++;
+    const scosta = (gruppo:number[], conti:Record<number,number>, out:Record<number,number>) => {
+      const pres = gruppo.filter(id=>presenti.has(id));
+      if(pres.length<2) return;
+      const media = pres.reduce((q,id)=>q+conti[id],0)/pres.length;
+      for(const id of pres) out[id] += conti[id]-media;
+    };
+    if(k<=mesiNotti) scosta(mr, notti, st.notti);
+    if(k<=mesiWk){ scosta(mr, wk, st.wk); scosta(mdc, wk, st.wk); }
+  }
+  return usati ? st : null;
+}
+
+/** Iniettato dalla UI prima di generare (come setStoricoFestivi). */
+export function setStoricoEquita(turniAll: TurniAll | null | undefined, anno:number, mese:number, medici: Medico[], mesiNotti:number, mesiWk:number = mesiNotti){
+  ENG.STORICO_EQ = calcolaStoricoEquita(turniAll, anno, mese, medici, mesiNotti, mesiWk);
+}
+
+/** Spostamento di un medico: beta × scostamento, entro ±max. */
+export const spostaEq = (dev:number|undefined, beta:number) => Math.max(-EQ_MESI.max, Math.min(EQ_MESI.max, beta*(dev ?? 0)));
+/** Spostamenti di un gruppo, a somma zero (la media del gruppo non si muove). */
+export function spostamentiEq(dev: Record<number,number>|undefined, ids:number[], beta:number): Map<number, number> {
+  const raw = ids.map(id=>spostaEq(dev?.[id], beta));
+  const mu = raw.length ? raw.reduce((q,x)=>q+x,0)/raw.length : 0;
+  return new Map(ids.map((id,i)=>[id, raw[i]-mu]));
+}

@@ -57,7 +57,7 @@ export function equilibra(anno:number, mese:number, ndim:number, medici:Medico[]
     // punti (una notte = 2 punti), così nessun obiettivo si sposta.
     // Il resto del punteggio (tolti notti, strisce e continuità) non peggiora.
     let nd0 = scartoNotti(c);
-    let cur = misura(); let altro0 = cur.soft - nd0*PESI.notti - cur.strisceM*PESI.strisce - cur.contPen*PESI.cont;
+    let cur = misura(); let altro0 = cur.soft - nd0*cur.pesoNotti - cur.nottiStor - cur.strisceM*PESI.strisce - cur.contPen*PESI.cont;
     for(let iter=0; iter<30 && !scaduto(); iter++){
       const q=quoteNotti(c); const sc=(id:number)=>c.cntN(id)-q.get(id)!;
       const donatori=[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
@@ -72,7 +72,7 @@ export function equilibra(anno:number, mese:number, ndim:number, medici:Medico[]
           if(!spostaNotte(c, o, u, g, ndim) || !compensa(c, o, u, punti0, ndim)){ c.rollback(m0); continue; }
           if(!invarianti()){ c.rollback(m0); continue; }
           const nx=misura(); const ndx=scartoNotti(c);
-          const altroX = nx.soft - ndx*PESI.notti - nx.strisceM*PESI.strisce - nx.contPen*PESI.cont;
+          const altroX = nx.soft - ndx*nx.pesoNotti - nx.nottiStor - nx.strisceM*PESI.strisce - nx.contPen*PESI.cont;
           if(ndx<nd0-1e-9 && nx.s<=cur.s && nx.wkScarto<=cur.wkScarto && altroX<=altro0+1e-9){
             cur=nx; nd0=ndx; altro0=altroX; scambiNotti++; mossa=true; break outer;
           }

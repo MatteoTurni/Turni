@@ -1,4 +1,53 @@
-# TurniMedicina 0.3.57
+# TurniMedicina 0.3.58
+
+## Novità 0.3.58 — equità fra mesi anche per notti e weekend liberi
+
+Nel singolo mese notti e weekend liberi erano già pari (differenza al più 1),
+ma quando il conto non torna — 30 notti per 7 MR: due ne fanno 5 — a chi
+toccava la notte in più lo decideva il caso, ogni mese da capo. Sommando 6
+mesi la differenza fra l'MR con più notti e quello con meno arrivava a 4.
+
+Ora il motore guarda i mesi salvati precedenti, gli stessi della rotazione
+dei festivi:
+- notti: la notte in più del mese va a chi nei mesi scorsi ne ha fatte meno
+  dei colleghi. Contano come nel mese (N e 3 di PS, anche sottolineate) e
+  solo fra gli MR;
+- weekend liberi: quando ce n'è uno in più da dare va a chi ne ha avuti meno.
+  Contano come nel riepilogo (sabato e domenica senza lavoro, ferie
+  comprese); gli MR si confrontano fra loro, i decreto Calabria fra loro;
+- chi in un mese non ha lavorato (nuovo in squadra, assente tutto il mese)
+  per quel mese non accumula nulla: non deve recuperare. Le assenze parziali
+  contano, come già nel mese (le ferie non spostano la quota di notti), e il
+  recupero è graduale: al più la notte in più del mese.
+
+Nel pannello Regole, sezione «Equità fra mesi e anni», ci sono tre numeri
+separati: mesi salvati da considerare per i turni festivi (era «Rotazione
+festivi fra mesi»), per le notti e per i weekend liberi (default 3 ciascuno;
+0 spegne quella sola equità). Sono preferenze: buchi, regole, weekend liberi
+mancanti, carico weekend e obiettivi restano più importanti. Dentro il mese
+l'equità delle notti è protetta: una notte oltre la forchetta del mese non
+fa guadagnare nulla dalla memoria dei mesi. Senza mesi salvati il motore si
+comporta esattamente come la 0.3.57.
+
+Verifica: 12 squadre seguite per 6 mesi consecutivi (72 mesi), ogni mese
+generato come nell'app e salvato, prima e dopo. Sommando i 6 mesi, la
+differenza fra l'MR con più e quello con meno:
+
+| Misura | Prima | Dopo |
+|---|---|---|
+| Notti, in media | 2,58 | 1,42 |
+| Notti, nella squadra peggiore | 4 | 2 |
+| Weekend liberi, in media | 2,00 | 1,58 |
+| Weekend liberi, nella squadra peggiore | 4 | 3 |
+
+I weekend liberi migliorano meno perché le differenze che restano vengono
+quasi tutte dalle ferie: un weekend in ferie è libero e non si può togliere.
+Singolo mese invariato: mesi con 2 notti di differenza fra MR 2 → 1 su 72,
+buchi 0,85 → 0,85, weekend liberi mancanti 0,03 → 0,03, punti mancanti agli
+obiettivi 4,68 → 4,62, giorni isolati 4,7 → 4,4, nessuna violazione. Piccoli
+prezzi: i weekend liberi oltre l'obiettivo calano del 2% (17,9 → 17,6 per
+squadra al mese) e la rotazione dei festivi è appena meno stretta (differenza
+sui 6 mesi di tutti i festivi 2,7 → 2,8).
 
 ## Novità 0.3.57 — equità dei superfestivi fra gli anni
 

@@ -55,6 +55,11 @@ export const ENG = {
   // dalla UI prima di generare; null = nessuna rotazione.
   STORICO_FEST: null as null | Record<number, number[]>,
 
+  // EQUITÀ FRA MESI DI NOTTI E WEEKEND LIBERI (v0.3.58): per medico, quante
+  // notti e quanti weekend liberi in più o in meno dei colleghi nei mesi
+  // precedenti (vedi storico.ts). Iniettato dalla UI; null = nessuna memoria.
+  STORICO_EQ: null as null | { notti: Record<number, number>; wk: Record<number, number> },
+
   // SUPERFESTIVI (v0.3.57): turni superfestivi dei mesi salvati che servono
   // al mese corrente (vedi superfestivi.ts). Iniettato dalla UI; null = nessuno.
   STORICO_SF: null as null | {

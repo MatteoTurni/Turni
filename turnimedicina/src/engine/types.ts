@@ -121,6 +121,9 @@ export interface Regole {
    *  considerare. Chi in quei mesi ha fatto più turni festivi di un tipo (es.
    *  notti di sabato) ne riceve meno. 0 = nessuna rotazione. */
   rotazioneFestiviMesi: number;
+  /** Equità fra mesi (v0.3.58): mesi salvati considerati per la notte in più e per il weekend libero in più (0 = spenta). */
+  equitaNottiMesi: number;
+  equitaWeekendMesi: number;
   /** CATENA DI CONTINUITÀ delle mattine (v0.3.17): nei tratti di giorni SENZA
    *  una mattina del ML, un unico medico "portatore" prende le mattine per
    *  blocchi di ~N giorni, con passaggio di consegne (l'ultima mattina
