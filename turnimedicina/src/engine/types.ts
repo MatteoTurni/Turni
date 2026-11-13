@@ -18,6 +18,11 @@ export interface Medico {
    *  sottolineati compresi. Assente = nessun limite. I turni manuali contano
    *  ma non si toccano: il motore non ne crea di nuovi oltre il limite. */
   maxAssMese?: number;
+  /** ESENTATO DALLE NOTTI (v0.3.59), solo MR e decreto Calabria: il motore non
+   *  gli assegna mai una notte, come se avesse una Xn ogni giorno. Le notti
+   *  messe a mano restano. L'equità delle notti si calcola fra gli altri e,
+   *  finita l'esenzione, le notti non fatte non si recuperano. */
+  noNotti?: boolean;
 }
 
 export interface Turno {

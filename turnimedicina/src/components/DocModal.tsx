@@ -29,9 +29,10 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
   const inp: React.CSSProperties = {width:"100%",background:"#030810",border:"1px solid #1e3a5f",color:"#e2f0ff",borderRadius:"7px",padding:"7px 10px",fontSize:"12px",fontFamily:"monospace",boxSizing:"border-box"};
   const salva = () => {
     if(!f.nome?.trim()) return;
-    // Il limite di turni associati vale solo per MR e decreto Calabria.
+    // Il limite di turni associati e l'esenzione dalle notti valgono solo per MR e decreto Calabria.
     const out = {...f};
-    if(!(out.stato==="MR"||out.stato==="MDC")) delete out.maxAssMese;
+    if(!(out.stato==="MR"||out.stato==="MDC")){ delete out.maxAssMese; delete out.noNotti; }
+    if(!out.noNotti) delete out.noNotti;
     onSalva(out);
     onClose();
   };
@@ -65,6 +66,17 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
             <input id="max-ass-mese" type="number" min={0} value={f.maxAssMese ?? ""} placeholder="nessun limite" style={inp}
               onChange={e=>{ const v=e.target.value; setF(p=>({...p, maxAssMese: v==="" ? undefined : Math.max(0, Math.floor(+v))})); }}/>
             <div style={{color:"#3d5878",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Giorni con mattina e pomeriggio, anche di PS o sottolineati. Vuoto = nessun limite.</div>
+          </div>
+        )}
+        {(f.stato==="MR"||f.stato==="MDC") && (
+          <div style={{marginBottom:"16px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <input id="no-notti" type="checkbox" checked={!!f.noNotti}
+                onChange={e=>setF(p=>({...p, noNotti: e.target.checked}))}
+                style={{width:"16px",height:"16px",accentColor:"#8b5cf6",cursor:"pointer"}}/>
+              <label htmlFor="no-notti" style={{color:"#c4b5fd",fontSize:"11px",fontFamily:"monospace",cursor:"pointer",userSelect:"none"}}>Esentato dalle notti</label>
+            </div>
+            <div style={{color:"#3d5878",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Il motore non gli assegna notti; quelle messe a mano restano. Tolta la spunta, le notti non fatte non si recuperano.</div>
           </div>
         )}
         <div style={{marginBottom:"16px"}}>

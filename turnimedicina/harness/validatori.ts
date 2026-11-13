@@ -121,6 +121,10 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
       for(let g=1;g<=nd;g++){ if(reale(g)) n++; if(realeAuto(g)) a=true; }
       if(n>Math.floor(m.maxAssMese) && a) V.push(`${nome(m)}: ${n} turni associati nel mese (max ${Math.floor(m.maxAssMese)})`);
     }
+    // ── esentato dalle notti (v0.3.59): nessuna notte AUTOMATICA
+    if(m.noNotti && (m.stato==="MR"||m.stato==="MDC")){
+      for(let g=1;g<=nd;g++) if(cell(m.id,g).some(s=>!s.man && (s.tipo==="N"||s.tipo==="3"))) V.push(`${nome(m)}: esentato dalle notti ma ha una notte automatica g${g}`);
+    }
     // ── obiettivo: sforo massimo +1 (una notte vale 2) sui soli automatici
     // (misurato a parte: non è una violazione dura, vedi `sforo` in metriche)
   }

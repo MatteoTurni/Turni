@@ -15,7 +15,7 @@ describe("storico dei festivi", () => {
   // ottobre 2026: sabati 3, 10, 17, 24, 31
   const ottobre: TurniMese = {
     1: { 10:cella("N"), 24:cella("N") },              // due notti di sabato
-    2: { 6:cella("M") },                              // ha lavorato, nessun festivo
+    2: { 6:cella("M"), 7:cella("N") },                // ha lavorato (anche una notte feriale), nessun festivo
     3: { 6:cella("L",true), 7:cella("L",true) },      // solo licenze: assente tutto il mese
   };
   const medici = [med(1), med(2), med(3), med(4,"MPS")];
@@ -26,7 +26,7 @@ describe("storico dei festivi", () => {
     expect(h[3][4]).toBe(1);                          // (2 + 0) / 2
     expect(h[4]).toBeUndefined();                     // gli MPS non ruotano
     // due mesi salvati: media mensile
-    const h2 = calcolaStoricoFestivi({ "2026-10": ottobre, "2026-09": { 1:{ 2:cella("M") }, 2:{ 5:cella("N") }, 3:{ 1:cella("M") } } }, 2026, 10, medici, 3)!;
+    const h2 = calcolaStoricoFestivi({ "2026-10": ottobre, "2026-09": { 1:{ 2:cella("M"), 9:cella("N") }, 2:{ 5:cella("N") }, 3:{ 1:cella("M"), 16:cella("N") } } }, 2026, 10, medici, 3)!;
     expect(h2[1][4]).toBe(1);                         // (2 + 0) / 2 mesi
     expect(h2[2][4]).toBe(0.5);                       // (0 + 1) / 2 — sabato 5 settembre
   });

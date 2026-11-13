@@ -1,4 +1,41 @@
-# TurniMedicina 0.3.58
+# TurniMedicina 0.3.59
+
+## Novità 0.3.59 — medico esentato dalle notti
+
+Nella scheda del medico (MR e decreto Calabria) c'è la casella «Esentato
+dalle notti». Prima l'unico modo era mettere a mano una Xn su ogni giorno,
+ogni mese. Nella card compare l'etichetta «no notti».
+
+Cosa fa il motore con un esentato:
+- non gli assegna mai una notte, in nessuna fase (generazione, miglioramento,
+  Completa obiettivi, Equilibra, riparazioni, variante d'ultima chance): per
+  la notte vale come escluso ogni giorno. Le notti messe a mano restano;
+- l'equità delle notti del mese si calcola fra gli altri MR;
+- il suo carico weekend si abbassa da solo (le notti del weekend non può
+  farle) e gli altri si dividono il resto;
+- raggiunge l'obiettivo con turni di giorno: più pomeriggi e più turni
+  associati degli altri (se serve, si abbassa l'obiettivo nella scheda);
+- nessun recupero: finché è esentato non entra nella memoria delle notti fra
+  mesi, e tolta la spunta i mesi in cui non ha fatto notti non contano, né
+  per le notti né per le notti festive della rotazione. Regola usata: un MR
+  che in un mese salvato ha lavorato senza fare nemmeno una notte, per quel
+  mese è trattato come esentato.
+
+Attenzione alla copertura: le notti che non fa lui le devono fare gli altri.
+Se il tetto di notti al mese non basta, restano notti scoperte e la diagnosi
+lo segnala (l'esentato compare come «esentato dalle notti»).
+
+Verifica:
+- novembre 2026 reale (6 MR, tetto 5 notti), un MR esentato alla volta: zero
+  notti automatiche all'esentato in tutte le 12 generazioni; restano 3 notti
+  scoperte col tetto a 5 e 0-1 col tetto a 6; stesso risultato della Xn messa
+  a mano su ogni giorno. Un decreto Calabria esentato: nessun buco, la sua
+  notte di PS manuale resta;
+- 40 mesi casuali con il 20% di MR e decreto Calabria esentati a caso (51
+  esentati in 29 mesi): nessuna notte automatica agli esentati, nessuna
+  violazione (validatori indipendenti); fra gli MR che fanno le notti la
+  differenza media è 0,5-0,6;
+- senza esentati il motore si comporta come la 0.3.58.
 
 ## Novità 0.3.58 — equità fra mesi anche per notti e weekend liberi
 

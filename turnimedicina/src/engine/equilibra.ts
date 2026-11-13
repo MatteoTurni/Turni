@@ -60,8 +60,8 @@ export function equilibra(anno:number, mese:number, ndim:number, medici:Medico[]
     let cur = misura(); let altro0 = cur.soft - nd0*cur.pesoNotti - cur.nottiStor - cur.strisceM*PESI.strisce - cur.contPen*PESI.cont;
     for(let iter=0; iter<30 && !scaduto(); iter++){
       const q=quoteNotti(c); const sc=(id:number)=>c.cntN(id)-q.get(id)!;
-      const donatori=[...c.mr].sort((a,z)=>sc(z.id)-sc(a.id));
-      const riceventi=[...c.mr].sort((a,z)=>sc(a.id)-sc(z.id));
+      const donatori=[...c.mrNotti].sort((a,z)=>sc(z.id)-sc(a.id));
+      const riceventi=[...c.mrNotti].sort((a,z)=>sc(a.id)-sc(z.id));
       let mossa=false;
       outer:
       for(const o of donatori) for(const u of riceventi){

@@ -922,6 +922,8 @@ export default function App(){
                     <span style={{fontWeight:700,color:"#e2eeff",fontSize:"11px",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nome}</span>
                     {regole.ambulatori.filter(x=>abilitatoAmb(m,x.id)).map(x=>
                       <span key={x.id} title={"Abilitato: "+x.nome} style={{background:"#052e16",color:"#34d399",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>{x.sigla}</span>)}
+                    {m.noNotti && (m.stato==="MR"||m.stato==="MDC") &&
+                      <span title="Esentato dalle notti: il motore non gliene assegna" style={{background:"#1e1b4b",color:"#c4b5fd",border:"1px solid #6d28d9",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>no notti</span>}
                     <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"3px",padding:"1px 6px",fontSize:"9px",fontWeight:700}}>{m.stato}</span>
                     <button onClick={()=>setEditDoc(m)} style={{background:"#1e3a5f",color:"#60a5fa",border:"1px solid #2f5a8a",borderRadius:"4px",padding:"2px 7px",cursor:"pointer",fontSize:"10px"}}>✏</button>
                     <button onClick={()=>eliminaDoc(m)}

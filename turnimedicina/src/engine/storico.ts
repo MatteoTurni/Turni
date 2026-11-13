@@ -10,6 +10,8 @@ import { ENG } from "./state";
 // 3 pomeriggio del sabato, 4 notte del sabato o prefestiva. La mattina del
 // sabato non è festiva. Contano anche PS (1, 2, 3) e sottolineati.
 export const N_TIPI_FEST = 5;
+/** I tipi che sono notti: notte festiva e notte del sabato o prefestiva. */
+const TIPI_NOTTE = [2, 4];
 export function tipoFestivo(fest:boolean, sab:boolean, prefest:boolean, tipo:string): number {
   if(fest) return isMatt(tipo) ? 0 : isPom(tipo) ? 1 : isNot(tipo) ? 2 : -1;
   if(sab)  return isPom(tipo) ? 3 : isNot(tipo) ? 4 : -1;
@@ -22,19 +24,23 @@ export function festiviDelMese(T: TurniMese, anno:number, mese:number, ids:numbe
   const nd = dimOf(anno, mese);
   const conti: Record<number, number[]> = {};
   const presenti = new Set<number>();
+  const senzaNotti = new Set<number>();          // ha lavorato ma non ha fatto nessuna notte (v0.3.59)
   for(const id of ids){
     const k = new Array<number>(N_TIPI_FEST).fill(0);
+    let nNotti = 0;
     for(let g=1; g<=nd; g++){
       const sh = T[id]?.[g]?.t || [];
       if(!sh.length) continue;
+      nNotti += sh.filter(s=>isNot(s.tipo)).length;
       if(sh.some(s=>!SPEC.includes(s.tipo))) presenti.add(id);
       const fest = isFestivo(anno, mese, g), sab = isSabN(dowOf(anno, mese, g)) && !fest;
       const pre = g<nd && isFestivo(anno, mese, g+1);
       for(const s of sh){ const t = tipoFestivo(fest, sab, pre, s.tipo); if(t>=0) k[t]++; }
     }
     conti[id] = k;
+    if(presenti.has(id) && nNotti===0) senzaNotti.add(id);
   }
-  return { conti, presenti };
+  return { conti, presenti, senzaNotti };
 }
 
 /** ROTAZIONE FRA MESI: per ogni MR e decreto Calabria, la MEDIA MENSILE dei
@@ -47,6 +53,7 @@ export function calcolaStoricoFestivi(turniAll: TurniAll | null | undefined, ann
   if(!turniAll || nMesi<=0) return null;
   const ids = medici.filter(m=>m.stato==="MR" || m.stato==="MDC").map(m=>m.id);
   if(!ids.length) return null;
+  const mrSet = new Set(medici.filter(m=>m.stato==="MR").map(m=>m.id));
   const somma: Record<number, number[]> = {};
   for(const id of ids) somma[id] = new Array<number>(N_TIPI_FEST).fill(0);
   let usati = 0;
@@ -54,12 +61,22 @@ export function calcolaStoricoFestivi(turniAll: TurniAll | null | undefined, ann
     const d = new Date(anno, mese-k, 1);
     const T = turniAll[mkKey(d.getFullYear(), d.getMonth())];
     if(!T) continue;
-    const { conti, presenti } = festiviDelMese(T, d.getFullYear(), d.getMonth(), ids);
+    const { conti, presenti, senzaNotti } = festiviDelMese(T, d.getFullYear(), d.getMonth(), ids);
     const pres = ids.filter(id=>presenti.has(id));
     if(!pres.length) continue;
     usati++;
     const media = Array.from({ length:N_TIPI_FEST }, (_,t)=>pres.reduce((q,id)=>q+conti[id][t],0)/pres.length);
-    for(const id of ids){ const x = presenti.has(id) ? conti[id] : media; for(let t=0; t<N_TIPI_FEST; t++) somma[id][t] += x[t]; }
+    // ESENTATI DALLE NOTTI (v0.3.59): un MR che in quel mese ha lavorato senza
+    // fare nemmeno una notte era esentato (o è come se lo fosse). Per le notti
+    // festive prende la media di chi le ha fatte: finita l'esenzione non deve
+    // recuperarle. Il decreto Calabria resta com'era (di notti ne fa poche).
+    const conNotti = pres.filter(id=>!senzaNotti.has(id));
+    const mediaN = (t:number) => conNotti.length ? conNotti.reduce((q,id)=>q+conti[id][t],0)/conNotti.length : 0;
+    for(const id of ids){
+      const x = presenti.has(id) ? conti[id] : media;
+      const esente = senzaNotti.has(id) && mrSet.has(id);
+      for(let t=0; t<N_TIPI_FEST; t++) somma[id][t] += (esente && TIPI_NOTTE.includes(t)) ? mediaN(t) : x[t];
+    }
   }
   if(!usati) return null;
   for(const id of ids) somma[id] = somma[id].map(v=>v/usati);
@@ -126,10 +143,11 @@ export function calcolaStoricoEquita(turniAll: TurniAll | null | undefined, anno
                                      medici: Medico[], mesiNotti:number, mesiWk:number = mesiNotti): StoricoEq | null {
   if(!turniAll || (mesiNotti<=0 && mesiWk<=0)) return null;
   const mr = medici.filter(m=>m.stato==="MR").map(m=>m.id), mdc = medici.filter(m=>m.stato==="MDC").map(m=>m.id);
+  const mrNotti = medici.filter(m=>m.stato==="MR" && !m.noNotti).map(m=>m.id);
   const ids = [...mr, ...mdc];
   if(!ids.length) return null;
   const st: StoricoEq = { notti:{}, wk:{} };
-  for(const id of mr) st.notti[id] = 0;
+  for(const id of mrNotti) st.notti[id] = 0;
   for(const id of ids) st.wk[id] = 0;
   let usati = 0;
   for(let k=1; k<=Math.max(mesiNotti, mesiWk); k++){
@@ -139,13 +157,16 @@ export function calcolaStoricoEquita(turniAll: TurniAll | null | undefined, anno
     const { notti, wk, presenti } = contiEqMese(T, d.getFullYear(), d.getMonth(), ids);
     if(!ids.some(id=>presenti.has(id))) continue;
     usati++;
-    const scosta = (gruppo:number[], conti:Record<number,number>, out:Record<number,number>) => {
-      const pres = gruppo.filter(id=>presenti.has(id));
+    const scosta = (gruppo:number[], conti:Record<number,number>, out:Record<number,number>, soloSe?:(id:number)=>boolean) => {
+      const pres = gruppo.filter(id=>presenti.has(id) && (!soloSe || soloSe(id)));
       if(pres.length<2) return;
       const media = pres.reduce((q,id)=>q+conti[id],0)/pres.length;
       for(const id of pres) out[id] += conti[id]-media;
     };
-    if(k<=mesiNotti) scosta(mr, notti, st.notti);
+    // ESENTATI DALLE NOTTI (v0.3.59): chi oggi è esentato non entra; e un mese
+    // in cui un MR non ha fatto nemmeno una notte non conta, né per lui né per
+    // la media: finita l'esenzione le notti non fatte non si recuperano.
+    if(k<=mesiNotti) scosta(mrNotti, notti, st.notti, id=>notti[id]>0);
     if(k<=mesiWk){ scosta(mr, wk, st.wk); scosta(mdc, wk, st.wk); }
   }
   return usati ? st : null;

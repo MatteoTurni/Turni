@@ -225,7 +225,12 @@ export function makeCtx(
   // o per l'esclusione parziale corrispondente (Xm/Xp/Xn). È il predicato UNICO
   // da usare ovunque prima si guardasse haX per decidere UNA fascia; haX resta
   // solo dove serve davvero il blocco dell'INTERA giornata.
-  const escluso = (id:number,g:number,f:"M"|"P"|"N") => gt(id,g).some(s=>escludeFascia(s.tipo,f));
+  // ESENTATI DALLE NOTTI (v0.3.59): per la fascia N valgono come esclusi OGNI
+  // giorno. Passando da qui l'esenzione arriva a tutto ciò che già rispetta le
+  // Xn: canR e la guardia di add(), la capacità delle celle (needEff), i
+  // portatori e la capacità di carico weekend.
+  const esentiNotti = new Set(medici.filter(m=>m.noNotti===true && (m.stato==="MR"||m.stato==="MDC")).map(m=>m.id));
+  const escluso = (id:number,g:number,f:"M"|"P"|"N") => (f==="N" && esentiNotti.has(id)) || gt(id,g).some(s=>escludeFascia(s.tipo,f));
   /** Esclusione per una GIORNATA PIENA (associato M+P): basta una delle due. */
   const esclusoAss = (id:number,g:number) => escluso(id,g,"M")||escluso(id,g,"P");
   const haM = (id:number,g:number) => gt(id,g).some(s=>isMatt(s.tipo));
@@ -528,6 +533,8 @@ export function makeCtx(
   const mdc = att.filter(m=>m.stato==="MDC");
   const mr  = att.filter(m=>m.stato==="MR");
   const mrMdc = [...mr,...mdc];
+  // MR che fanno le notti: la platea dell'equità delle notti (v0.3.59).
+  const mrNotti = mr.filter(m=>!esentiNotti.has(m.id));
   // Abilitati ad ALMENO un ambulatorio, nell'ordine dei medici: è la lista su
   // cui gira il cursore di rotazione (unico per tutti gli ambulatori, perché
   // l'equità si misura sul TOTALE degli ambulatori fatti).
@@ -826,7 +833,7 @@ export function makeCtx(
     canLav, canMatt, canPom, psEstOccupa, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
     settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB, assInMese, canAssMese, maxAssMeseDi,
-    att, ml, mdc, mr, mrMdc, ambilitati, giorniArr, feriali, weekend, wkPairs,
+    att, ml, mdc, mr, mrMdc, mrNotti, esentiNotti, ambilitati, giorniArr, feriali, weekend, wkPairs,
     pesoSlot, wkPortatori: wkPortatoriL, wkCapacita, wkPavimento, wkQuota, byWkQuota,
     eleggibili, mark, rollback, snapshot, restore, checkRegolaN, isLibWk, cntWkLiberi, wkTarget, maxWkLiberi, wkTargetMed,
     relaxN: !!relaxN,
