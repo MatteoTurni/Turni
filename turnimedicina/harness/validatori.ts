@@ -6,7 +6,7 @@
 // dell'utente, inviolabili).
 // ═══════════════════════════════════════════════════════════════════════════
 import type { Medico, TurniMese, Regole, Turno } from "../src/engine/types";
-import { dimOf, dowOf, isFestivo } from "../src/engine/date";
+import { dimOf, dowOf, isFestivo, calcPasqua } from "../src/engine/date";
 
 const SPEC = ["X","Xm","Xp","Xn","ANA","per11","art37","104","L"];
 const ASS  = ["L","ANA","per11","art37","104"];
@@ -29,6 +29,19 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
   const cellB = (id:number,g:number): Turno[] => g>=1 ? cell(id,g) : (c.prevT?.[id]?.[prevNd+g]?.t || []);
   const lav = (id:number,g:number) => cellB(id,g).some(s=>!SPEC.includes(s.tipo));
   const nome = (m:Medico) => m.nome.split(" ").pop();
+  // Festività del piano festivi nel mese (giorni ≤ 0 = coda del mese prima),
+  // ricalcolate qui senza passare dal motore.
+  const festePiano = new Set<number>();
+  {
+    const primo = Date.UTC(anno, mese, 1);
+    for(const f of R.festiviPiano || []) for(let y=anno-1; y<=anno+1; y++){
+      let t: number;
+      if(f.data==="pasqua" || f.data==="pasquetta"){ const p = calcPasqua(y); t = Date.UTC(y, p.getMonth(), p.getDate() + (f.data==="pasquetta" ? 1 : 0)); }
+      else { const [mm,gg] = f.data.split("-").map(Number); t = Date.UTC(y, mm-1, gg); }
+      const g = Math.round((t - primo)/86400000) + 1;
+      if(g>=-6 && g<=nd) festePiano.add(g);
+    }
+  }
 
   for(const m of medici){
     // ── MPS: mai turni automatici
@@ -108,7 +121,10 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
     // ── max turni associati per settimana lun–dom (v0.3.37) e nel mese per
     //    medico (v0.3.54). Turno associato = una mattina e un pomeriggio di
     //    qualunque tipo, PS 1/2 e sottolineati compresi (v0.3.54).
-    const reale = (g:number) => { const sh=cellB(m.id,g); return sh.some(s=>isM(s.tipo))&&sh.some(s=>isP(s.tipo)); };
+    //    La giornata festiva del piano festivi messa a mano (mattina e
+    //    pomeriggio manuali in una festività dell'elenco) non conta (v0.3.61).
+    const reale = (g:number) => { const sh=cellB(m.id,g); return sh.some(s=>isM(s.tipo))&&sh.some(s=>isP(s.tipo))
+      && !(festePiano.has(g) && sh.every(s=>!(isM(s.tipo)||isP(s.tipo)) || !!s.man)); };
     const realeAuto = (g:number) => g>=1 && reale(g) && cell(m.id,g).some(s=>!s.man&&(isM(s.tipo)||isP(s.tipo)));
     const dw1 = dowOf(anno,mese,1);
     for(let da=1-dw1; da<=nd; da+=7){

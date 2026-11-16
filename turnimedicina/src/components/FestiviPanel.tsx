@@ -1,36 +1,41 @@
 import { useMemo, useState } from "react";
-import type { Medico, Regole, TurniAll } from "../engine/types";
+import type { Medico, Regole, TurniAll, TurniMese } from "../engine/types";
+import { MESI } from "../engine/date";
 import {
   allineaFestiviPiano, buildShifts, periodoOk, fmtIt, hasSlot, iso, type RuoloPref, type RuoloFest,
 } from "../engine/pianoFestivi";
 import {
   type StatoFestivi, type PianoSalvato, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano, controlliPiano,
-  prossimoPeriodo, esenteNotti,
+  prossimoPeriodo, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type Saltato,
 } from "../engine/festiviApp";
 import { SC } from "./costanti";
 
 // ─── SEZIONE FESTIVI (v0.3.60) ────────────────────────────────────────────────
 // Il sorteggio dei turni festivi su un periodo (fino a 12 mesi): medici presi
 // dall'elenco dell'app, saldo/storico/precedenze letti dai mesi salvati e
-// correggibili a mano, piano stampabile. Il piano NON tocca i tabelloni.
+// correggibili a mano, piano stampabile. Il piano entra nei tabelloni solo se
+// lo si inserisce, un mese alla volta, come turni manuali (v0.3.61).
 
 const RUOLI: [RuoloPref, string][] = [["any", "qualsiasi turno"], ["nottePrima", "notte prima"], ["giorno", "giorno"], ["notte", "notte"]];
 const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
 const dataBreve = (d: string) => fmtIt(d).slice(0, 9);                       // "ven 25/12"
 const periodoTxt = (p: { start: string; end: string }) => `${fmtIt(p.start).slice(4)} – ${fmtIt(p.end).slice(4)}`;
 
-export function FestiviPanel({ medici, turniAll, regole, stato, onStato, editabile, avviso, apriRegole }: {
+export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurniMese, editabile, avviso, apriRegole }: {
   medici: Medico[];
   turniAll: TurniAll;
   regole: Regole;
   stato: StatoFestivi;
   onStato: (s: StatoFestivi) => void;
+  /** Scrive il tabellone di un mese ("AAAA-MM"): usato dall'inserimento del piano. */
+  onTurniMese: (chiave: string, T: TurniMese) => void;
   editabile: boolean;
   avviso: (txt: string, tp?: string) => void;
   apriRegole: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [confNext, setConfNext] = useState(false);
+  const [esitoIns, setEsitoIns] = useState<{ chiave: string; inseriti: number; tolti: number; saltati: Saltato[] } | null>(null);
   const [nuovaPref, setNuovaPref] = useState<{ id: number | null; festa: string; ruolo: RuoloPref }>({ id: null, festa: "", ruolo: "any" });
 
   const lista = useMemo(() => allineaFestiviPiano(regole.festiviPiano, regole.reparto.festiviLocali), [regole.festiviPiano, regole.reparto.festiviLocali]);
@@ -94,6 +99,28 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, editabi
     onStato(next);
     avviso(`✓ Nuovo periodo: ${periodoTxt(next.periodo)}. Saldo e storico riletti.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ── dal piano ai mesi: un mese alla volta, come turni manuali
+  const meseTxt = (chiave: string) => `${MESI[+chiave.slice(5, 7) - 1]} ${chiave.slice(0, 4)}`;
+  const inserisciMese = (chiave: string) => {
+    if (!stato.piano) return;
+    const e = inserisciPiano(stato.piano, turniAll, chiave, stato.inseriti[chiave]?.turni || [], medici);
+    if (e.blocco) { avviso(e.blocco, "err"); return; }
+    onTurniMese(chiave, e.turni);
+    onStato({ ...stato, inseriti: { ...stato.inseriti, [chiave]: { generato: stato.piano.generato, turni: e.inseriti } } });
+    setEsitoIns({ chiave, inseriti: e.inseriti.length, tolti: e.tolti, saltati: e.saltati });
+    const quanti = `${e.inseriti.length} turn${e.inseriti.length === 1 ? "o inserito" : "i inseriti"}`;
+    avviso(e.saltati.length ? `${meseTxt(chiave)}: ${quanti}, ${e.saltati.length} saltat${e.saltati.length === 1 ? "o" : "i"}.` : `✓ ${meseTxt(chiave)}: ${quanti} come manual${e.inseriti.length === 1 ? "e" : "i"}.`, e.saltati.length ? "warn" : "ok");
+  };
+  const togliMese = (chiave: string) => {
+    const prec = stato.inseriti[chiave]; if (!prec) return;
+    const r = togliInseriti(turniAll[chiave], prec.turni);
+    onTurniMese(chiave, r.turni);
+    const { [chiave]: _via, ...resto } = stato.inseriti;
+    onStato({ ...stato, inseriti: resto });
+    setEsitoIns(null);
+    avviso(`${meseTxt(chiave)}: ${r.tolti} turni del piano tolti.`);
   };
 
   const piano = stato.piano;
@@ -180,6 +207,42 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, editabi
           </div>
         )}
       </div>
+      {editabile && (
+        <div className="np" style={BOX}>
+          <div style={{ ...TIT, cursor: "default", marginBottom: "4px" }}>NEI MESI <span style={SOTTO}>· facoltativo, un mese alla volta</span></div>
+          <div style={{ ...LBL, marginBottom: "10px" }}>
+            Scrive i turni del piano nel tabellone del mese come turni <b>manuali</b> (notte → N; giorno → M e P allo stesso medico), da fare <b>prima</b> di generare il mese: poi si modificano come ogni turno manuale.
+            Non sovrascrive nulla: dove la cella è occupata, o il turno è già di un altro medico, si salta e viene elencato qui. La reperibilità resta solo nel piano.
+          </div>
+          <div style={{ display: "grid", gap: "6px" }}>
+            {mesiDelPiano(piano).map(r => {
+              const ins = stato.inseriti[r.chiave], fatto = !!ins && ins.turni.length > 0;
+              const generato = meseGenerato(turniAll[r.chiave]);
+              const vecchio = fatto && ins.generato !== piano.generato;
+              return (
+                <div key={r.chiave} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", background: "#0d1930", border: "1px solid #16304f", borderRadius: "6px", padding: "6px 10px" }}>
+                  <span style={{ ...LBL, color: "#e2eeff", fontSize: "11px", fontWeight: 700, minWidth: "130px" }}>{meseTxt(r.chiave)}</span>
+                  <span style={{ ...LBL, minWidth: "70px" }}>{r.turni} turn{r.turni === 1 ? "o" : "i"}</span>
+                  <span style={{ ...LBL, flex: 1, color: vecchio ? "#fbbf24" : fatto ? "#86efac" : generato ? "#fca5a5" : "#4b7aad" }}>
+                    {fatto ? `inseriti ${ins.turni.length}${vecchio ? " — di un sorteggio precedente" : ""}` : generato ? "mese già generato" : "non inserito"}
+                  </span>
+                  <button onClick={() => inserisciMese(r.chiave)} disabled={generato} title={generato ? "Il piano entra solo nei mesi non ancora generati" : ""}
+                    style={{ ...btn("#0d1930", "#60a5fa", "#2f5a8a", generato), padding: "4px 10px" }}>{fatto ? "Sostituisci" : "Inserisci"}</button>
+                  {fatto && <button onClick={() => togliMese(r.chiave)} style={{ ...btn("#1a0606", "#f87171", "#7f1d1d"), padding: "4px 10px" }}>Togli</button>}
+                </div>
+              );
+            })}
+          </div>
+          {esitoIns && (
+            <div style={{ ...LBL, fontSize: "11px", marginTop: "10px", color: esitoIns.saltati.length ? "#fbbf24" : "#86efac" }}>
+              {meseTxt(esitoIns.chiave)}: {esitoIns.inseriti} turn{esitoIns.inseriti === 1 ? "o inserito" : "i inseriti"}{esitoIns.tolti > 0 && <>, {esitoIns.tolti} del sorteggio precedente tolti</>}{esitoIns.saltati.length > 0 && <>, {esitoIns.saltati.length} saltat{esitoIns.saltati.length === 1 ? "o" : "i"}:</>}
+              {esitoIns.saltati.map(x => (
+                <div key={x.date + x.tipo} style={{ color: "#fca5a5" }}>✗ {fmtIt(x.date)} {x.tipo === "notturno" ? "notte" : "giorno"} · {nome(x.medico)} — {x.motivo}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {/* versione per la stampa: nero su bianco, senza controlli */}
       <div className="fp-print">
         <div style={{ fontSize: "9pt" }}>{[regole.reparto.azienda, regole.reparto.presidio].filter(Boolean).join(" · ")}</div>
@@ -234,7 +297,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, editabi
         </div>
         <div style={{ ...LBL, marginBottom: "12px" }}>
           Sorteggio dei turni festivi e superfestivi su un periodo, da fare <b>prima</b> di generare i mesi e di inserire ferie e permessi.
-          Distribuisce i <b>punti</b>, non il numero di turni. Il piano resta qui: non modifica i tabelloni dei mesi.
+          Distribuisce i <b>punti</b>, non il numero di turni. Il piano entra nei tabelloni solo se lo inserisci tu, un mese alla volta (in fondo).
         </div>
 
         {/* ── PERIODO E LIMITI ── */}

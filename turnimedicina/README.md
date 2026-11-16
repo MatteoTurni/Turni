@@ -1,12 +1,56 @@
-# TurniMedicina 0.3.60
+# TurniMedicina 0.3.61
+
+## Novità 0.3.61 — il piano festivi nei mesi, e la giornata festiva fuori dai limiti dei turni associati
+
+Nella sezione Festivi, sotto il piano, c'è il riquadro «Nei mesi». È
+facoltativo e va un mese alla volta: «Inserisci» scrive nel tabellone di quel
+mese i turni del piano come turni manuali — la notte diventa N, il giorno
+diventa M e P allo stesso medico. Da lì in poi sono turni manuali come gli
+altri: si spostano o si tolgono a mano, e la generazione del mese li rispetta.
+
+Regole dell'inserimento:
+- solo nei mesi non ancora generati (senza turni dell'app): in un mese già
+  generato il pulsante è spento;
+- non sovrascrive nulla. Un turno si salta, e viene elencato col motivo,
+  quando: la cella del medico è occupata (ferie, permesso, un altro turno);
+  quel turno è già di un altro medico (la notte ha già qualcuno, oppure
+  mattina o pomeriggio hanno già il massimo del fabbisogno del giorno); il
+  medico ha una notte il giorno prima; dopo una notte del piano ha già un
+  turno il giorno dopo (anche a cavallo di mese);
+- l'app ricorda che cosa ha scritto. Dopo un nuovo sorteggio il mese segnala
+  «di un sorteggio precedente» e «Sostituisci» toglie i turni di prima e
+  mette i nuovi; «Togli» li leva soltanto. I turni che nel frattempo sono
+  stati cambiati a mano non vengono toccati;
+- la reperibilità resta nel piano e nella stampa, non va nei mesi;
+- il decreto Calabria è trattato come gli altri: se il piano gli dà un turno
+  da solo, entra come manuale e la generazione del mese lo segnala.
+
+Turni associati: la giornata festiva di 12 ore — mattina e pomeriggio
+entrambi manuali in una festività dell'elenco («Festività e punti») — non
+consuma più il massimo settimanale né il massimo mensile del medico. Vale
+anche se i turni sono stati messi a mano senza passare dal piano, e nella coda
+del mese precedente. Per la distanza fra giornate piene resta una giornata
+piena: a meno di due giorni non ne nasce un'altra.
+
+Verifica:
+- piano inserito in tutti i mesi e riletto dai mesi: stessi medici e stessi
+  punti del piano, 39 turni su 39;
+- dicembre 2026 reale (turni manuali veri, novembre come mese precedente),
+  generato come nell'app senza il piano e con tre sorteggi diversi inseriti:
+  in tutti i casi nessun turno scoperto, nessuna violazione, stessa copertura
+  dei giorni festivi, turni sotto obiettivo invariati (20), notti degli MR
+  fra 3 e 4; i turni del piano sono rimasti dov'erano. Degli 11 turni del
+  piano nel mese ne sono entrati 6, 7 e 8: gli altri erano già coperti dai
+  turni manuali del mese o cadevano su ferie e permessi, e sono stati
+  elencati.
 
 ## Novità 0.3.60 — sezione Festivi: il sorteggio dei turni festivi dentro l'app
 
 Lo strumento «Turni festivi» del reparto diventa una sezione dell'app. Si usa
 prima di generare i mesi e prima di inserire ferie e permessi: si sceglie un
 periodo (fino a 12 mesi, anche a cavallo di due anni) e l'app sorteggia chi
-copre ogni festività. Il piano resta nella sezione: in questa versione non
-modifica i tabelloni dei mesi.
+copre ogni festività. Il piano resta nella sezione: entra nei tabelloni dei
+mesi solo se lo si inserisce (vedi 0.3.61).
 
 Come funziona il sorteggio (identico allo strumento):
 - ogni festività ha tre turni — notte prima, giorno (12 ore), notte — ciascuno

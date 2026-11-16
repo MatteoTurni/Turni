@@ -181,6 +181,17 @@ export function festivitaAnno(lista: FestivitaPiano[], y: number): FestData[] {
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
+/** I giorni di un mese (mese 0-11; g ≤ 0 = coda del mese precedente) che sono
+ *  festività dell'elenco, fra `da` e `a` compresi. */
+export function festePianoNelMese(lista: FestivitaPiano[], anno: number, mese: number, da: number, a: number): Set<number> {
+  const out = new Set<number>(), primo = iso(anno, mese + 1, 1);
+  for (let y = anno - 1; y <= anno + 1; y++) for (const f of lista) {
+    const d = dataFestivita(f, y); if (!d) continue;
+    const g = diffDays(d, primo) + 1;
+    if (g >= da && g <= a) out.add(g);
+  }
+  return out;
+}
 /** Una voce «solo diurno» non ha turni di notte. */
 export const hasSlot = (h: { soloGiorno?: boolean }, role: RuoloFest) => !h.soloGiorno || role === "giorno";
 

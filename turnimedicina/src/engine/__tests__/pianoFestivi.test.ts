@@ -1,14 +1,18 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import type { Medico, TurniAll, TurniMese } from "../types";
-import { mergeRegole, REGOLE_DEFAULT } from "../regole";
+import { mergeRegole, REGOLE_DEFAULT, setRegole, getRegole } from "../regole";
+import { ENG, setSalt, setAmbRotStart } from "../state";
+import { makeCtx } from "../ctx";
+import { generaMigliorTentativo, completaObiettivi } from "../genera";
+import { violazioniIndip } from "../../../harness/validatori";
 import {
   festiviPianoDefault, festivitaPeriodo, festivitaAnno, buildShifts, generaPiano, verificaPiano, periodoOk, periodoSuccessivo,
   easter, allineaFestiviPiano, sanaFestiviPiano, type CfgPiano,
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
-  controlliPiano, prossimoPeriodo, type PianoSalvato,
+  controlliPiano, prossimoPeriodo, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
 } from "../festiviApp";
 
 // ── v0.3.60: piano festivi ────────────────────────────────────────────────────
@@ -221,5 +225,177 @@ describe("sezione Festivi: dal pannello al piano", () => {
     expect(m.preferenze).toEqual({ 2:{ Natale:"giorno" } });
     expect((m.piano as PianoSalvato).turni.length).toBe(1);
     expect(m.archivio).toEqual([]);
+  });
+});
+
+// ── v0.3.61: dal piano ai mesi ────────────────────────────────────────────────
+describe("sezione Festivi: il piano nei mesi", () => {
+  const medici = [med(1), med(2), med(3,"MR",true), med(4,"MDC"), med(5,"MPS"), med(7), med(8), med(9), med(10), med(11)];
+  const st = statoFestiviDefault(new Date(2026,10,16));
+  const ids = medici.map(m=>m.id);
+  const { piano } = sorteggia(datiSorteggio(st, medici, lista, automaticiFestivi(st, {}, medici, lista, 2, ids)), st, "2026-11-16T10:00:00.000Z");
+  const man = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
+  const diDic = piano.turni.filter(t=>t.date.startsWith("2027-12"));
+
+  it("mesi del piano: anche il dicembre prima, per la notte di Capodanno", () => {
+    const mesi = mesiDelPiano(piano);
+    expect(mesi[0]).toEqual({ chiave:"2026-12", anno:2026, mese:11, turni:1 });
+    expect(mesi.reduce((n,m)=>n+m.turni,0)).toBe(39);
+    expect(mesi.find(m=>m.chiave==="2027-12")!.turni).toBe(diDic.length);
+  });
+  it("notte → N manuale; giorno → M e P manuali allo stesso medico; il resto del mese non si tocca", () => {
+    const ferie: TurniAll = { "2027-12": { 99: { 3: man("L") } } };
+    const e = inserisciPiano(piano, ferie, "2027-12");
+    expect(e.blocco).toBe("");
+    expect(e.saltati).toEqual([]);
+    expect(e.inseriti.length).toBe(diDic.length);
+    for(const t of diDic){
+      const c = e.turni[t.medico!][+t.date.slice(8)].t;
+      expect(c.map(s=>s.tipo)).toEqual(t.tipo==="notturno" ? ["N"] : ["M","P"]);
+      expect(c.every(s=>s.man && !s.sott)).toBe(true);
+    }
+    expect(e.turni[99][3].t[0].tipo).toBe("L");
+    expect(ferie["2027-12"][1]).toBeUndefined();              // l'originale non viene modificato
+    expect(meseGenerato(e.turni)).toBe(false);
+  });
+  it("tutto il piano inserito e riletto dai mesi: stessi medici, stessi punti", () => {
+    let tutti: TurniAll = {};
+    for(const m of mesiDelPiano(piano)) tutti = { ...tutti, [m.chiave]: inserisciPiano(piano, tutti, m.chiave).turni };
+    const letti = leggiTurniFestivi(tutti, medici, lista, "2027-01-01", "2027-12-31");
+    expect(letti.length).toBe(39);
+    for(const t of piano.turni){
+      const l = letti.find(x=>x.date===t.date && x.tipo===t.tipo)!;
+      expect(l.fonte).toBe("mese");
+      expect(l.chi).toEqual([{ id:t.medico, quota:1 }]);
+    }
+  });
+  it("cella occupata o turno che urta uno già presente: si salta e si segnala", () => {
+    const natale = diDic.find(t=>t.date==="2027-12-25" && t.tipo==="diurno")!, vigiliaN = diDic.find(t=>t.date==="2027-12-24" && t.tipo==="notturno")!;
+    const sStefanoN = diDic.find(t=>t.date==="2027-12-26" && t.tipo==="notturno")!, immG = diDic.find(t=>t.date==="2027-12-08" && t.tipo==="diurno")!;
+    const T: TurniAll = { "2027-12": {
+      [natale.medico!]: { 25: man("L") },                     // in ferie a Natale
+      [vigiliaN.medico!]: { 25: man("M") },                   // lavora il giorno dopo la notte
+      [sStefanoN.medico!]: { 27: man("X") },                  // una X il giorno dopo non urta
+      [immG.medico!]: { 7: man("N") },                        // smonta dalla notte del 7
+    } };
+    const e = inserisciPiano(piano, T, "2027-12");
+    const motivi = Object.fromEntries(e.saltati.map(x=>[x.date+" "+x.tipo, x.motivo]));
+    expect(motivi["2027-12-25 diurno"]).toBe("cella occupata (L)");
+    expect(motivi["2027-12-24 notturno"]).toBe("il giorno dopo ha già un turno");
+    expect(motivi["2027-12-08 diurno"]).toBe("il giorno prima ha una notte");
+    expect(motivi["2027-12-07 notturno"]).toBe("la notte è già di un altro medico");   // la notte del 7 messa a mano
+    expect(e.saltati.length).toBe(4);
+    expect(e.turni[sStefanoN.medico!][26].t.map(s=>s.tipo)).toEqual(["N"]);
+    expect(e.turni[natale.medico!][25].t.map(s=>s.tipo)).toEqual(["L"]);
+    expect(e.inseriti.length).toBe(diDic.length - 4);
+    // a cavallo di mese: la notte del 31/12/2026 non entra se il medico lavora il 1° gennaio
+    const capN = piano.turni.find(t=>t.date==="2026-12-31")!;
+    const e2 = inserisciPiano(piano, { "2027-01": { [capN.medico!]: { 1: man("P") } } }, "2026-12");
+    expect(e2.saltati.map(x=>x.motivo)).toEqual(["il giorno dopo ha già un turno"]);
+  });
+  it("turno già di un altro medico: non si raddoppia", () => {
+    setRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)));
+    const natN = diDic.find(t=>t.date==="2027-12-25" && t.tipo==="notturno")!, natG = diDic.find(t=>t.date==="2027-12-25" && t.tipo==="diurno")!;
+    const vigG = diDic.find(t=>t.date==="2027-12-24" && t.tipo==="diurno")!;
+    const libero = ids.find(id=>![natN.medico, natG.medico, vigG.medico].includes(id) && !diDic.some(t=>t.medico===id && ["2027-12-24","2027-12-25","2027-12-26"].includes(t.date)))!;
+    // Natale (sabato festivo: una mattina, un pomeriggio, una notte): un altro ha già la notte e il pomeriggio
+    const e = inserisciPiano(piano, { "2027-12": { [libero]: { 25: man("P") }, 99: { 25: man("N") } } }, "2027-12", [], medici);
+    const motivi = Object.fromEntries(e.saltati.map(x=>[x.date+" "+x.tipo, x.motivo]));
+    expect(motivi["2027-12-25 notturno"]).toBe("la notte è già di un altro medico");
+    expect(motivi["2027-12-25 diurno"]).toBe(`il pomeriggio è già di X. M${libero}`);
+    // vigilia (venerdì feriale: fino a tre mattine e due pomeriggi): un altro di mattina non impedisce l'inserimento
+    const e2 = inserisciPiano(piano, { "2027-12": { [libero]: { 24: man("M") } } }, "2027-12", [], medici);
+    expect(e2.saltati.filter(x=>x.date==="2027-12-24" && x.tipo==="diurno")).toEqual([]);
+    expect(e2.turni[vigG.medico!][24].t.map(s=>s.tipo)).toEqual(["M","P"]);
+  });
+  it("solo mesi nuovi: in un mese già generato non scrive nulla", () => {
+    const gen: TurniAll = { "2027-12": { 1: { 2: { t:[{ tipo:"M", sott:false, man:false }] } } } };
+    const e = inserisciPiano(piano, gen, "2027-12");
+    expect(e.blocco).toMatch(/già stato generato/);
+    expect(e.inseriti).toEqual([]);
+    expect(e.turni).toBe(gen["2027-12"]);
+  });
+  it("nuovo sorteggio: i turni scritti prima escono, entrano i nuovi; quelli toccati a mano restano", () => {
+    const e1 = inserisciPiano(piano, {}, "2027-12");
+    const st2 = { ...st, seme: 5 };
+    const piano2 = sorteggia(datiSorteggio(st2, medici, lista, automaticiFestivi(st2, {}, medici, lista, 2, ids)), st2, "x").piano;
+    expect(piano2.turni.map(t=>t.medico)).not.toEqual(piano.turni.map(t=>t.medico));
+    // l'utente nel frattempo ha aggiunto ferie a un medico libero e cambiato un turno del piano
+    const T1: TurniMese = JSON.parse(JSON.stringify(e1.turni));
+    const vig = diDic.find(t=>t.date==="2027-12-24" && t.tipo==="diurno")!;
+    T1[vig.medico!][24] = man("ANA");                          // al posto di M+P ha messo un permesso
+    const e2 = inserisciPiano(piano2, { "2027-12": T1 }, "2027-12", e1.inseriti);
+    expect(e2.tolti).toBe(diDic.length - 1);                   // tutti tranne quello cambiato a mano
+    expect(e2.turni[vig.medico!][24].t.map(s=>s.tipo)).toEqual(["ANA"]);
+    for(const t of piano2.turni.filter(x=>x.date.startsWith("2027-12"))){
+      const c = e2.turni[t.medico!]?.[+t.date.slice(8)]?.t.map(s=>s.tipo) || [];
+      const saltato = e2.saltati.some(x=>x.date===t.date && x.tipo===t.tipo);
+      expect(saltato || c.join()===(t.tipo==="notturno" ? "N" : "M,P")).toBe(true);
+    }
+    // nessun turno del vecchio piano resta dove il nuovo non lo conferma
+    let turniTot = 0; for(const id in e2.turni) for(const g in e2.turni[id]) turniTot += e2.turni[id][g].t.filter(s=>s.tipo!=="ANA").length;
+    expect(turniTot).toBe(e2.inseriti.reduce((n,x)=>n+x.tipi.length,0));
+    // «Togli»: il mese torna com'era
+    const via = togliInseriti(e1.turni, e1.inseriti);
+    expect(via.tolti).toBe(diDic.length);
+    expect(Object.values(via.turni).every(gi=>Object.keys(gi).length===0)).toBe(true);
+  });
+  it("stato salvato: i turni inseriti si conservano, quelli guasti si scartano", () => {
+    const ins: TurnoInserito[] = [{ id:1, g:25, tipi:["M","P"] }];
+    const m = mergeStatoFestivi({ inseriti:{ "2027-12":{ generato:"x", turni:[...ins, { id:"a", g:1, tipi:["N"] }, { id:2, g:3, tipi:["L"] }] }, "boh":{ turni:[] } } });
+    expect(m.inseriti).toEqual({ "2027-12":{ generato:"x", turni: ins } });
+    expect(mergeStatoFestivi({}).inseriti).toEqual({});
+  });
+});
+
+describe("turni associati: la giornata festiva del piano non conta nei limiti", () => {
+  const dft = () => JSON.parse(JSON.stringify(REGOLE_DEFAULT));
+  const manC = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
+  const pulisci = () => { setRegole(dft()); ENG.PREV = null; ENG.DEADLINE = 0; ENG.STORICO_FEST = null; ENG.STORICO_EQ = null; setSalt(0); setAmbRotStart(0); };
+  it("mattina e pomeriggio manuali in una festività: fuori dal tetto settimanale e mensile, ma resta una giornata piena per la distanza", () => {
+    pulisci();
+    const m1 = { ...med(1), maxAssMese: 1 };
+    // dicembre 2027: Natale sabato 25 (settimana 20–26), Immacolata mercoledì 8
+    const T: TurniMese = { 1: { 25: manC("M","P"), 21: manC("M","P") } };
+    const c = makeCtx(2027, 11, 31, [m1, med(2)], T);
+    expect(c.assInSett(1, 25)).toBe(1);                        // conta solo il 21, non Natale
+    expect(c.assInMese(1)).toBe(1);
+    expect(c.canAssDist(1, 23)).toBe(false);                   // a due giorni da Natale niente giornata piena
+    // senza la festività (stesso schema, una settimana prima): contano entrambe
+    const c2 = makeCtx(2027, 11, 31, [m1, med(2)], { 1: { 18: manC("M","P"), 14: manC("M","P") } });
+    expect(c2.assInSett(1, 18)).toBe(2);
+    expect(c2.assInMese(1)).toBe(2);
+    // un pomeriggio AUTOMATICO accanto alla mattina manuale non è la giornata del piano: conta
+    const c3 = makeCtx(2027, 11, 31, [m1, med(2)], { 1: { 25: { t:[{ tipo:"M", sott:false, man:true }, { tipo:"P", sott:false, man:false }] } } });
+    expect(c3.assInMese(1)).toBe(1);
+    // la festa locale del reparto vale come le altre; tolta dalla scheda, non più
+    const c4 = makeCtx(2027, 8, 30, [m1, med(2)], { 1: { 8: manC("M","P") } });
+    expect(c4.assInMese(1)).toBe(0);
+    const r = dft(); r.reparto.festiviLocali = []; setRegole(r);
+    expect(makeCtx(2027, 8, 30, [m1, med(2)], { 1: { 8: manC("M","P") } }).assInMese(1)).toBe(1);
+    pulisci();
+  });
+  it("vale anche nella coda del mese precedente (San Silvestro nella settimana di Capodanno)", () => {
+    pulisci();
+    ENG.PREV = { ndim: 31, T: { 1: { 31: manC("M","P"), 30: manC("M","P") } } };   // dicembre 2026: mer 30 e gio 31
+    const c = makeCtx(2027, 0, 31, [med(1), med(2)], {});
+    expect(c.assInSett(1, 1)).toBe(1);                         // il 30 conta, il 31 (San Silvestro) no
+    pulisci();
+  });
+  it("mese generato con la giornata di Ognissanti a mano: il medico conserva il suo unico turno associato del mese", () => {
+    pulisci();
+    const sc = JSON.parse(fs.readFileSync("src/engine/__tests__/fixtures/novembre2026_manuali.json", "utf8"));
+    const mr = (sc.medici as Medico[]).filter(m=>m.stato==="MR").find(m=>!sc.ex[m.id]?.[1] && !sc.ex[m.id]?.[2] && !sc.ex[m.id]?.[31-1])!;
+    const medici: Medico[] = sc.medici.map((m:Medico)=> m.id===mr.id ? { ...m, maxAssMese: 1 } : m);
+    const ex: TurniMese = JSON.parse(JSON.stringify(sc.ex));
+    (ex[mr.id] ||= {})[1] = manC("M","P");                     // domenica 1 novembre: Ognissanti, dal piano
+    const gen = generaMigliorTentativo(2026, 10, 30, medici, ex, 3000);
+    const fin = completaObiettivi(2026, 10, 30, medici, gen.turni).turni;
+    const c = makeCtx(2026, 10, 30, medici, fin);
+    expect(c.assInMese(mr.id)).toBeLessThanOrEqual(1);
+    expect(fin[mr.id][1].t.map(s=>s.tipo)).toEqual(["M","P"]);
+    expect(violazioniIndip({ anno:2026, mese:10, medici, ex, regole:getRegole(), prevT:null }, fin).filter(v=>/associati/.test(v))).toEqual([]);
+    expect(gen.problemi.filter(x=>/associati nel mese/.test(x))).toEqual([]);
+    pulisci();
   });
 });

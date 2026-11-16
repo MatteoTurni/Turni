@@ -991,6 +991,7 @@ export default function App(){
       {/* FESTIVI (v0.3.60) */}
       {tab==="festivi"&&(
         <FestiviPanel medici={medici} turniAll={turniAll} regole={regole} stato={festivi} onStato={updFestivi}
+          onTurniMese={(k,T)=>setTurniAll(prev=>({...prev,[k]:T}))}
           editabile={editabile} avviso={showMsg} apriRegole={()=>setTab("regole")}/>
       )}
 
@@ -1037,7 +1038,7 @@ export default function App(){
         const limiti: [CampoTop,string,string][] = [
           ["maxConsec","Max giorni consecutivi di lavoro","Giorni lavorati di fila oltre i quali serve un giorno libero (vale anche a cavallo di mese)."],
           ["wkTarget","Obiettivo weekend liberi","Resta ADATTIVO al mese: questo è il tetto (2 con ≥4 coppie sab-dom, meno nei mesi corti)."],
-          ["maxAssSett","Max turni associati / settimana","Massimo di giorni con mattina e pomeriggio (anche di PS o sottolineati) per medico, per settimana."],
+          ["maxAssSett","Max turni associati / settimana","Massimo di giorni con mattina e pomeriggio (anche di PS o sottolineati) per medico, per settimana. Non conta la giornata festiva del piano festivi: mattina e pomeriggio manuali in una festività."],
         ];
         return (
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>

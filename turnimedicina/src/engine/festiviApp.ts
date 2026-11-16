@@ -11,9 +11,10 @@
 //    solo pomeriggio: metà. Contano anche i turni di PS e quelli sottolineati;
 //  • dove il mese non è salvato (o quel turno non ha nessuno) vale il piano
 //    festivi che copriva quella data, se c'è.
-import type { Medico, TurniAll } from "./types";
-import { mkKey } from "./date";
-import { isMatt, isPom, isNot } from "./turni";
+import type { Medico, TurniAll, TurniMese, Turno } from "./types";
+import { mkKey, dowOf, isSabN, isFestivo } from "./date";
+import { getRegole } from "./regole";
+import { isMatt, isPom, isNot, SPEC } from "./turni";
 import {
   type FestivitaPiano, type FestData, type RuoloPref, type CfgPiano, type Soluzione,
   festivitaPeriodo, buildShifts, generaPiano, addDays, iso, periodoSuccessivo, periodoOk,
@@ -55,14 +56,20 @@ export interface StatoFestivi {
   piano: PianoSalvato | null;
   /** Piani dei periodi precedenti (i più recenti in fondo). */
   archivio: PianoSalvato[];
+  /** Turni che l'app ha scritto nei mesi dal piano (v0.3.61), per mese "AAAA-MM":
+   *  servono a toglierli o a sostituirli dopo un nuovo sorteggio. */
+  inseriti: Record<string, InserimentoMese>;
 }
+/** Un turno del piano scritto in un mese: medico, giorno e codici messi (N oppure M e P). */
+export interface TurnoInserito { id: number; g: number; tipi: string[] }
+export interface InserimentoMese { generato: string; turni: TurnoInserito[] }
 
 /** Periodo proposto la prima volta: l'anno solare che segue `oggi`. */
 export function statoFestiviDefault(oggi: Date = new Date()): StatoFestivi {
   const y = oggi.getFullYear() + 1;
   return { periodo: { start: iso(y, 1, 1), end: iso(y, 12, 31) }, maxShifts: 5, minSuper: 1, esclusi: [], soloGiorno: {},
     saldoMan: {}, storicoMan: {}, precMan: {}, preferenze: {}, reperibilita: { enabled: false, weightPct: 40, maxPer: 5, nonIdonei: [] },
-    seme: 1, piano: null, archivio: [] };
+    seme: 1, piano: null, archivio: [], inseriti: {} };
 }
 const isData = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v) && !isNaN(Date.parse(v + "T00:00:00Z"));
 const numIn = (v: unknown, lo: number, hi: number, def: number) => typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? v : def;
@@ -87,6 +94,17 @@ function sanaPiano(x: unknown): PianoSalvato | null {
     repOn: !!p.repOn, repPct: numIn(p.repPct, 0, 100, 40), saldo, turni,
     richieste: numIn(p.richieste, 0, 9999, 0), richiesteOk: numIn(p.richiesteOk, 0, 9999, 0),
     scartoPrima: numIn(p.scartoPrima, 0, 9999, 0), scartoDopo: numIn(p.scartoDopo, 0, 9999, 0) };
+}
+function sanaInseriti(x: unknown): Record<string, InserimentoMese> {
+  const out: Record<string, InserimentoMese> = {};
+  if (!x || typeof x !== "object") return out;
+  for (const [k, v] of Object.entries(x)) {
+    if (!/^\d{4}-\d\d$/.test(k) || !v || typeof v !== "object" || !Array.isArray((v as InserimentoMese).turni)) continue;
+    const turni = (v as InserimentoMese).turni.filter(t => t && Number.isInteger(t.id) && Number.isInteger(t.g) && Array.isArray(t.tipi) && t.tipi.every(c => c === "M" || c === "P" || c === "N"))
+      .map(t => ({ id: t.id, g: t.g, tipi: [...t.tipi] }));
+    out[k] = { generato: typeof (v as InserimentoMese).generato === "string" ? (v as InserimentoMese).generato : "", turni };
+  }
+  return out;
 }
 /** Stato salvato → stato valido (campi mancanti o guasti: valori predefiniti). */
 export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFestivi {
@@ -120,6 +138,7 @@ export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFes
     seme: Math.round(numIn(s.seme, 1, 1e9, 1)),
     piano: sanaPiano(s.piano),
     archivio: (Array.isArray(s.archivio) ? s.archivio.map(sanaPiano).filter((p): p is PianoSalvato => !!p) : []).slice(-6),
+    inseriti: sanaInseriti(s.inseriti),
   };
 }
 
@@ -339,5 +358,81 @@ export function rimuoviMedicoFestivi(st: StatoFestivi, id: number): StatoFestivi
   return { ...st, esclusi: st.esclusi.filter(x => x !== id), soloGiorno: senza(st.soloGiorno), saldoMan: senza(st.saldoMan), storicoMan: senza(st.storicoMan),
     precMan: senza(st.precMan), preferenze: senza(st.preferenze),
     reperibilita: { ...st.reperibilita, nonIdonei: st.reperibilita.nonIdonei.filter(x => x !== id) },
-    piano: st.piano ? pulisci(st.piano) : null, archivio: st.archivio.map(pulisci) };
+    piano: st.piano ? pulisci(st.piano) : null, archivio: st.archivio.map(pulisci),
+    inseriti: Object.fromEntries(Object.entries(st.inseriti).map(([k, v]) => [k, { ...v, turni: v.turni.filter(t => t.id !== id) }])) };
+}
+
+// ── DAL PIANO AI MESI (v0.3.61) ──────────────────────────────────────────────
+// Facoltativo, un mese alla volta: i turni del piano entrano nel tabellone come
+// turni MANUALI (notte → N; giorno → M e P allo stesso medico), prima di
+// generare il mese. Non si sovrascrive nulla: dove la cella è occupata, il turno
+// è già di un altro medico (oltre il fabbisogno massimo del giorno) o urterebbe
+// un turno già presente, si salta e si segnala. L'app ricorda che cosa ha
+// scritto, per toglierlo o sostituirlo dopo un nuovo sorteggio.
+export interface Saltato { date: string; tipo: "diurno" | "notturno"; medico: number; motivo: string }
+export interface EsitoInserimento {
+  /** Perché non si può inserire in questo mese ("" = si può). */
+  blocco: string;
+  turni: TurniMese;               // il tabellone del mese dopo l'inserimento
+  inseriti: TurnoInserito[];
+  saltati: Saltato[];
+  tolti: number;                  // turni dell'inserimento precedente tolti
+}
+/** Mesi ("AAAA-MM") toccati da un piano, con quanti turni ciascuno. */
+export function mesiDelPiano(p: PianoSalvato): { chiave: string; anno: number; mese: number; turni: number }[] {
+  const n = new Map<string, number>();
+  for (const t of p.turni) if (t.medico != null) n.set(t.date.slice(0, 7), (n.get(t.date.slice(0, 7)) || 0) + 1);
+  return [...n.entries()].sort().map(([chiave, turni]) => ({ chiave, anno: +chiave.slice(0, 4), mese: +chiave.slice(5, 7) - 1, turni }));
+}
+/** Il mese è già stato generato: ha almeno un turno automatico. */
+export const meseGenerato = (T: TurniMese | undefined) => !!T && Object.values(T).some(gi => Object.values(gi || {}).some(c => (c?.t || []).some(s => !s.man)));
+/** Toglie dal tabellone i turni scritti da un inserimento precedente (solo se sono ancora lì, manuali). */
+export function togliInseriti(T: TurniMese | undefined, prec: TurnoInserito[]): { turni: TurniMese; tolti: number } {
+  const out: TurniMese = {}; let tolti = 0;
+  for (const id in T) { out[id] = {}; for (const g in T[id]) out[id][g] = { t: [...(T[id][g]?.t || [])] }; }
+  for (const p of prec) {
+    const c = out[p.id]?.[p.g]; if (!c) continue;
+    let via = 0;
+    for (const tipo of p.tipi) { const i = c.t.findIndex(s => s.tipo === tipo && s.man && !s.sott); if (i >= 0) { c.t.splice(i, 1); via++; } }
+    if (via) tolti++;
+    if (!c.t.length) delete out[p.id][p.g];
+  }
+  return { turni: out, tolti };
+}
+/** Scrive nel mese `chiave` i turni del piano. Non modifica `turniAll`: restituisce il tabellone nuovo. */
+export function inserisciPiano(piano: PianoSalvato, turniAll: TurniAll, chiave: string, prec: TurnoInserito[] = [], medici: Medico[] = []): EsitoInserimento {
+  const base = togliInseriti(turniAll[chiave], prec);
+  const esito: EsitoInserimento = { blocco: "", turni: base.turni, inseriti: [], saltati: [], tolti: base.tolti };
+  if (meseGenerato(base.turni)) { esito.blocco = "Il mese è già stato generato: il piano entra solo nei mesi nuovi. Togli prima i turni dell'app (Rimuovi App) oppure riporta i turni a mano."; esito.turni = turniAll[chiave] || {}; esito.tolti = 0; return esito; }
+  const T = esito.turni;
+  // cella di un giorno qualsiasi (anche del mese prima o dopo), per i controlli a cavallo
+  const cella = (id: number, data: string): Turno[] => {
+    const k = data.slice(0, 7), g = +data.slice(8, 10);
+    return (k === chiave ? T : turniAll[k])?.[id]?.[g]?.t || [];
+  };
+  const lavora = (id: number, data: string) => cella(id, data).some(s => !SPEC.includes(s.tipo));
+  // chi ha già quel turno di reparto nel giorno, e quanti ne servono al massimo (fabbisogno delle Regole)
+  const anno = +chiave.slice(0, 4), mese = +chiave.slice(5, 7) - 1, FB = getRegole().fabb;
+  const nomeDi = (id: number) => medici.find(m => m.id === id)?.nome ?? "un altro medico";
+  const chiHa = (g: number, tipo: string) => Object.keys(T).map(Number).filter(id => (T[id]?.[g]?.t || []).some(s => s.tipo === tipo));
+  const fascia = (g: number) => isFestivo(anno, mese, g) ? FB.fest : isSabN(dowOf(anno, mese, g)) ? FB.sab : FB.fer;
+  for (const t of piano.turni) {
+    if (t.medico == null || t.date.slice(0, 7) !== chiave) continue;
+    const id = t.medico, g = +t.date.slice(8, 10);
+    const salta = (motivo: string) => esito.saltati.push({ date: t.date, tipo: t.tipo, medico: id, motivo });
+    const oggi = cella(id, t.date);
+    if (oggi.length) { salta("cella occupata (" + oggi.map(s => s.tipo).join("+") + ")"); continue; }
+    if (cella(id, addDays(t.date, -1)).some(s => isNot(s.tipo))) { salta("il giorno prima ha una notte"); continue; }
+    if (t.tipo === "notturno" && lavora(id, addDays(t.date, 1))) { salta("il giorno dopo ha già un turno"); continue; }
+    if (t.tipo === "notturno") { const altri = chiHa(g, "N"); if (altri.length) { salta("la notte è già di " + altri.map(nomeDi).join(", ")); continue; } }
+    else {
+      const f = fascia(g), aM = chiHa(g, "M"), aP = chiHa(g, "P");
+      if (aM.length >= f.mMax) { salta("la mattina è già di " + aM.map(nomeDi).join(", ")); continue; }
+      if (aP.length >= f.pMax) { salta("il pomeriggio è già di " + aP.map(nomeDi).join(", ")); continue; }
+    }
+    const tipi = t.tipo === "notturno" ? ["N"] : ["M", "P"];
+    ((T[id] ||= {})[g] ||= { t: [] }).t.push(...tipi.map(tipo => ({ tipo, sott: false, man: true })));
+    esito.inseriti.push({ id, g, tipi });
+  }
+  return esito;
 }
