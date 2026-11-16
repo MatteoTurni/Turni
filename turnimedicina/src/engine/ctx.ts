@@ -5,19 +5,6 @@ import { getRegole } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
 import { EQ_MESI, spostaEq } from "./storico";
-import { festePianoNelMese } from "./pianoFestivi";
-
-// Festività del piano festivi nel mese (coda del mese prima compresa): si
-// ricalcolano solo quando cambiano le regole o il mese.
-let _fpChiave: unknown = null, _fpMese = "", _fpGiorni = new Set<number>();
-function festePiano(lista: unknown, anno: number, mese: number, ndim: number): Set<number> {
-  const k = anno + "-" + mese;
-  if(lista !== _fpChiave || k !== _fpMese){
-    _fpChiave = lista; _fpMese = k;
-    _fpGiorni = festePianoNelMese(Array.isArray(lista) ? lista : [], anno, mese, -6, ndim);
-  }
-  return _fpGiorni;
-}
 
 // ─── CONTEXT FACTORY: helper condivisi tra i due generatori ───────────────────
 //
@@ -91,13 +78,6 @@ export function makeCtx(
   // sottolineati. È la definizione unica di distanza, tetto settimanale e
   // tetto mensile del medico.
   const cellAss = (a: Turno[]) => (a.some(s=>isMatt(s.tipo)) && a.some(s=>isPom(s.tipo))) ? 1 : 0;
-  // GIORNO FESTIVO DEL PIANO FESTIVI (v0.3.61): la giornata di 12 ore messa a
-  // mano in una festività dell'elenco (mattina e pomeriggio entrambi manuali)
-  // NON consuma il tetto settimanale né quello mensile dei turni associati.
-  // Per la distanza fra giornate piene resta una giornata piena.
-  const FESTE_PIANO = festePiano(REG.festiviPiano, anno, mese, ndim);
-  const cellAssQ = (g: number, a: Turno[]) =>
-    cellAss(a)===1 && !(FESTE_PIANO.has(g) && a.every(s=>!(isMatt(s.tipo)||isPom(s.tipo)) || !!s.man)) ? 1 : 0;
   const cntMap  = new Map<number, number>();
   const cntNMap = new Map<number, number>();
   const cntWkMap= new Map<number, number>();
@@ -115,7 +95,7 @@ export function makeCtx(
     for(const gS in gi){
       const g=+gS; if(g<1||g>ndim) continue;   // come i vecchi cnt/cntN: solo 1..ndim
       const c=gi[gS]?.t; if(!c) continue;
-      v+=cellVal(c); n+=cellNot(c); wk+=cellWkVal(g,c); as+=cellAssQ(g,c);
+      v+=cellVal(c); n+=cellNot(c); wk+=cellWkVal(g,c); as+=cellAss(c);
       if(inMedici.has(id)){ const [dm,dp,dn]=cellMPN(c); cfM[g]+=dm; cfP[g]+=dp; cfN[g]+=dn; }
     }
     cntMap.set(id,v); cntNMap.set(id,n); cntWkMap.set(id,wk); cntAssMap.set(id,as);
@@ -138,7 +118,7 @@ export function makeCtx(
     cntMap.set(id,(cntMap.get(id)||0) + cellVal(a) - (prev?cellVal(prev):0));
     cntNMap.set(id,(cntNMap.get(id)||0) + cellNot(a) - (prev?cellNot(prev):0));
     cntWkMap.set(id,(cntWkMap.get(id)||0) + cellWkVal(g,a) - (prev?cellWkVal(g,prev):0));
-    cntAssMap.set(id,(cntAssMap.get(id)||0) + cellAssQ(g,a) - (prev?cellAssQ(g,prev):0));
+    cntAssMap.set(id,(cntAssMap.get(id)||0) + cellAss(a) - (prev?cellAss(prev):0));
     if(prev) aggCf(id,g,prev,-1);
     aggCf(id,g,a,1);
     if(!T[id])T[id]={};
@@ -154,7 +134,7 @@ export function makeCtx(
       cntMap.set(e.id,(cntMap.get(e.id)||0) + (e.prev?cellVal(e.prev):0) - (cur?cellVal(cur):0));
       cntNMap.set(e.id,(cntNMap.get(e.id)||0) + (e.prev?cellNot(e.prev):0) - (cur?cellNot(cur):0));
       cntWkMap.set(e.id,(cntWkMap.get(e.id)||0) + (e.prev?cellWkVal(e.g,e.prev):0) - (cur?cellWkVal(e.g,cur):0));
-      cntAssMap.set(e.id,(cntAssMap.get(e.id)||0) + (e.prev?cellAssQ(e.g,e.prev):0) - (cur?cellAssQ(e.g,cur):0));
+      cntAssMap.set(e.id,(cntAssMap.get(e.id)||0) + (e.prev?cellAss(e.prev):0) - (cur?cellAss(cur):0));
       if(cur) aggCf(e.id,e.g,cur,-1);
       if(e.prev) aggCf(e.id,e.g,e.prev,1);
       if(e.prev===undefined){ if(T[e.id]) delete T[e.id][e.g]; }
@@ -411,7 +391,7 @@ export function makeCtx(
   const inizioSett = (g:number) => 1 - DW1 + 7*settDi(g);
   const assInSett = (id:number,g:number) => {
     const da = inizioSett(g); let n = 0;
-    for(let k=da; k<da+7 && k<=ndim; k++){ if(k<1-TAIL) continue; if(cellAssQ(k,gtB(id,k))) n++; }
+    for(let k=da; k<da+7 && k<=ndim; k++){ if(k<1-TAIL) continue; if(pienaReale(gtB(id,k))) n++; }
     return n;
   };
   // ── MAX TURNI ASSOCIATI NEL MESE, PER MEDICO (v0.3.54) ─────────────────────

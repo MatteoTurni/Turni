@@ -1,11 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import type { Medico, TurniAll, TurniMese } from "../types";
-import { mergeRegole, REGOLE_DEFAULT, setRegole, getRegole } from "../regole";
-import { ENG, setSalt, setAmbRotStart } from "../state";
-import { makeCtx } from "../ctx";
-import { generaMigliorTentativo, completaObiettivi } from "../genera";
-import { violazioniIndip } from "../../../harness/validatori";
+import { mergeRegole, REGOLE_DEFAULT, setRegole } from "../regole";
 import {
   festiviPianoDefault, festivitaPeriodo, festivitaAnno, buildShifts, generaPiano, verificaPiano, periodoOk, periodoSuccessivo,
   easter, allineaFestiviPiano, sanaFestiviPiano, type CfgPiano,
@@ -348,54 +344,15 @@ describe("sezione Festivi: il piano nei mesi", () => {
   });
 });
 
-describe("turni associati: la giornata festiva del piano non conta nei limiti", () => {
-  const dft = () => JSON.parse(JSON.stringify(REGOLE_DEFAULT));
-  const manC = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
-  const pulisci = () => { setRegole(dft()); ENG.PREV = null; ENG.DEADLINE = 0; ENG.STORICO_FEST = null; ENG.STORICO_EQ = null; setSalt(0); setAmbRotStart(0); };
-  it("mattina e pomeriggio manuali in una festività: fuori dal tetto settimanale e mensile, ma resta una giornata piena per la distanza", () => {
-    pulisci();
-    const m1 = { ...med(1), maxAssMese: 1 };
-    // dicembre 2027: Natale sabato 25 (settimana 20–26), Immacolata mercoledì 8
-    const T: TurniMese = { 1: { 25: manC("M","P"), 21: manC("M","P") } };
-    const c = makeCtx(2027, 11, 31, [m1, med(2)], T);
-    expect(c.assInSett(1, 25)).toBe(1);                        // conta solo il 21, non Natale
-    expect(c.assInMese(1)).toBe(1);
-    expect(c.canAssDist(1, 23)).toBe(false);                   // a due giorni da Natale niente giornata piena
-    // senza la festività (stesso schema, una settimana prima): contano entrambe
-    const c2 = makeCtx(2027, 11, 31, [m1, med(2)], { 1: { 18: manC("M","P"), 14: manC("M","P") } });
-    expect(c2.assInSett(1, 18)).toBe(2);
-    expect(c2.assInMese(1)).toBe(2);
-    // un pomeriggio AUTOMATICO accanto alla mattina manuale non è la giornata del piano: conta
-    const c3 = makeCtx(2027, 11, 31, [m1, med(2)], { 1: { 25: { t:[{ tipo:"M", sott:false, man:true }, { tipo:"P", sott:false, man:false }] } } });
-    expect(c3.assInMese(1)).toBe(1);
-    // la festa locale del reparto vale come le altre; tolta dalla scheda, non più
-    const c4 = makeCtx(2027, 8, 30, [m1, med(2)], { 1: { 8: manC("M","P") } });
-    expect(c4.assInMese(1)).toBe(0);
-    const r = dft(); r.reparto.festiviLocali = []; setRegole(r);
-    expect(makeCtx(2027, 8, 30, [m1, med(2)], { 1: { 8: manC("M","P") } }).assInMese(1)).toBe(1);
-    pulisci();
-  });
-  it("vale anche nella coda del mese precedente (San Silvestro nella settimana di Capodanno)", () => {
-    pulisci();
-    ENG.PREV = { ndim: 31, T: { 1: { 31: manC("M","P"), 30: manC("M","P") } } };   // dicembre 2026: mer 30 e gio 31
-    const c = makeCtx(2027, 0, 31, [med(1), med(2)], {});
-    expect(c.assInSett(1, 1)).toBe(1);                         // il 30 conta, il 31 (San Silvestro) no
-    pulisci();
-  });
-  it("mese generato con la giornata di Ognissanti a mano: il medico conserva il suo unico turno associato del mese", () => {
-    pulisci();
-    const sc = JSON.parse(fs.readFileSync("src/engine/__tests__/fixtures/novembre2026_manuali.json", "utf8"));
-    const mr = (sc.medici as Medico[]).filter(m=>m.stato==="MR").find(m=>!sc.ex[m.id]?.[1] && !sc.ex[m.id]?.[2] && !sc.ex[m.id]?.[31-1])!;
-    const medici: Medico[] = sc.medici.map((m:Medico)=> m.id===mr.id ? { ...m, maxAssMese: 1 } : m);
-    const ex: TurniMese = JSON.parse(JSON.stringify(sc.ex));
-    (ex[mr.id] ||= {})[1] = manC("M","P");                     // domenica 1 novembre: Ognissanti, dal piano
-    const gen = generaMigliorTentativo(2026, 10, 30, medici, ex, 3000);
-    const fin = completaObiettivi(2026, 10, 30, medici, gen.turni).turni;
-    const c = makeCtx(2026, 10, 30, medici, fin);
-    expect(c.assInMese(mr.id)).toBeLessThanOrEqual(1);
-    expect(fin[mr.id][1].t.map(s=>s.tipo)).toEqual(["M","P"]);
-    expect(violazioniIndip({ anno:2026, mese:10, medici, ex, regole:getRegole(), prevT:null }, fin).filter(v=>/associati/.test(v))).toEqual([]);
-    expect(gen.problemi.filter(x=>/associati nel mese/.test(x))).toEqual([]);
-    pulisci();
+describe("turni associati: la giornata festiva del piano conta come le altre", () => {
+  it("mattina e pomeriggio manuali in una festività consumano il tetto settimanale e mensile", async () => {
+    const { makeCtx } = await import("../ctx");
+    setRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT)));
+    const manC = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
+    // dicembre 2027: Natale sabato 25, settimana 20–26
+    const c = makeCtx(2027, 11, 31, [{ ...med(1), maxAssMese: 1 }, med(2)], { 1: { 25: manC("M","P"), 21: manC("M","P") } });
+    expect(c.assInSett(1, 25)).toBe(2);
+    expect(c.assInMese(1)).toBe(2);
+    expect(c.canAssMese(1)).toBe(false);
   });
 });

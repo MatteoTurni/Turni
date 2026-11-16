@@ -1,6 +1,6 @@
 # TurniMedicina 0.3.61
 
-## Novità 0.3.61 — il piano festivi nei mesi, e la giornata festiva fuori dai limiti dei turni associati
+## Novità 0.3.61 — il piano festivi nei mesi
 
 Nella sezione Festivi, sotto il piano, c'è il riquadro «Nei mesi». È
 facoltativo e va un mese alla volta: «Inserisci» scrive nel tabellone di quel
@@ -25,24 +25,22 @@ Regole dell'inserimento:
 - il decreto Calabria è trattato come gli altri: se il piano gli dà un turno
   da solo, entra come manuale e la generazione del mese lo segnala.
 
-Turni associati: la giornata festiva di 12 ore — mattina e pomeriggio
-entrambi manuali in una festività dell'elenco («Festività e punti») — non
-consuma più il massimo settimanale né il massimo mensile del medico. Vale
-anche se i turni sono stati messi a mano senza passare dal piano, e nella coda
-del mese precedente. Per la distanza fra giornate piene resta una giornata
-piena: a meno di due giorni non ne nasce un'altra.
+La giornata festiva inserita dal piano (M e P allo stesso medico) conta come
+ogni altro turno associato: nel massimo settimanale, nel massimo mensile del
+medico e nella distanza fra giornate piene.
 
 Verifica:
 - piano inserito in tutti i mesi e riletto dai mesi: stessi medici e stessi
   punti del piano, 39 turni su 39;
 - dicembre 2026 reale (turni manuali veri, novembre come mese precedente),
-  generato come nell'app senza il piano e con tre sorteggi diversi inseriti:
-  in tutti i casi nessun turno scoperto, nessuna violazione, stessa copertura
-  dei giorni festivi, turni sotto obiettivo invariati (20), notti degli MR
-  fra 3 e 4; i turni del piano sono rimasti dov'erano. Degli 11 turni del
-  piano nel mese ne sono entrati 6, 7 e 8: gli altri erano già coperti dai
-  turni manuali del mese o cadevano su ferie e permessi, e sono stati
-  elencati.
+  generato come nell'app 11 volte senza il piano e 15 volte con un piano
+  inserito (sorteggi diversi): nessun turno scoperto, nessuna violazione,
+  stessa copertura dei giorni festivi, turni sotto obiettivo sempre 20; i
+  turni del piano sono rimasti dov'erano. Notti degli MR fra 3 e 4 in tutte
+  le generazioni senza piano e in 14 su 15 con il piano; in una sono uscite
+  fra 2 e 4, e rifacendo lo stesso sorteggio tutti avevano 3 notti. Degli 11
+  turni del piano nel mese ne entrano fra 6 e 8: gli altri sono già coperti
+  dai turni manuali del mese o cadono su ferie e permessi, e vengono elencati.
 
 ## Novità 0.3.60 — sezione Festivi: il sorteggio dei turni festivi dentro l'app
 
