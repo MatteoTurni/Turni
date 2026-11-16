@@ -59,13 +59,6 @@ export const ENG = {
   // notti e quanti weekend liberi in più o in meno dei colleghi nei mesi
   // precedenti (vedi storico.ts). Iniettato dalla UI; null = nessuna memoria.
   STORICO_EQ: null as null | { notti: Record<number, number>; wk: Record<number, number> },
-
-  // SUPERFESTIVI (v0.3.57): turni superfestivi dei mesi salvati che servono
-  // al mese corrente (vedi superfestivi.ts). Iniettato dalla UI; null = nessuno.
-  STORICO_SF: null as null | {
-    nAnno: Record<number, number>; identici: Record<number, Record<string, number>>;
-    stessi: Record<number, Record<string, number>>; stagione: Record<number, string[]>;
-  },
 };
 
 export function setPrevContext(turniAll: TurniAll | null | undefined, anno: number, mese: number){

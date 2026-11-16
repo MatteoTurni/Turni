@@ -1,4 +1,64 @@
-# TurniMedicina 0.3.59
+# TurniMedicina 0.3.60
+
+## Novità 0.3.60 — sezione Festivi: il sorteggio dei turni festivi dentro l'app
+
+Lo strumento «Turni festivi» del reparto diventa una sezione dell'app. Si usa
+prima di generare i mesi e prima di inserire ferie e permessi: si sceglie un
+periodo (fino a 12 mesi, anche a cavallo di due anni) e l'app sorteggia chi
+copre ogni festività. Il piano resta nella sezione: in questa versione non
+modifica i tabelloni dei mesi.
+
+Come funziona il sorteggio (identico allo strumento):
+- ogni festività ha tre turni — notte prima, giorno (12 ore), notte — ciascuno
+  coi suoi punti; una notte condivisa fra due festività consecutive (25→26
+  dicembre) è un turno solo e vale il più alto. Il 24 e il 31 dicembre hanno
+  solo il turno di giorno;
+- si distribuiscono i punti, non il numero di turni; contano il saldo di
+  partenza, le festività già fatte l'ultima volta, le preferenze, il massimo
+  di turni e il minimo di superfestivi per medico (Capodanno, Pasqua, Natale,
+  Santo Stefano), la reperibilità facoltativa;
+- mai due turni lo stesso giorno o in giorni consecutivi;
+- «Rigenera» dà un'altra variante; il piano si stampa o si salva in PDF.
+
+Cosa cambia rispetto allo strumento:
+- i medici sono quelli dell'app: ci sono tutti e si tolgono dal sorteggio con
+  un tocco. Chi è «esentato dalle notti» nella scheda riceve solo turni di
+  giorno (e si può decidere a mano chi altro fa solo il giorno);
+- saldo, festività già fatte e precedenze si leggono dai mesi salvati, e si
+  correggono a mano dove serve. Notte prima e notte: chi ha una notte quel
+  giorno prende i punti per intero. Giorno: mattina e pomeriggio dello stesso
+  medico valgono il turno intero, solo mattina o solo pomeriggio la metà.
+  Contano anche i turni di PS e quelli sottolineati. Dove un mese non è
+  salvato vale il piano festivi che copriva quella data;
+- senza un piano precedente il saldo somma i punti degli ultimi anni di mesi
+  salvati (2 di default, da 1 a 5 nelle Regole); con «Prepara il prossimo
+  periodo» il piano va in archivio e il saldo riparte da quello di allora più
+  i punti fatti nel frattempo;
+- festività, punti e superfestivi si modificano nelle Regole («Festività e
+  punti»); le feste locali del reparto entrano da sole nell'elenco;
+- i colleghi in sola lettura vedono il piano pubblicato, non i comandi.
+
+Tolta l'equità dei superfestivi della 0.3.57 (elenco «Superfestivi» nelle
+Regole, alternanza Natale/Capodanno, pareggio annuo): la sostituisce il piano
+festivi. Il numero di anni salvato lì passa alla sezione Festivi. La
+generazione dei mesi tratta di nuovo i superfestivi come festivi normali
+(rotazione dei festivi e varietà restano).
+
+Voci in alto riordinate: Calendario e Medici, quelle di tutti i giorni, in
+evidenza; Festivi e Regole in un gruppo a parte, più discreto. Nella sezione
+Festivi spariscono il mese e i pulsanti del mese.
+
+Verifica:
+- stesso risultato dello strumento originale, turno per turno, su 42
+  configurazioni casuali (periodi diversi, da 6 a 13 medici, saldi, storico,
+  preferenze, con e senza reperibilità); sei di queste restano come test;
+- anno 2027 (15 festività, 39 turni, 71 punti), 20 sorteggi per caso, con 8,
+  10 e 11 medici, con uno o due medici «solo giorno», con saldo di partenza,
+  con storico e con reperibilità: fra chi ha più punti e chi ne ha meno la
+  distanza è sempre 1 punto (0,4 con la reperibilità, che pareggia il
+  totale); tutti hanno almeno un superfestivo; nessun turno scoperto; nessuna
+  notte a chi fa solo il giorno; nessuna festività ripetuta rispetto
+  all'ultima volta; un sorteggio dura circa mezzo secondo.
 
 ## Novità 0.3.59 — medico esentato dalle notti
 
@@ -86,7 +146,7 @@ prezzi: i weekend liberi oltre l'obiettivo calano del 2% (17,9 → 17,6 per
 squadra al mese) e la rotazione dei festivi è appena meno stretta (differenza
 sui 6 mesi di tutti i festivi 2,7 → 2,8).
 
-## Novità 0.3.57 — equità dei superfestivi fra gli anni
+## Novità 0.3.57 — equità dei superfestivi fra gli anni (tolta nella 0.3.60)
 
 Nel pannello Regole c'è la sezione «Superfestivi»: Natale, Capodanno, Pasqua
 e Ferragosto di default, e se ne possono aggiungere altri (data fissa,

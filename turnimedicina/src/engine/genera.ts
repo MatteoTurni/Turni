@@ -8,7 +8,6 @@ import { faseCritici, faseAmbulatorio, faseWeekend, faseNotti, faseDiurni,
          riequilibraWeekendLiberi, riparaBuchi, tappaBuchi, sistemaMdcAmb, completaML, validazioneGlobale, risolviCluster, type Blocco } from "./fasi";
 import { diagnosiCausale } from "./diagnosiCausale";
 import { tipoFestivo, N_TIPI_FEST, EQ_MESI, spostamentiEq } from "./storico";
-import { costoSuperfestivi } from "./superfestivi";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PULSANTE 1 — GENERA COPERTURA MINIMA
@@ -710,8 +709,6 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   for(const v of scartoMP(c).values()) sbilMP += Math.abs(v);
   // VARIETÀ DEI TURNI FESTIVI (v0.3.55) — vedi varietaFestivi.
   const festRip = varietaFestivi(c);
-  // SUPERFESTIVI (v0.3.57) — vedi superfestivi.ts (i pesi sono lì).
-  const sfCosto = costoSuperfestivi(c, anno, mese);
   // WEEKEND LIBERI FRA MESI (v0.3.58) — vedi storico.ts: chi nei mesi scorsi
   // ne ha avuti più dei colleghi li riceve per ultimo.
   // Con lo storico il peso dell'equità del MESE sale di (1 + max): una notte
@@ -728,9 +725,9 @@ export function misuraTabellone(anno:number, mese:number, ndim:number, medici:Me
   const P = PESI;
   const soft = nottiDev*pesoNotti + nottiStor + wkScarto*P.wkScarto + varOf(carichi)*P.carichi
              + varOf(wkLib)*P.wkLib - wkExtra*P.wkExtra + strisceM*P.strisce + sforo*P.sforo
-             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar + sfCosto
+             + lavIso*P.iso + quickPM*P.quickPM + contPen*P.cont + sbilMP*P.mp + festRip*P.festVar
              + wkStor*EQ_MESI.pesoWk;
-  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip, sfCosto, wkStor, nottiStor, pesoNotti };
+  return { s, soft, probs, buchi, wkDef, wkZero, celle, wkScarto, lavIso, quickPM, contPen, strisceM, sbilMP, festRip, wkStor, nottiStor, pesoNotti };
 }
 export type MisuraTab = ReturnType<typeof misuraTabellone>;
 

@@ -5,17 +5,18 @@ import { MESI, DL, DF, dowOf, dimOf, isFestivo, isSabN, isDomN, mkKey } from "./
 import { vt, SPEC, ambConfigurato, fissaTurni, liberaTurni, isAmbT, abilitatoAmb, abilitatoQualche, slotAmbGiorno, ambIdDi, etichettaTurno } from "./engine/turni";
 import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { RepartoPanel } from "./components/RepartoPanel";
+import { FestiviPanel } from "./components/FestiviPanel";
+import { FestiviPuntiPanel } from "./components/FestiviPuntiPanel";
+import { mergeStatoFestivi, rimuoviMedicoFestivi, type StatoFestivi } from "./engine/festiviApp";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { setStoricoFestivi, setStoricoEquita } from "./engine/storico";
-import { setStoricoSuperfestivi } from "./engine/superfestivi";
-import { SuperfestiviPanel } from "./components/SuperfestiviPanel";
 import { completaObiettivi, calcAmbRotNext } from "./engine/genera";
 import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
 import { bilancioNotti, spiegaWeekend, type EsitoProvaWeekend } from "./engine/diagnosiWeekend";
 import { provaWeekendParallelo } from "./provaWeekendParallelo";
 import { generaParallelo } from "./generaParallelo";
-import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot } from "./storage";
+import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot, loadFestivi, saveFestivi } from "./storage";
 import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
 import { esportaExcel } from "./export/excel";
 import { SC, KC } from "./components/costanti";
@@ -53,7 +54,7 @@ export default function App(){
   // I turni sono salvati PER MESE (chiave "AAAA-MM"): cambiando mese o anno si
   // lavora su un insieme di turni diverso.
   const [turniAll, setTurniAll] = useState<TurniAll>(saved?.turniAll ?? {});
-  const [tab,    setTab]    = useState<"cal"|"medici"|"regole">("cal");
+  const [tab,    setTab]    = useState<"cal"|"medici"|"festivi"|"regole">("cal");
   const [fabbAperto, setFabbAperto] = useState(false);
   // Accordion del box "Regola della notte" (v0.3.33): raccoglie le varianti
   // della Regola N, prima sparse in coda ai limiti per medico.
@@ -70,6 +71,9 @@ export default function App(){
   // Pannello Regole: stato React specchio delle regole del motore per il re-render.
   const [regole, setRegoleState] = useState(getRegole());
   const updRegole = (next: typeof regole) => { setRegole(next); setRegoleState(next); saveRegole(next); salvaRemoto("regole", next); };
+  // SEZIONE FESTIVI (v0.3.60): periodo, scelte e piano sorteggiato; salvati a parte.
+  const [festivi, setFestivi] = useState<StatoFestivi>(loadFestivi);
+  const updFestivi = (next: StatoFestivi) => { setFestivi(next); saveFestivi(next); salvaRemoto("festivi", next); };
   // ── SYNC REMOTO (v0.3.14) ──────────────────────────────────────────────────
   // editabile: questo browser ha la chiave di modifica (o il remoto non è
   // configurato → comportamento locale identico alle versioni precedenti).
@@ -87,6 +91,7 @@ export default function App(){
       const m = mergeRegole(base); setRegole(m); setRegoleState(m); saveRegole(m);
     }
     if(r.ambRot) saveAmbRot(r.ambRot);
+    if(r.festivi){ const f = mergeStatoFestivi(r.festivi); setFestivi(f); saveFestivi(f); }
     if(r.stato){
       if(ancheData && r.stato.anno!=null) setAnno(r.stato.anno);
       if(ancheData && r.stato.mese!=null) setMese(r.stato.mese);
@@ -167,7 +172,6 @@ export default function App(){
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
-        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const rotStart = loadAmbRot().nextIdx;
         setAmbRotStart(rotStart);
         // GENERAZIONE PARALLELA (v0.3.9): pool di Web Worker, ognuno con la
@@ -227,7 +231,6 @@ export default function App(){
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
-        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
         if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!");
@@ -254,7 +257,6 @@ export default function App(){
         setPrevContext(turniAll,anno,mese);
         setStoricoFestivi(turniAll,anno,mese,medici,regole.rotazioneFestiviMesi);
         setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
-        setStoricoSuperfestivi(turniAll,anno,mese,medici,regole.superfestivi,regole.superfestiviAttivi,regole.superfestiviAnni);
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
         if(e.scambiNotti+e.scambiMP===0){ showMsg("Il tabellone è già equilibrato: nessuno scambio possibile senza peggiorare altro."); }
@@ -455,6 +457,7 @@ export default function App(){
       for(const k in prev){ const { [m.id]:_scarta, ...resto } = prev[k]; n[k]=resto; }
       return n;
     });
+    updFestivi(rimuoviMedicoFestivi(festivi, m.id));
     showMsg(`Medico ${m.nome} eliminato.`);
   };
 
@@ -462,7 +465,7 @@ export default function App(){
   const TH: React.CSSProperties = {background:"#122036",border:"1px solid #1e3a5f",padding:"3px 3px",textAlign:"center",fontFamily:"monospace",fontSize:"9px",color:"#4b7aad",whiteSpace:"nowrap"};
 
   return (
-    <div style={{minHeight:"100vh",background:"#0b1626",color:"#e2f0ff",fontFamily:"monospace"}}>
+    <div className="app-root" style={{minHeight:"100vh",background:"#0b1626",color:"#e2f0ff",fontFamily:"monospace"}}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
         ::-webkit-scrollbar{width:5px;height:5px;}
@@ -470,7 +473,7 @@ export default function App(){
         ::-webkit-scrollbar-thumb{background:#24405f;border-radius:3px;}
         @media print{
           .np{display:none!important;}
-          body{background:#fff!important;color:#000!important;}
+          body,.app-root{background:#fff!important;color:#000!important;}
           table{font-size:6pt!important;border-collapse:collapse!important;}
           td,th{border:.4pt solid #bbb!important;padding:1pt 2pt!important;}
         }
@@ -488,7 +491,8 @@ export default function App(){
           </div>
         </div>
 
-        <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+        {/* Nella sezione Festivi il mese non c'entra: selettore e pulsanti del mese spariscono. */}
+        <div style={{display:tab==="festivi"?"none":"flex",gap:"6px",alignItems:"center"}}>
           <select value={mese} onChange={e=>setMese(+e.target.value)}
             style={{background:"#081120",border:"1px solid #2f5a8a",color:"#60a5fa",borderRadius:"6px",padding:"6px 9px",fontSize:"12px",fontFamily:"monospace",cursor:"pointer"}}>
             {MESI.map((m,i)=><option key={i} value={i}>{m}</option>)}
@@ -512,7 +516,7 @@ export default function App(){
             ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#7f1d1d", rimuoviManuali, false],
             ["⎙","Excel", printing?"#0f1a2a":"#064e3b", handlePrint, printing],
           ] as [string,string,string,()=>void,boolean][])
-            .filter(([,lb])=> editabile || lb==="Excel")
+            .filter(([,lb])=> tab!=="festivi" && (editabile || lb==="Excel"))
             .map(([ic,lb,cl,fn,ds])=>(
             <button key={lb} onClick={fn} disabled={!!ds} style={{background:ds?"#0f1a2a":cl,color:ds?"#3d5878":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
               <span>{ic}</span><span>{lb}</span>
@@ -520,18 +524,33 @@ export default function App(){
           ))}
         </div>
 
-        {/* Segmented control: un solo contenitore, la pillola dice DOVE sei. */}
-        <div style={{display:"flex",gap:0,background:"#0a1524",border:"1px solid #24405f",borderRadius:"9px",padding:"3px"}}>
-          {([["cal","Calendario"],["medici","Medici"],["regole","Regole"]] as ["cal"|"medici"|"regole",string][])
-            .filter(([t])=> editabile || t==="cal")
-            .map(([t,l])=>(
-            <button key={t} onClick={()=>setTab(t)} aria-selected={tab===t} style={{
-              background:tab===t?"#1e3a5f":"transparent", color:tab===t?"#bfdbfe":"#5b7ea8",
-              border:"none", borderRadius:"7px", padding:"8px 16px", cursor:"pointer",
-              fontSize:"12px", fontWeight:700, fontFamily:"monospace", letterSpacing:".02em",
-              boxShadow:tab===t?"inset 0 0 0 1px #3b82f6, 0 2px 8px #00000088":"none",
-              transition:"background .12s, color .12s"}}>{l}</button>
-          ))}
+        {/* NAVIGAZIONE (v0.3.60): le due sezioni di tutti i giorni in evidenza
+            (Calendario, Medici); quelle che servono di rado (Festivi, Regole)
+            in un gruppo a parte, più discreto. */}
+        <div style={{display:"flex",gap:"10px",alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:0,background:"#0a1524",border:"1px solid #24405f",borderRadius:"9px",padding:"3px"}}>
+            {([["cal","Calendario"],["medici","Medici"]] as ["cal"|"medici",string][])
+              .filter(([t])=> editabile || t==="cal")
+              .map(([t,l])=>(
+              <button key={t} onClick={()=>setTab(t)} aria-selected={tab===t} style={{
+                background:tab===t?"#1e3a5f":"transparent", color:tab===t?"#bfdbfe":"#5b7ea8",
+                border:"none", borderRadius:"7px", padding:"8px 16px", cursor:"pointer",
+                fontSize:"12px", fontWeight:700, fontFamily:"monospace", letterSpacing:".02em",
+                boxShadow:tab===t?"inset 0 0 0 1px #3b82f6, 0 2px 8px #00000088":"none",
+                transition:"background .12s, color .12s"}}>{l}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:"2px",alignItems:"center",borderLeft:"1px solid #24405f",paddingLeft:"10px"}}>
+            {([["festivi","Festivi"],["regole","Regole"]] as ["festivi"|"regole",string][])
+              .filter(([t])=> editabile || (t==="festivi" && !!festivi.piano))
+              .map(([t,l])=>(
+              <button key={t} onClick={()=>setTab(t)} aria-selected={tab===t} style={{
+                background:"transparent", color:tab===t?"#bfdbfe":"#5b7ea8",
+                border:"none", borderBottom:`2px solid ${tab===t?"#3b82f6":"transparent"}`, padding:"6px 9px", cursor:"pointer",
+                fontSize:"11px", fontWeight:tab===t?700:400, fontFamily:"monospace", letterSpacing:".02em",
+                transition:"color .12s, border-color .12s"}}>{l}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -969,6 +988,12 @@ export default function App(){
         </div>
       )}
 
+      {/* FESTIVI (v0.3.60) */}
+      {tab==="festivi"&&(
+        <FestiviPanel medici={medici} turniAll={turniAll} regole={regole} stato={festivi} onStato={updFestivi}
+          editabile={editabile} avviso={showMsg} apriRegole={()=>setTab("regole")}/>
+      )}
+
       {/* REGOLE */}
       {tab==="regole"&&(()=>{
         const numInp = (val:number,onCh:(v:number)=>void) => (
@@ -1018,7 +1043,7 @@ export default function App(){
           <div className="np" style={{padding:"16px",maxWidth:"640px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
               <span style={{fontSize:"13px",fontWeight:700,color:"#e2eeff"}}>Regole del reparto</span>
-              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto, coperturaSoloVuoti: regole.coperturaSoloVuoti, superfestivi: regole.superfestivi })}
+              <button onClick={()=>updRegole({ ...JSON.parse(JSON.stringify(REGOLE_DEFAULT)), reparto: regole.reparto, coperturaSoloVuoti: regole.coperturaSoloVuoti, festiviPiano: regole.festiviPiano })}
                 style={{background:"#1a0606",color:"#f87171",border:"1px solid #7f1d1d",borderRadius:"6px",padding:"6px 13px",cursor:"pointer",fontSize:"11px",fontFamily:"monospace",fontWeight:700}}>
                 Ripristina default
               </button>
@@ -1161,7 +1186,7 @@ export default function App(){
 
             <details style={BOX}>
               <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
-                EQUITÀ FRA MESI E ANNI <span style={{fontWeight:400,color:"#4b7aad"}}>· mesi di memoria: festivi {regole.rotazioneFestiviMesi}, notti {regole.equitaNottiMesi}, weekend liberi {regole.equitaWeekendMesi} · superfestivi: {regole.superfestiviAttivi && regole.superfestivi.length ? `${regole.superfestivi.map(x=>x.nome||x.data).join(", ")}, ${regole.superfestiviAnni} ann${regole.superfestiviAnni===1?"o":"i"}` : "spenti"}</span>
+                EQUITÀ FRA MESI <span style={{fontWeight:400,color:"#4b7aad"}}>· mesi di memoria: festivi {regole.rotazioneFestiviMesi}, notti {regole.equitaNottiMesi}, weekend liberi {regole.equitaWeekendMesi}</span>
               </summary>
               <div style={{marginTop:"12px"}}>
                 <div style={{...LBL,fontSize:"9px",marginBottom:"10px"}}>Mesi salvati da considerare per ciascuna equità. 0 = spenta.</div>
@@ -1178,9 +1203,16 @@ export default function App(){
                     </div>
                   </div>
                 ))}
-                <div style={{height:"4px"}}/>
-                <div style={{...LBL,color:"#60a5fa",fontWeight:700,marginBottom:"6px"}}>Superfestivi</div>
-                <SuperfestiviPanel regole={regole} onRegole={updRegole} avviso={showMsg}/>
+              </div>
+            </details>
+
+            {/* ── FESTIVITÀ E PUNTI DEL PIANO FESTIVI (v0.3.60) ── */}
+            <details style={BOX}>
+              <summary style={{...LBL,fontWeight:700,color:"#60a5fa",cursor:"pointer"}}>
+                FESTIVITÀ E PUNTI <span style={{fontWeight:400,color:"#4b7aad"}}>· sezione Festivi: {regole.festiviPiano.length} festività, superfestivi: {regole.festiviPiano.filter(f=>f.sup).map(f=>f.nome).join(", ")||"nessuno"}</span>
+              </summary>
+              <div style={{marginTop:"12px"}}>
+                <FestiviPuntiPanel regole={regole} onRegole={updRegole} avviso={showMsg}/>
               </div>
             </details>
 

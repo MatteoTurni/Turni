@@ -43,6 +43,7 @@ export interface DatiRemoti {
   stato?:  StatoSalvato;
   regole?: Partial<Regole>;
   ambRot?: { nextIdx: number };
+  festivi?: unknown;                     // sezione Festivi (v0.3.60): la valida mergeStatoFestivi
 }
 
 /** Scarica lo stato condiviso. null = endpoint assente / rete giù (fallback locale). */
@@ -55,6 +56,7 @@ export async function caricaRemoto(): Promise<DatiRemoti | null> {
     if(j.stato)  out.stato  = j.stato as StatoSalvato;
     if(j.regole) out.regole = j.regole as Partial<Regole>;
     if(j.ambRot) out.ambRot = j.ambRot as { nextIdx:number };
+    if(j.festivi) out.festivi = j.festivi;
     return out;
   }catch{ return null; }
 }
@@ -67,7 +69,7 @@ export async function caricaRemoto(): Promise<DatiRemoti | null> {
 const timers: Record<string, ReturnType<typeof setTimeout>> = {};
 const pendenti: Record<string, unknown> = {};
 
-export function salvaRemoto(id: "stato"|"regole"|"ambRot", dati: unknown){
+export function salvaRemoto(id: "stato"|"regole"|"ambRot"|"festivi", dati: unknown){
   if(!edit) return;
   pendenti[id] = dati;
   clearTimeout(timers[id]);
