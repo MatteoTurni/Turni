@@ -1,5 +1,6 @@
-import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale, AffiancamentoPS, Superfestivo } from "./types";
+import type { Regole, Ambulatorio, FasciaAmb, OccAmb, Reparto, FestivoLocale, AffiancamentoPS } from "./types";
 import { setFestiviLocali } from "./date";
+import { festiviPianoDefault, allineaFestiviPiano, sanaFestiviPiano } from "./pianoFestivi";
 
 // ─── REGOLE CONFIGURABILI ─────────────────────────────────────────────────────
 // Fabbisogni giornalieri e limiti che prima erano costanti hardcoded. Il motore
@@ -43,16 +44,9 @@ export const REGOLE_DEFAULT: Regole = {
   psEstGiornata: true,
   // Pulsante Copertura: ottimizza tutto (comportamento storico) (v0.3.50).
   coperturaSoloVuoti: false,
-  // Superfestivi (v0.3.57): i quattro classici, più quelli che aggiunge il reparto.
-  superfestivi: [
-    { id:"natale", nome:"Natale", data:"12-25" },
-    { id:"capodanno", nome:"Capodanno", data:"01-01" },
-    { id:"pasqua", nome:"Pasqua", data:"pasqua" },
-    { id:"ferragosto", nome:"Ferragosto", data:"08-15" },
-  ],
-  alternanzaNataleCapodanno: true,
-  superfestiviAttivi: true,
-  superfestiviAnni: 2,
+  // Piano festivi (v0.3.60): festività e punti del sorteggio (sezione Festivi).
+  festiviPiano: festiviPianoDefault([{ data:"09-08", nome:"Madonna dell'Olmo (patrona di Cava de' Tirreni)" }]),
+  pianoFestiviAnni: 2,
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
     sab:  { mMin:2, mMax:2, pMin:1, pMax:1 },  // sabato
@@ -84,12 +78,15 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   // rotazioneFestiviMesi: ASSENTE (salvataggi pre-v0.3.56) o non intero 0–9 → default.
   const rFM = Number.isInteger(s.rotazioneFestiviMesi) && (s.rotazioneFestiviMesi as number)>=0 && (s.rotazioneFestiviMesi as number)<=9
     ? (s.rotazioneFestiviMesi as number) : d.rotazioneFestiviMesi;
-  const { giorniAmb: _gA, fasceAmb: _fA, ...resto } = s;
-  return { ...d, ...resto, ambulatori: amb, reparto: sanaReparto(s.reparto, d.reparto), psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti,
-           superfestivi: sanaSuperfestivi(s.superfestivi, d.superfestivi),
-           alternanzaNataleCapodanno: typeof s.alternanzaNataleCapodanno==="boolean" ? s.alternanzaNataleCapodanno : d.alternanzaNataleCapodanno,
-           superfestiviAttivi: typeof s.superfestiviAttivi==="boolean" ? s.superfestiviAttivi : d.superfestiviAttivi,
-           superfestiviAnni: Number.isInteger(s.superfestiviAnni) && (s.superfestiviAnni as number)>=1 && (s.superfestiviAnni as number)<=5 ? (s.superfestiviAnni as number) : d.superfestiviAnni,
+  // Campi dell'equità dei superfestivi 0.3.57 (tolta nella 0.3.60): si scartano;
+  // resta solo il numero di anni, che passa alla sezione Festivi.
+  const vecchie = s as { superfestivi?: unknown; superfestiviAttivi?: unknown; superfestiviAnni?: unknown; alternanzaNataleCapodanno?: unknown };
+  const { giorniAmb: _gA, fasceAmb: _fA, superfestivi: _sf, superfestiviAttivi: _sfA, superfestiviAnni: _sfN, alternanzaNataleCapodanno: _aNC, ...resto } = s as Partial<Regole> & typeof vecchie;
+  const anni15 = (v:unknown) => Number.isInteger(v) && (v as number)>=1 && (v as number)<=5 ? (v as number) : undefined;
+  const rep = sanaReparto(s.reparto, d.reparto);
+  return { ...d, ...resto, ambulatori: amb, reparto: rep, psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti,
+           festiviPiano: allineaFestiviPiano(sanaFestiviPiano(s.festiviPiano) ?? festiviPianoDefault(), rep.festiviLocali),
+           pianoFestiviAnni: anni15(s.pianoFestiviAnni) ?? anni15(vecchie.superfestiviAnni) ?? d.pianoFestiviAnni,
            notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM,
            equitaNottiMesi: mesi09(s.equitaNottiMesi, d.equitaNottiMesi), equitaWeekendMesi: mesi09(s.equitaWeekendMesi, d.equitaWeekendMesi), fabb:{
@@ -97,30 +94,6 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
     sab: {...d.fabb.sab,  ...(s.fabb?.sab ||{})},
     fest:{...d.fabb.fest, ...(s.fabb?.fest||{})},
   }};
-}
-
-// ── SUPERFESTIVI (v0.3.57) ───────────────────────────────────────────────────
-// Assente (salvataggi precedenti) → i quattro predefiniti. Presente: si tengono
-// le voci con data valida ("MM-GG", "pasqua", "pasquetta"), senza doppioni.
-function sanaSuperfestivi(x: unknown, d: Superfestivo[]): Superfestivo[] {
-  if(!Array.isArray(x)) return JSON.parse(JSON.stringify(d));
-  const out: Superfestivo[] = []; const ids = new Set<string>(), date = new Set<string>();
-  for(const v of x){
-    if(!v || typeof v!=="object") continue;
-    const data = (v as Superfestivo).data;
-    if(typeof data!=="string") continue;
-    if(data!=="pasqua" && data!=="pasquetta"){
-      const m = /^(\d\d)-(\d\d)$/.exec(data); if(!m) continue;
-      const mm = +m[1], gg = +m[2]; if(mm<1||mm>12||gg<1||gg>31) continue;
-    }
-    if(date.has(data)) continue;
-    let id = typeof (v as Superfestivo).id==="string" && (v as Superfestivo).id ? (v as Superfestivo).id.slice(0,40) : "sf-"+data;
-    if(ids.has(id)) id = "sf-"+data;
-    ids.add(id); date.add(data);
-    const nome = typeof (v as Superfestivo).nome==="string" ? (v as Superfestivo).nome.slice(0,100) : "";
-    out.push({ id, nome, data });
-  }
-  return out;
 }
 
 // ── AFFIANCAMENTO MDC CON TURNI PS (v0.3.45) ─────────────────────────────────

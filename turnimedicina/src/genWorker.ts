@@ -32,7 +32,6 @@ export interface MsgRifinisci {
   prev: null | { ndim:number; T:TurniMese };
   storico?: Record<number, number[]> | null;   // rotazione dei festivi (v0.3.56)
   storicoEq?: typeof ENG.STORICO_EQ;            // notti e weekend liberi fra mesi (v0.3.58)
-  storicoSF?: typeof ENG.STORICO_SF;            // superfestivi (v0.3.57)
   ambRot:number;
   bestT:TurniMese;
   cand:{ turni:TurniMese; m:MisuraTab }[];
@@ -48,7 +47,6 @@ export interface MsgProva {
   prev: null | { ndim:number; T:TurniMese };
   storico?: Record<number, number[]> | null;   // rotazione dei festivi (v0.3.56)
   storicoEq?: typeof ENG.STORICO_EQ;            // notti e weekend liberi fra mesi (v0.3.58)
-  storicoSF?: typeof ENG.STORICO_SF;            // superfestivi (v0.3.57)
   ambRot:number;
   spec:SpecProva; ms:number; job:number;
 }
@@ -60,7 +58,6 @@ export interface MsgAvvio {
   prev: null | { ndim:number; T:TurniMese };
   storico?: Record<number, number[]> | null;   // rotazione dei festivi (v0.3.56)
   storicoEq?: typeof ENG.STORICO_EQ;            // notti e weekend liberi fra mesi (v0.3.58)
-  storicoSF?: typeof ENG.STORICO_SF;            // superfestivi (v0.3.57)
   ambRot:number;
   saltSeed:number;
   maxMs:number;
@@ -78,7 +75,6 @@ ws.onmessage = (e: MessageEvent) => {
       ENG.PREV = q.prev ?? null;
       ENG.STORICO_FEST = q.storico ?? null;
       ENG.STORICO_EQ = q.storicoEq ?? null;
-      ENG.STORICO_SF = q.storicoSF ?? null;
       ENG.AMB_ROT_START = q.ambRot ?? 0;
       const r = eseguiProva(q.anno, q.mese, q.ndim, q.medici, q.turni, q.spec, q.ms);
       ws.postMessage({ tipo:"provato", job:q.job, ...r });
@@ -94,7 +90,6 @@ ws.onmessage = (e: MessageEvent) => {
       ENG.PREV = q.prev ?? null;
       ENG.STORICO_FEST = q.storico ?? null;
       ENG.STORICO_EQ = q.storicoEq ?? null;
-      ENG.STORICO_SF = q.storicoSF ?? null;
       ENG.AMB_ROT_START = q.ambRot ?? 0;
       const res = rifinituraFinale(q.anno, q.mese, q.ndim, q.medici, q.ex, q.bestT, 2000);
       const out = rifinisciCandidati(q.anno, q.mese, q.ndim, q.medici, q.ex, q.bestT, q.cand, res, Date.now() + 1800);
@@ -110,7 +105,6 @@ ws.onmessage = (e: MessageEvent) => {
     ENG.PREV = p.prev ?? null;
     ENG.STORICO_FEST = p.storico ?? null;
     ENG.STORICO_EQ = p.storicoEq ?? null;
-    ENG.STORICO_SF = p.storicoSF ?? null;
     ENG.AMB_ROT_START = p.ambRot ?? 0;
     const r = cercaMigliorTentativo(p.anno, p.mese, p.ndim, p.medici, p.ex, p.maxMs, {
       saltSeed: p.saltSeed,

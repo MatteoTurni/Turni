@@ -1,6 +1,7 @@
 import type { Medico, Regole, TurniAll, TurniMese } from "./engine/types";
 import { mergeRegole } from "./engine/regole";
 import { mkKey } from "./engine/date";
+import { mergeStatoFestivi, type StatoFestivi } from "./engine/festiviApp";
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 // UNICO punto dell'app che tocca localStorage. Il motore non lo importa mai:
@@ -10,6 +11,7 @@ import { mkKey } from "./engine/date";
 export const SK         = "medicina_v26";
 export const SK_AMB_ROT = "medicina_amb_rotation"; // rotazione ambulatorio
 export const SK_REGOLE  = "medicina_regole_v1";
+export const SK_FESTIVI = "medicina_festivi_v1";   // sezione Festivi (v0.3.60)
 
 export interface StatoSalvato {
   anno?: number;
@@ -71,3 +73,9 @@ export function loadAmbRot(): { nextIdx: number } {
   try{ const r=localStorage.getItem(SK_AMB_ROT); return r?JSON.parse(r):{nextIdx:0}; }catch{ return {nextIdx:0}; }
 }
 export function saveAmbRot(s: { nextIdx: number }){ try{ localStorage.setItem(SK_AMB_ROT,JSON.stringify(s)); }catch{} }
+
+// Sezione Festivi (v0.3.60): periodo, scelte del pannello e piano sorteggiato.
+export function loadFestivi(): StatoFestivi {
+  try{ const r=localStorage.getItem(SK_FESTIVI); return mergeStatoFestivi(r?JSON.parse(r):null); }catch{ return mergeStatoFestivi(null); }
+}
+export function saveFestivi(s: StatoFestivi){ try{ localStorage.setItem(SK_FESTIVI,JSON.stringify(s)); }catch{} }

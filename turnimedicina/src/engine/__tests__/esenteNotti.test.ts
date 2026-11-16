@@ -17,7 +17,7 @@ const med = (id:number, stato:Medico["stato"]="MR", noNotti=false): Medico =>
 const cella = (tipo:string, man=false) => ({ t:[{ tipo, sott:false, man }] });
 const nottiAuto = (T:TurniMese, id:number) => { let n=0; for(const g in T[id]||{}) for(const s of T[id][g].t) if(!s.man && (s.tipo==="N"||s.tipo==="3")) n++; return n; };
 
-beforeEach(()=>{ setRegole(dft()); ENG.PREV = null; ENG.DEADLINE = 0; ENG.STORICO_FEST = null; ENG.STORICO_EQ = null; ENG.STORICO_SF = null; setSalt(0); setAmbRotStart(0); });
+beforeEach(()=>{ setRegole(dft()); ENG.PREV = null; ENG.DEADLINE = 0; ENG.STORICO_FEST = null; ENG.STORICO_EQ = null; setSalt(0); setAmbRotStart(0); });
 afterEach(()=>{ setRegole(dft()); ENG.STORICO_EQ = null; });
 
 describe("esentato dalle notti: regole del motore", () => {

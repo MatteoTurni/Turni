@@ -6,7 +6,7 @@
 // Richiede un KV namespace collegato al progetto Pages col nome "TURNI"
 // (vedi ISTRUZIONI-CONDIVISIONE.md).
 
-const CHIAVI = ["stato", "regole", "ambRot"];
+const CHIAVI = ["stato", "regole", "ambRot", "festivi"];
 
 export default {
   async fetch(req, env) {
@@ -21,13 +21,14 @@ export default {
       }
 
       if (req.method === "GET") {
-        const [stato, regole, ambRot] = await Promise.all(
+        const [stato, regole, ambRot, festivi] = await Promise.all(
           CHIAVI.map((k) => env.TURNI.get(k)),
         );
         return Response.json({
           stato:  stato  ? JSON.parse(stato)  : null,
           regole: regole ? JSON.parse(regole) : null,
           ambRot: ambRot ? JSON.parse(ambRot) : null,
+          festivi: festivi ? JSON.parse(festivi) : null,
         }, { headers: { "Cache-Control": "no-store" } });
       }
 

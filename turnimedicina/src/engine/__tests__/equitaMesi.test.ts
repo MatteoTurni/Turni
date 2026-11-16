@@ -9,7 +9,7 @@ import { calcolaStoricoEquita, setStoricoEquita, EQ_MESI } from "../storico";
 // ── v0.3.58: equità fra mesi di notti e weekend liberi ────────────────────────
 const med = (id:number, stato:Medico["stato"]="MR"): Medico => ({ id, nome:`X. M${id}`, codice:String(id), stato, obiettivo:25, ambulatorio:false });
 const cella = (tipo:string, man=false, sott=false) => ({ t:[{ tipo, sott, man }] });
-beforeEach(()=>{ setRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT))); ENG.PREV = null; ENG.STORICO_FEST = null; ENG.STORICO_EQ = null; ENG.STORICO_SF = null; setSalt(0); setAmbRotStart(0); });
+beforeEach(()=>{ setRegole(JSON.parse(JSON.stringify(REGOLE_DEFAULT))); ENG.PREV = null; ENG.STORICO_FEST = null; ENG.STORICO_EQ = null; setSalt(0); setAmbRotStart(0); });
 afterEach(()=>{ ENG.STORICO_EQ = null; });
 
 describe("storico di notti e weekend liberi", () => {

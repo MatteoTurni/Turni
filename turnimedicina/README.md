@@ -1,4 +1,106 @@
-# TurniMedicina 0.3.59
+# TurniMedicina 0.3.61
+
+## Novità 0.3.61 — il piano festivi nei mesi
+
+Nella sezione Festivi, sotto il piano, c'è il riquadro «Nei mesi». È
+facoltativo e va un mese alla volta: «Inserisci» scrive nel tabellone di quel
+mese i turni del piano come turni manuali — la notte diventa N, il giorno
+diventa M e P allo stesso medico. Da lì in poi sono turni manuali come gli
+altri: si spostano o si tolgono a mano, e la generazione del mese li rispetta.
+
+Regole dell'inserimento:
+- solo nei mesi non ancora generati (senza turni dell'app): in un mese già
+  generato il pulsante è spento;
+- non sovrascrive nulla. Un turno si salta, e viene elencato col motivo,
+  quando: la cella del medico è occupata (ferie, permesso, un altro turno);
+  quel turno è già di un altro medico (la notte ha già qualcuno, oppure
+  mattina o pomeriggio hanno già il massimo del fabbisogno del giorno); il
+  medico ha una notte il giorno prima; dopo una notte del piano ha già un
+  turno il giorno dopo (anche a cavallo di mese);
+- l'app ricorda che cosa ha scritto. Dopo un nuovo sorteggio il mese segnala
+  «di un sorteggio precedente» e «Sostituisci» toglie i turni di prima e
+  mette i nuovi; «Togli» li leva soltanto. I turni che nel frattempo sono
+  stati cambiati a mano non vengono toccati;
+- la reperibilità resta nel piano e nella stampa, non va nei mesi;
+- il decreto Calabria è trattato come gli altri: se il piano gli dà un turno
+  da solo, entra come manuale e la generazione del mese lo segnala.
+
+La giornata festiva inserita dal piano (M e P allo stesso medico) conta come
+ogni altro turno associato: nel massimo settimanale, nel massimo mensile del
+medico e nella distanza fra giornate piene.
+
+Verifica:
+- piano inserito in tutti i mesi e riletto dai mesi: stessi medici e stessi
+  punti del piano, 39 turni su 39;
+- dicembre 2026 reale (turni manuali veri, novembre come mese precedente),
+  generato come nell'app 11 volte senza il piano e 15 volte con un piano
+  inserito (sorteggi diversi): nessun turno scoperto, nessuna violazione,
+  stessa copertura dei giorni festivi, turni sotto obiettivo sempre 20; i
+  turni del piano sono rimasti dov'erano. Notti degli MR fra 3 e 4 in tutte
+  le generazioni senza piano e in 14 su 15 con il piano; in una sono uscite
+  fra 2 e 4, e rifacendo lo stesso sorteggio tutti avevano 3 notti. Degli 11
+  turni del piano nel mese ne entrano fra 6 e 8: gli altri sono già coperti
+  dai turni manuali del mese o cadono su ferie e permessi, e vengono elencati.
+
+## Novità 0.3.60 — sezione Festivi: il sorteggio dei turni festivi dentro l'app
+
+Lo strumento «Turni festivi» del reparto diventa una sezione dell'app. Si usa
+prima di generare i mesi e prima di inserire ferie e permessi: si sceglie un
+periodo (fino a 12 mesi, anche a cavallo di due anni) e l'app sorteggia chi
+copre ogni festività. Il piano resta nella sezione: entra nei tabelloni dei
+mesi solo se lo si inserisce (vedi 0.3.61).
+
+Come funziona il sorteggio (identico allo strumento):
+- ogni festività ha tre turni — notte prima, giorno (12 ore), notte — ciascuno
+  coi suoi punti; una notte condivisa fra due festività consecutive (25→26
+  dicembre) è un turno solo e vale il più alto. Il 24 e il 31 dicembre hanno
+  solo il turno di giorno;
+- si distribuiscono i punti, non il numero di turni; contano il saldo di
+  partenza, le festività già fatte l'ultima volta, le preferenze, il massimo
+  di turni e il minimo di superfestivi per medico (Capodanno, Pasqua, Natale,
+  Santo Stefano), la reperibilità facoltativa;
+- mai due turni lo stesso giorno o in giorni consecutivi;
+- «Rigenera» dà un'altra variante; il piano si stampa o si salva in PDF.
+
+Cosa cambia rispetto allo strumento:
+- i medici sono quelli dell'app: ci sono tutti e si tolgono dal sorteggio con
+  un tocco. Chi è «esentato dalle notti» nella scheda riceve solo turni di
+  giorno (e si può decidere a mano chi altro fa solo il giorno);
+- saldo, festività già fatte e precedenze si leggono dai mesi salvati, e si
+  correggono a mano dove serve. Notte prima e notte: chi ha una notte quel
+  giorno prende i punti per intero. Giorno: mattina e pomeriggio dello stesso
+  medico valgono il turno intero, solo mattina o solo pomeriggio la metà.
+  Contano anche i turni di PS e quelli sottolineati. Dove un mese non è
+  salvato vale il piano festivi che copriva quella data;
+- senza un piano precedente il saldo somma i punti degli ultimi anni di mesi
+  salvati (2 di default, da 1 a 5 nelle Regole); con «Prepara il prossimo
+  periodo» il piano va in archivio e il saldo riparte da quello di allora più
+  i punti fatti nel frattempo;
+- festività, punti e superfestivi si modificano nelle Regole («Festività e
+  punti»); le feste locali del reparto entrano da sole nell'elenco;
+- i colleghi in sola lettura vedono il piano pubblicato, non i comandi.
+
+Tolta l'equità dei superfestivi della 0.3.57 (elenco «Superfestivi» nelle
+Regole, alternanza Natale/Capodanno, pareggio annuo): la sostituisce il piano
+festivi. Il numero di anni salvato lì passa alla sezione Festivi. La
+generazione dei mesi tratta di nuovo i superfestivi come festivi normali
+(rotazione dei festivi e varietà restano).
+
+Voci in alto riordinate: Calendario e Medici, quelle di tutti i giorni, in
+evidenza; Festivi e Regole in un gruppo a parte, più discreto. Nella sezione
+Festivi spariscono il mese e i pulsanti del mese.
+
+Verifica:
+- stesso risultato dello strumento originale, turno per turno, su 42
+  configurazioni casuali (periodi diversi, da 6 a 13 medici, saldi, storico,
+  preferenze, con e senza reperibilità); sei di queste restano come test;
+- anno 2027 (15 festività, 39 turni, 71 punti), 20 sorteggi per caso, con 8,
+  10 e 11 medici, con uno o due medici «solo giorno», con saldo di partenza,
+  con storico e con reperibilità: fra chi ha più punti e chi ne ha meno la
+  distanza è sempre 1 punto (0,4 con la reperibilità, che pareggia il
+  totale); tutti hanno almeno un superfestivo; nessun turno scoperto; nessuna
+  notte a chi fa solo il giorno; nessuna festività ripetuta rispetto
+  all'ultima volta; un sorteggio dura circa mezzo secondo.
 
 ## Novità 0.3.59 — medico esentato dalle notti
 
@@ -86,7 +188,7 @@ prezzi: i weekend liberi oltre l'obiettivo calano del 2% (17,9 → 17,6 per
 squadra al mese) e la rotazione dei festivi è appena meno stretta (differenza
 sui 6 mesi di tutti i festivi 2,7 → 2,8).
 
-## Novità 0.3.57 — equità dei superfestivi fra gli anni
+## Novità 0.3.57 — equità dei superfestivi fra gli anni (tolta nella 0.3.60)
 
 Nel pannello Regole c'è la sezione «Superfestivi»: Natale, Capodanno, Pasqua
 e Ferragosto di default, e se ne possono aggiungere altri (data fissa,

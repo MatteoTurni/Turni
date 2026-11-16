@@ -105,7 +105,7 @@ export function generaParallelo(
       wr.onerror = () => ripiego();
       const msg: MsgRifinisci = {
         tipo:"rifinisci", anno, mese, ndim, medici, ex,
-        regole: getRegole(), prev: ENG.PREV, storico: ENG.STORICO_FEST, storicoEq: ENG.STORICO_EQ, storicoSF: ENG.STORICO_SF, ambRot: ENG.AMB_ROT_START,
+        regole: getRegole(), prev: ENG.PREV, storico: ENG.STORICO_FEST, storicoEq: ENG.STORICO_EQ, ambRot: ENG.AMB_ROT_START,
         bestT: T0, cand,
       };
       wr.postMessage(msg);
@@ -137,7 +137,6 @@ export function generaParallelo(
         prev: ENG.PREV,
         storico: ENG.STORICO_FEST,
         storicoEq: ENG.STORICO_EQ,
-        storicoSF: ENG.STORICO_SF,
         ambRot: ENG.AMB_ROT_START,
         // Seme di worker: costante golden-ratio × indice XOR rumore vero —
         // distinto per worker E per generazione.

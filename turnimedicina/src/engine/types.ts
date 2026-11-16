@@ -1,3 +1,4 @@
+import type { FestivitaPiano } from "./pianoFestivi";
 // ─── TIPI DEL DOMINIO ─────────────────────────────────────────────────────────
 export type Stato = "MR" | "ML" | "MDC" | "MPS";
 
@@ -75,10 +76,6 @@ export type OccAmb = "1"|"2"|"3"|"4"|"5"|"U";
 
 /** Festività locale a data fissa (es. il santo patrono), "MM-GG". */
 export interface FestivoLocale { data: string; nome: string; }
-/** SUPERFESTIVO (v0.3.57): un giorno con equità propria fra gli anni. `data`
- *  è "MM-GG" (data fissa) oppure "pasqua" / "pasquetta" (mobili). Contano
- *  quattro turni: la notte prima, la mattina, il pomeriggio e la notte. */
-export interface Superfestivo { id: string; nome: string; data: string; }
 /** SCHEDA REPARTO (v0.3.44): ciò che distingue un reparto dall'altro fuori
  *  dalle regole di turno — intestazioni di app ed Excel, logo, festività
  *  locali. */
@@ -156,17 +153,12 @@ export interface Regole {
    *  turni automatici già presenti possono essere spostati; true = riempie
    *  SOLO i posti vuoti, tutti i turni presenti restano dove sono. */
   coperturaSoloVuoti: boolean;
-  /** SUPERFESTIVI (v0.3.57): elenco e regole di equità fra gli anni. */
-  superfestivi: Superfestivo[];
-  /** Equità dei superfestivi accesa (v0.3.57). Spenta: l'elenco resta, il
-   *  motore li tratta come festivi normali. */
-  superfestiviAttivi: boolean;
-  /** Anni precedenti da considerare (1-5): l'anno scorso conta per intero,
-   *  quello prima a metà, poi un terzo... */
-  superfestiviAnni: number;
-  /** Chi lavora a Natale (notte del 24 o il 25) non lavora a Capodanno (notte
-   *  del 31 o l'1), e viceversa: preferenza. */
-  alternanzaNataleCapodanno: boolean;
+  /** PIANO FESTIVI (v0.3.60): le festività del sorteggio con i punti dei tre
+   *  turni (notte prima, giorno, notte) e quali sono superfestivi. Le feste
+   *  locali del reparto ci entrano da sole (vedi allineaFestiviPiano). */
+  festiviPiano: FestivitaPiano[];
+  /** Anni di mesi salvati che la sezione Festivi rilegge per saldo e storico (1-5). */
+  pianoFestiviAnni: number;
 }
 
 /** Una cella di copertura scoperta (giorno + fascia). */
