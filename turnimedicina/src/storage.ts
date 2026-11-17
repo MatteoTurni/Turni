@@ -2,6 +2,7 @@ import type { Medico, Regole, TurniAll, TurniMese } from "./engine/types";
 import { mergeRegole } from "./engine/regole";
 import { mkKey } from "./engine/date";
 import { mergeStatoFestivi, type StatoFestivi } from "./engine/festiviApp";
+import { mergeStatoDesiderate, type StatoDesiderate } from "./engine/desiderate";
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 // UNICO punto dell'app che tocca localStorage. Il motore non lo importa mai:
@@ -12,6 +13,7 @@ export const SK         = "medicina_v26";
 export const SK_AMB_ROT = "medicina_amb_rotation"; // rotazione ambulatorio
 export const SK_REGOLE  = "medicina_regole_v1";
 export const SK_FESTIVI = "medicina_festivi_v1";   // sezione Festivi (v0.3.60)
+export const SK_DESIDERATE = "medicina_desiderate_v1"; // sezione Desiderate (v0.3.64): solo su questo dispositivo
 
 export interface StatoSalvato {
   anno?: number;
@@ -79,3 +81,10 @@ export function loadFestivi(): StatoFestivi {
   try{ const r=localStorage.getItem(SK_FESTIVI); return mergeStatoFestivi(r?JSON.parse(r):null); }catch{ return mergeStatoFestivi(null); }
 }
 export function saveFestivi(s: StatoFestivi){ try{ localStorage.setItem(SK_FESTIVI,JSON.stringify(s)); }catch{} }
+
+// Sezione Desiderate (v0.3.64): risposte importate (con le email) e giorni
+// inseriti. Restano SOLO qui: non vanno nella copia condivisa, che è pubblica.
+export function loadDesiderate(): StatoDesiderate {
+  try{ const r=localStorage.getItem(SK_DESIDERATE); return mergeStatoDesiderate(r?JSON.parse(r):null); }catch{ return {}; }
+}
+export function saveDesiderate(s: StatoDesiderate){ try{ localStorage.setItem(SK_DESIDERATE,JSON.stringify(s)); }catch{} }

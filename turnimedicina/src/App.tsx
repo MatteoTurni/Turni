@@ -7,7 +7,9 @@ import { AmbulatoriPanel } from "./components/AmbulatoriPanel";
 import { RepartoPanel } from "./components/RepartoPanel";
 import { FestiviPanel } from "./components/FestiviPanel";
 import { FestiviPuntiPanel } from "./components/FestiviPuntiPanel";
-import { mergeStatoFestivi, rimuoviMedicoFestivi, type StatoFestivi } from "./engine/festiviApp";
+import { DesideratePanel } from "./components/DesideratePanel";
+import { mergeStatoFestivi, rimuoviMedicoFestivi, mesiDelPiano, type StatoFestivi } from "./engine/festiviApp";
+import type { StatoDesiderate } from "./engine/desiderate";
 import { REGOLE_DEFAULT, setRegole, getRegole, mergeRegole } from "./engine/regole";
 import { setPrevContext, setAmbRotStart } from "./engine/state";
 import { setStoricoFestivi, setStoricoEquita } from "./engine/storico";
@@ -16,7 +18,7 @@ import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
 import { bilancioNotti, spiegaWeekend, type EsitoProvaWeekend } from "./engine/diagnosiWeekend";
 import { provaWeekendParallelo } from "./provaWeekendParallelo";
 import { generaParallelo } from "./generaParallelo";
-import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot, loadFestivi, saveFestivi } from "./storage";
+import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot, loadFestivi, saveFestivi, loadDesiderate, saveDesiderate } from "./storage";
 import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
 import { esportaExcel } from "./export/excel";
 import { SC, KC } from "./components/costanti";
@@ -54,7 +56,7 @@ export default function App(){
   // I turni sono salvati PER MESE (chiave "AAAA-MM"): cambiando mese o anno si
   // lavora su un insieme di turni diverso.
   const [turniAll, setTurniAll] = useState<TurniAll>(saved?.turniAll ?? {});
-  const [tab,    setTab]    = useState<"cal"|"medici"|"festivi"|"regole">("cal");
+  const [tab,    setTab]    = useState<"cal"|"medici"|"festivi"|"desiderate"|"regole">("cal");
   const [fabbAperto, setFabbAperto] = useState(false);
   // Accordion del box "Regola della notte" (v0.3.33): raccoglie le varianti
   // della Regola N, prima sparse in coda ai limiti per medico.
@@ -74,6 +76,9 @@ export default function App(){
   // SEZIONE FESTIVI (v0.3.60): periodo, scelte e piano sorteggiato; salvati a parte.
   const [festivi, setFestivi] = useState<StatoFestivi>(loadFestivi);
   const updFestivi = (next: StatoFestivi) => { setFestivi(next); saveFestivi(next); salvaRemoto("festivi", next); };
+  // SEZIONE DESIDERATE (v0.3.64): solo su questo dispositivo (contiene le email).
+  const [desiderate, setDesiderate] = useState<StatoDesiderate>(loadDesiderate);
+  const updDesiderate = (next: StatoDesiderate) => { setDesiderate(next); saveDesiderate(next); };
   // ── SYNC REMOTO (v0.3.14) ──────────────────────────────────────────────────
   // editabile: questo browser ha la chiave di modifica (o il remoto non è
   // configurato → comportamento locale identico alle versioni precedenti).
@@ -512,7 +517,7 @@ export default function App(){
         </div>
 
         {/* Nella sezione Festivi il mese non c'entra: selettore e pulsanti del mese spariscono. */}
-        <div style={{display:tab==="festivi"?"none":"flex",gap:"6px",alignItems:"center"}}>
+        <div style={{display:tab==="festivi"||tab==="desiderate"?"none":"flex",gap:"6px",alignItems:"center"}}>
           <select value={mese} onChange={e=>setMese(+e.target.value)}
             style={{background:"#ffffff",border:"1px solid #cbd5e1",color:"#1d4ed8",borderRadius:"6px",padding:"6px 9px",fontSize:"12px",fontFamily:"monospace",cursor:"pointer"}}>
             {MESI.map((m,i)=><option key={i} value={i}>{m}</option>)}
@@ -536,7 +541,7 @@ export default function App(){
             ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#fecdd3", rimuoviManuali, false],
             ["⎙","Excel", printing?"#e2e8f0":"#047857", handlePrint, printing],
           ] as [string,string,string,()=>void,boolean][])
-            .filter(([,lb])=> tab!=="festivi" && (editabile || lb==="Excel"))
+            .filter(([,lb])=> tab!=="festivi" && tab!=="desiderate" && (editabile || lb==="Excel"))
             .map(([ic,lb,cl,fn,ds])=>(
             <button key={lb} className={"cmd"+(lb.startsWith("Rimuovi")||lb.startsWith("Conferma")?" rosso":"")} onClick={fn} disabled={!!ds} style={{background:ds?"#e2e8f0":cl,color:ds?"#94a3b8":"#fff",border:"none",borderRadius:"6px",padding:"7px 12px",cursor:ds?"not-allowed":"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace",display:"flex",alignItems:"center",gap:"4px",opacity:ds?.5:1}}>
               <span>{ic}</span><span>{lb}</span>
@@ -561,7 +566,7 @@ export default function App(){
             ))}
           </div>
           <div className="sec" style={{display:"flex",gap:"2px",alignItems:"center",borderLeft:"1px solid #cbd5e1",paddingLeft:"10px"}}>
-            {([["festivi","Festivi"],["regole","Regole"]] as ["festivi"|"regole",string][])
+            {([["festivi","Festivi"],["desiderate","Desiderate"],["regole","Regole"]] as ["festivi"|"desiderate"|"regole",string][])
               .filter(([t])=> editabile || (t==="festivi" && !!festivi.piano))
               .map(([t,l])=>(
               <button key={t} onClick={()=>setTab(t)} aria-selected={tab===t} style={{
@@ -1013,6 +1018,13 @@ export default function App(){
         <FestiviPanel medici={medici} turniAll={turniAll} regole={regole} stato={festivi} onStato={updFestivi}
           onTurniMese={(k,T)=>setTurniAll(prev=>({...prev,[k]:T}))}
           editabile={editabile} avviso={showMsg} apriRegole={()=>setTab("regole")}/>
+      )}
+
+      {/* DESIDERATE (v0.3.64) */}
+      {tab==="desiderate"&&editabile&&(
+        <DesideratePanel medici={medici} turniAll={turniAll} onTurniMese={(k,T)=>setTurniAll(prev=>({...prev,[k]:T}))}
+          stato={desiderate} onStato={updDesiderate} annoIniziale={anno} meseIniziale={mese} avviso={showMsg}
+          pianoFestiviDaInserire={festivi.piano ? mesiDelPiano(festivi.piano).map(x=>x.chiave).filter(k=>!festivi.inseriti[k]) : []}/>
       )}
 
       {/* REGOLE */}
