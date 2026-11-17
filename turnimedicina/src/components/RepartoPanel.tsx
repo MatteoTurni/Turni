@@ -25,9 +25,9 @@ export function RepartoPanel({ regole, medici, onRegole, onMedici, avviso }: {
   const fileConf = useRef<HTMLInputElement>(null);
   const [nuovaData, setNuovaData] = useState({ g: 1, m: 1, nome: "" });
 
-  const LBL: React.CSSProperties = { color: "#2d5a8a", fontSize: "10px", fontFamily: "monospace" };
+  const LBL: React.CSSProperties = { color: "#64748b", fontSize: "10px", fontFamily: "monospace" };
   const inp: React.CSSProperties = {
-    background: "#030810", border: "1px solid #1e3a5f", color: "#e2f0ff", borderRadius: "6px",
+    background: "#ffffff", border: "1px solid #e2e8f0", color: "#0f172a", borderRadius: "6px",
     padding: "5px 8px", fontSize: "11px", fontFamily: "monospace", boxSizing: "border-box", width: "100%",
   };
   const btn = (bg: string, fg: string, bd: string): React.CSSProperties => ({
@@ -102,13 +102,13 @@ export function RepartoPanel({ regole, medici, onRegole, onMedici, avviso }: {
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: "0 14px" }}>
         <div>
-          <div style={{ ...LBL, color: "#60a5fa", fontWeight: 700, marginBottom: "6px" }}>Intestazione dell'app</div>
+          <div style={{ ...LBL, color: "#1d4ed8", fontWeight: 700, marginBottom: "6px" }}>Intestazione dell'app</div>
           {campo("Azienda", rep.azienda, v => set({ azienda: v }))}
           {campo("Presidio", rep.presidio, v => set({ presidio: v }))}
           {campo("Unità operativa (titolo)", rep.unita, v => set({ unita: v }))}
         </div>
         <div>
-          <div style={{ ...LBL, color: "#60a5fa", fontWeight: 700, marginBottom: "6px" }}>Intestazione dell'Excel</div>
+          <div style={{ ...LBL, color: "#1d4ed8", fontWeight: 700, marginBottom: "6px" }}>Intestazione dell'Excel</div>
           {[0, 1, 2].map(i => campo(`Riga ${i + 1}`, rep.righeExcel[i] ?? "", v => {
             const r = [...rep.righeExcel]; while (r.length < 3) r.push(""); r[i] = v; set({ righeExcel: r });
           }))}
@@ -116,18 +116,18 @@ export function RepartoPanel({ regole, medici, onRegole, onMedici, avviso }: {
         </div>
       </div>
 
-      <div style={{ ...LBL, color: "#60a5fa", fontWeight: 700, margin: "6px 0" }}>Logo dell'Excel ({logoTxt})</div>
+      <div style={{ ...LBL, color: "#1d4ed8", fontWeight: 700, margin: "6px 0" }}>Logo dell'Excel ({logoTxt})</div>
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginBottom: "12px" }}>
         {rep.logo && <img src={rep.logo} alt="logo" style={{ maxHeight: "36px", maxWidth: "260px", background: "#fff", borderRadius: "4px", padding: "2px" }} />}
-        <button style={btn("#052e16", "#34d399", "#059669")} onClick={() => fileLogo.current?.click()}>Carica logo…</button>
-        {rep.logo !== undefined && <button style={btn("#081120", "#94a3b8", "#2f5a8a")} onClick={() => set({ logo: undefined })}>Usa predefinito</button>}
-        {rep.logo !== "" && <button style={btn("#1a0606", "#f87171", "#7f1d1d")} onClick={() => set({ logo: "" })}>Nessun logo</button>}
+        <button style={btn("#ecfdf5", "#047857", "#059669")} onClick={() => fileLogo.current?.click()}>Carica logo…</button>
+        {rep.logo !== undefined && <button style={btn("#ffffff", "#64748b", "#cbd5e1")} onClick={() => set({ logo: undefined })}>Usa predefinito</button>}
+        {rep.logo !== "" && <button style={btn("#fff1f2", "#be123c", "#fecdd3")} onClick={() => set({ logo: "" })}>Nessun logo</button>}
         <input ref={fileLogo} type="file" accept="image/png,image/jpeg" style={{ display: "none" }}
           onChange={e => { caricaLogo(e.target.files?.[0]); e.target.value = ""; }} />
         <span style={{ ...LBL, fontSize: "9px" }}>PNG o JPEG, max 500 KB; consigliata un'immagine larga e bassa (banner).</span>
       </div>
 
-      <div style={{ ...LBL, color: "#60a5fa", fontWeight: 700, marginBottom: "6px" }}>Festività locali</div>
+      <div style={{ ...LBL, color: "#1d4ed8", fontWeight: 700, marginBottom: "6px" }}>Festività locali</div>
       <div style={{ ...LBL, fontSize: "9px", marginBottom: "6px" }}>
         Valgono come un festivo nazionale: fabbisogno festivo, niente ambulatorio, notte del giorno prima prefestiva.
       </div>
@@ -136,9 +136,9 @@ export function RepartoPanel({ regole, medici, onRegole, onMedici, avviso }: {
         const [mm, gg] = f.data.split("-").map(Number);
         return (
           <div key={f.data} style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "4px" }}>
-            <span style={{ color: "#fbbf24", fontFamily: "monospace", fontSize: "11px", width: "110px" }}>{gg} {MESI[mm - 1].toLowerCase()}</span>
-            <span style={{ color: "#e2f0ff", fontFamily: "monospace", fontSize: "11px", flex: 1 }}>{f.nome || "—"}</span>
-            <button style={btn("#1a0606", "#f87171", "#7f1d1d")}
+            <span style={{ color: "#b45309", fontFamily: "monospace", fontSize: "11px", width: "110px" }}>{gg} {MESI[mm - 1].toLowerCase()}</span>
+            <span style={{ color: "#0f172a", fontFamily: "monospace", fontSize: "11px", flex: 1 }}>{f.nome || "—"}</span>
+            <button style={btn("#fff1f2", "#be123c", "#fecdd3")}
               onClick={() => set({ festiviLocali: rep.festiviLocali.filter(x => x.data !== f.data) })}>Togli</button>
           </div>
         );
@@ -152,13 +152,13 @@ export function RepartoPanel({ regole, medici, onRegole, onMedici, avviso }: {
           </select></label>
         <label style={{ flex: "1 1 160px" }}><div style={LBL}>Nome (facoltativo)</div>
           <input value={nuovaData.nome} placeholder="es. San Matteo, patrono" onChange={e => setNuovaData({ ...nuovaData, nome: e.target.value })} style={inp} /></label>
-        <button style={btn("#052e16", "#34d399", "#059669")} onClick={aggiungiFestivo}>+ Aggiungi</button>
+        <button style={btn("#ecfdf5", "#047857", "#059669")} onClick={aggiungiFestivo}>+ Aggiungi</button>
       </div>
 
-      <div style={{ ...LBL, color: "#60a5fa", fontWeight: 700, marginBottom: "6px" }}>Configurazione</div>
+      <div style={{ ...LBL, color: "#1d4ed8", fontWeight: 700, marginBottom: "6px" }}>Configurazione</div>
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
         <button style={btn("#0f766e", "#fff", "#0f766e")} onClick={esporta}>⇩ Esporta configurazione</button>
-        <button style={btn("#081120", "#5eead4", "#0f766e")} onClick={() => fileConf.current?.click()}>⇧ Importa configurazione…</button>
+        <button style={btn("#ffffff", "#0f766e", "#0f766e")} onClick={() => fileConf.current?.click()}>⇧ Importa configurazione…</button>
         <input ref={fileConf} type="file" accept="application/json,.json" style={{ display: "none" }}
           onChange={e => { importa(e.target.files?.[0]); e.target.value = ""; }} />
       </div>

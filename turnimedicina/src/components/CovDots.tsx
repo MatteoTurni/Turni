@@ -30,8 +30,8 @@ export function CovDots({ mc, pc, nc, sp, sat, fabb, diag, amb }: {
     const ok=n>=need.mn&&n<=need.mx, lo=n<need.mn;
     // Il badge diagnostico vale solo se la fascia è davvero sotto-minimo.
     const fl = lo ? dg : undefined;
-    const st = fl==="imp" ? {bg:"#1f1330",bd:"#7c3aed",tx:"#c4b5fd"}
-             : fl==="mai" ? {bg:"#3a2705",bd:"#d97706",tx:"#fde68a"}
+    const st = fl==="imp" ? {bg:"#f3e8ff",bd:"#a855f7",tx:"#7e22ce"}
+             : fl==="mai" ? {bg:"#fef3c7",bd:"#d97706",tx:"#92400e"}
              : null;
     // Sotto minimo (senza badge): deficit esplicito "n/min" a font ridotto.
     const testo = fl==="imp" ? "⊘" : fl==="mai" ? "⚠" : lo ? `${n}/${need.mn}` : (n||"");
@@ -39,9 +39,9 @@ export function CovDots({ mc, pc, nc, sp, sat, fabb, diag, amb }: {
                       :fl==="mai"?"Mai coperta in nessun tentativo di generazione (vedi Diagnosi)"
                       :lo?`Sotto il minimo: ${n} su ${need.mn}`:undefined}
       style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",
-      background:st?st.bg:n===0&&!lo?"#111":ok?"#064e3b":lo?"#7f1d1d":"#78350f",
-      border:`1px solid ${st?st.bd:n===0&&!lo?"#1f2937":ok?"#059669":lo?"#dc2626":"#d97706"}`,
-      color:st?st.tx:n===0&&!lo?"#374151":ok?"#6ee7b7":lo?"#fca5a5":"#fde68a",
+      background:st?st.bg:n===0&&!lo?"#f8fafc":ok?"#d1fae5":lo?"#ffe4e6":"#fef3c7",
+      border:`1px solid ${st?st.bd:n===0&&!lo?"#e2e8f0":ok?"#6ee7b7":lo?"#fda4af":"#fcd34d"}`,
+      color:st?st.tx:n===0&&!lo?"#94a3b8":ok?"#047857":lo?"#be123c":"#b45309",
       fontSize:lo&&!fl?"8px":"10px",textAlign:"center",lineHeight:"13px",fontFamily:"monospace",fontWeight:700
     }}>{testo}</div>;
   };
@@ -51,12 +51,12 @@ export function CovDots({ mc, pc, nc, sp, sat, fabb, diag, amb }: {
       const fl = cod==="Ap" ? "pomeriggio" : "mattina";
       return med
       ? <div key={i} title={`${nome} (${fl}, ${sigla}) assegnato: ${med}`}
-          style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",background:"#052e2b",
-          border:`1px solid ${cod==="Ap"?"#8b5cf6":"#14b8a6"}`,color:"#5eead4",fontSize:"8px",textAlign:"center",lineHeight:"13px",
+          style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",background:"#ccfbf1",
+          border:`1px solid ${cod==="Ap"?"#7c3aed":"#14b8a6"}`,color:"#0f766e",fontSize:"8px",textAlign:"center",lineHeight:"13px",
           fontFamily:"monospace",fontWeight:700,overflow:"hidden"}}>{med.slice(0,3)}</div>
       : <div key={i} title={`${nome} (${fl}, ${sigla}) SENZA medico assegnato`}
-          style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",background:"#3a0a0a",
-          border:"1px dashed #ef4444",color:"#fca5a5",fontSize:"8px",textAlign:"center",lineHeight:"13px",
+          style={{width:"20px",height:"13px",borderRadius:"3px",margin:"1px auto",background:"#ffe4e6",
+          border:"1px dashed #ef4444",color:"#be123c",fontSize:"8px",textAlign:"center",lineHeight:"13px",
           fontFamily:"monospace",fontWeight:700,overflow:"hidden"}}>{sigla.slice(0,3)}?</div>;
     })}
   </div>;

@@ -54,25 +54,25 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const senza = <T,>(o: Record<number, T>, id: number) => { const { [id]: _via, ...resto } = o; return resto; };
 
   // ── stili (stessa veste del pannello Regole)
-  const LBL: React.CSSProperties = { color: "#4b7aad", fontSize: "10px", fontFamily: "monospace", lineHeight: 1.6 };
-  const BOX: React.CSSProperties = { background: "#122036", border: "1px solid #1e3a5f", borderRadius: "8px", padding: "14px", marginBottom: "12px" };
-  const TIT: React.CSSProperties = { color: "#60a5fa", fontSize: "10px", fontFamily: "monospace", fontWeight: 700, cursor: "pointer", letterSpacing: ".04em" };
-  const SOTTO: React.CSSProperties = { fontWeight: 400, color: "#4b7aad", letterSpacing: 0 };
-  const INP: React.CSSProperties = { background: "#081120", border: "1px solid #2f5a8a", color: "#e2f0ff", borderRadius: "6px", padding: "5px 7px", fontSize: "12px", fontFamily: "monospace" };
+  const LBL: React.CSSProperties = { color: "#64748b", fontSize: "10px", fontFamily: "monospace", lineHeight: 1.6 };
+  const BOX: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "14px", marginBottom: "12px" };
+  const TIT: React.CSSProperties = { color: "#1d4ed8", fontSize: "10px", fontFamily: "monospace", fontWeight: 700, cursor: "pointer", letterSpacing: ".04em" };
+  const SOTTO: React.CSSProperties = { fontWeight: 400, color: "#64748b", letterSpacing: 0 };
+  const INP: React.CSSProperties = { background: "#ffffff", border: "1px solid #cbd5e1", color: "#0f172a", borderRadius: "6px", padding: "5px 7px", fontSize: "12px", fontFamily: "monospace" };
   const btn = (bg: string, fg: string, bd: string, off = false): React.CSSProperties => ({
-    background: off ? "#0f1a2a" : bg, color: off ? "#3d5878" : fg, border: `1px solid ${off ? "#1e3a5f" : bd}`, borderRadius: "6px", padding: "7px 13px",
+    background: off ? "#e2e8f0" : bg, color: off ? "#94a3b8" : fg, border: `1px solid ${off ? "#e2e8f0" : bd}`, borderRadius: "6px", padding: "7px 13px",
     cursor: off ? "not-allowed" : "pointer", fontSize: "11px", fontWeight: 700, fontFamily: "monospace",
   });
-  const chip = (on: boolean, col = "#60a5fa"): React.CSSProperties => ({
-    background: on ? "#0d2240" : "#0a1524", color: on ? col : "#3d5878", border: `1px solid ${on ? col : "#1e3a5f"}`, borderRadius: "999px",
+  const chip = (on: boolean, col = "#1d4ed8"): React.CSSProperties => ({
+    background: on ? "#eff6ff" : "#f1f5f9", color: on ? col : "#94a3b8", border: `1px solid ${on ? col : "#e2e8f0"}`, borderRadius: "999px",
     padding: "4px 10px", cursor: "pointer", fontSize: "11px", fontFamily: "monospace", fontWeight: on ? 700 : 400, textDecoration: on ? "none" : "line-through",
   });
-  const TH: React.CSSProperties = { background: "#0d1930", border: "1px solid #1e3a5f", padding: "5px 7px", textAlign: "left", fontSize: "10px", color: "#4b7aad", fontFamily: "monospace", whiteSpace: "nowrap" };
-  const TD: React.CSSProperties = { border: "1px solid #16304f", padding: "5px 7px", fontSize: "11px", fontFamily: "monospace", color: "#e2f0ff", whiteSpace: "nowrap" };
+  const TH: React.CSSProperties = { background: "#f1f5f9", border: "1px solid #e2e8f0", padding: "5px 7px", textAlign: "left", fontSize: "10px", color: "#64748b", fontFamily: "monospace", whiteSpace: "nowrap" };
+  const TD: React.CSSProperties = { border: "1px solid #e2e8f0", padding: "5px 7px", fontSize: "11px", fontFamily: "monospace", color: "#0f172a", whiteSpace: "nowrap" };
   const numInp = (val: number, min: number, max: number, on: (v: number) => void, w = "58px", step = 1) => (
     <input type="number" min={min} max={max} step={step} value={val}
       onChange={e => { const v = parseFloat(e.target.value); on(Math.max(min, Math.min(max, isFinite(v) ? v : min))); }}
-      style={{ ...INP, width: w, textAlign: "center", color: "#60a5fa" }} />
+      style={{ ...INP, width: w, textAlign: "center", color: "#1d4ed8" }} />
   );
 
   // ── sorteggio
@@ -136,14 +136,14 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
       <thead><tr>{["Data", "Turno", "Festività", "Punti", "Medico", ...(p.repOn ? ["Reperibile"] : []), "Note"].map(h => <th key={h} style={stampa ? undefined : TH}>{h}</th>)}</tr></thead>
       <tbody>
         {p.turni.map(t => (
-          <tr key={t.date + t.tipo} style={!stampa && t.sup ? { background: "#1a1430" } : undefined}>
+          <tr key={t.date + t.tipo} style={!stampa && t.sup ? { background: "#f5f3ff" } : undefined}>
             <td style={stampa ? undefined : TD}>{fmtIt(t.date)}</td>
-            <td style={stampa ? undefined : { ...TD, color: t.tipo === "notturno" ? "#4ade80" : "#93c5fd" }}>{t.tipo === "notturno" ? "notte" : "giorno"}</td>
+            <td style={stampa ? undefined : { ...TD, color: t.tipo === "notturno" ? "#047857" : "#2563eb" }}>{t.tipo === "notturno" ? "notte" : "giorno"}</td>
             <td style={stampa ? undefined : { ...TD, whiteSpace: "normal" }}>{t.nomi.join(" / ")}</td>
             <td style={stampa ? undefined : { ...TD, textAlign: "center" }}>{num(t.punti)}</td>
-            <td style={stampa ? undefined : { ...TD, fontWeight: 700, color: t.medico == null ? "#f87171" : "#e2f0ff" }}>{t.medico == null ? "NESSUNO" : nome(t.medico)}</td>
-            {p.repOn && <td style={stampa ? undefined : { ...TD, color: "#a78bfa" }}>{nome(t.reperibile)}</td>}
-            <td style={stampa ? undefined : { ...TD, color: "#4b7aad", fontSize: "10px", whiteSpace: "normal" }}>{stampa ? [t.sup ? "superfestivo" : "", t.condiviso ? "notte condivisa" : ""].filter(Boolean).join(", ") : note(t)}</td>
+            <td style={stampa ? undefined : { ...TD, fontWeight: 700, color: t.medico == null ? "#be123c" : "#0f172a" }}>{t.medico == null ? "NESSUNO" : nome(t.medico)}</td>
+            {p.repOn && <td style={stampa ? undefined : { ...TD, color: "#6d28d9" }}>{nome(t.reperibile)}</td>}
+            <td style={stampa ? undefined : { ...TD, color: "#64748b", fontSize: "10px", whiteSpace: "normal" }}>{stampa ? [t.sup ? "superfestivo" : "", t.condiviso ? "notte condivisa" : ""].filter(Boolean).join(", ") : note(t)}</td>
           </tr>
         ))}
       </tbody>
@@ -163,11 +163,11 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
               {conSaldo && <td style={stampa ? undefined : c}>{num(r.saldo)}</td>}
               <td style={stampa ? undefined : c}>{num(r.punti)}</td>
               {p.repOn && <><td style={stampa ? undefined : c}>{r.nRep}</td><td style={stampa ? undefined : c}>{num(r.puntiRep)}</td></>}
-              {(conSaldo || p.repOn) && <td style={stampa ? undefined : { ...c, color: "#fbbf24", fontWeight: 700 }}>{num(r.totale)}</td>}
+              {(conSaldo || p.repOn) && <td style={stampa ? undefined : { ...c, color: "#b45309", fontWeight: 700 }}>{num(r.totale)}</td>}
               <td style={stampa ? undefined : c}>{r.turni}</td>
               <td style={stampa ? undefined : c}>{r.diurni}</td>
               <td style={stampa ? undefined : c}>{r.notturni}</td>
-              <td style={stampa ? undefined : { ...c, color: r.superfestivi < p.minSuper ? "#f87171" : "#e2f0ff" }}>{r.superfestivi}</td>
+              <td style={stampa ? undefined : { ...c, color: r.superfestivi < p.minSuper ? "#be123c" : "#0f172a" }}>{r.superfestivi}</td>
               {p.richieste > 0 && <td style={stampa ? undefined : c}>{r.pref}</td>}
             </tr>
           ))}
@@ -180,13 +180,13 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
     <>
       <div className="np" style={BOX}>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 700, color: "#e2eeff", fontFamily: "monospace" }}>Piano festivi {periodoTxt(piano.periodo)}</span>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", fontFamily: "monospace" }}>Piano festivi {periodoTxt(piano.periodo)}</span>
           <span style={LBL}>{piano.turni.length} turni · {num(piano.turni.reduce((s, t) => s + t.punti, 0))} punti{piano.generato ? ` · sorteggiato il ${new Date(piano.generato).toLocaleDateString("it-IT")}` : ""}</span>
           <span style={{ flex: 1 }} />
-          <button onClick={() => window.print()} style={btn("#064e3b", "#fff", "#065f46")}>⎙ Stampa / PDF</button>
+          <button onClick={() => window.print()} style={btn("#047857", "#fff", "#065f46")}>⎙ Stampa / PDF</button>
         </div>
         {pianoAltroPeriodo && editabile &&
-          <div style={{ ...LBL, color: "#fbbf24", marginBottom: "8px" }}>Questo piano è del periodo {periodoTxt(piano.periodo)}: il periodo impostato sopra è diverso. «Genera turni» lo sostituisce.</div>}
+          <div style={{ ...LBL, color: "#b45309", marginBottom: "8px" }}>Questo piano è del periodo {periodoTxt(piano.periodo)}: il periodo impostato sopra è diverso. «Genera turni» lo sostituisce.</div>}
         <div style={{ overflowX: "auto" }}>{tabellaPiano(piano, false)}</div>
       </div>
       <div className="np" style={BOX}>
@@ -196,11 +196,11 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
       <div className="np" style={BOX}>
         <div style={{ ...TIT, cursor: "default", marginBottom: "8px" }}>VERIFICA</div>
         {controlli.map((c, i) => (
-          <div key={i} style={{ ...LBL, fontSize: "11px", color: c.ok ? "#86efac" : "#fca5a5" }}>{c.ok ? "✓" : "✗"} {c.testo}</div>
+          <div key={i} style={{ ...LBL, fontSize: "11px", color: c.ok ? "#15803d" : "#be123c" }}>{c.ok ? "✓" : "✗"} {c.testo}</div>
         ))}
         {editabile && (
           <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-            <button onClick={preparaProssimo} style={btn(confNext ? "#b45309" : "#0d1930", confNext ? "#fff" : "#fbbf24", "#b45309")}>
+            <button onClick={preparaProssimo} style={btn(confNext ? "#b45309" : "#f1f5f9", confNext ? "#fff" : "#b45309", "#b45309")}>
               {confNext ? "Conferma: passa al periodo successivo" : "Prepara il prossimo periodo"}
             </button>
             <span style={LBL}>Archivia questo piano e propone il periodo che segue: saldo, storico e precedenze si rileggono da soli. Prima, se vuoi tenerla, stampa questa versione.</span>
@@ -220,24 +220,24 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
               const generato = meseGenerato(turniAll[r.chiave]);
               const vecchio = fatto && ins.generato !== piano.generato;
               return (
-                <div key={r.chiave} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", background: "#0d1930", border: "1px solid #16304f", borderRadius: "6px", padding: "6px 10px" }}>
-                  <span style={{ ...LBL, color: "#e2eeff", fontSize: "11px", fontWeight: 700, minWidth: "130px" }}>{meseTxt(r.chiave)}</span>
+                <div key={r.chiave} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "6px 10px" }}>
+                  <span style={{ ...LBL, color: "#0f172a", fontSize: "11px", fontWeight: 700, minWidth: "130px" }}>{meseTxt(r.chiave)}</span>
                   <span style={{ ...LBL, minWidth: "70px" }}>{r.turni} turn{r.turni === 1 ? "o" : "i"}</span>
-                  <span style={{ ...LBL, flex: 1, color: vecchio ? "#fbbf24" : fatto ? "#86efac" : generato ? "#fca5a5" : "#4b7aad" }}>
+                  <span style={{ ...LBL, flex: 1, color: vecchio ? "#b45309" : fatto ? "#15803d" : generato ? "#be123c" : "#64748b" }}>
                     {fatto ? `inseriti ${ins.turni.length}${vecchio ? " — di un sorteggio precedente" : ""}` : generato ? "mese già generato" : "non inserito"}
                   </span>
                   <button onClick={() => inserisciMese(r.chiave)} disabled={generato} title={generato ? "Il piano entra solo nei mesi non ancora generati" : ""}
-                    style={{ ...btn("#0d1930", "#60a5fa", "#2f5a8a", generato), padding: "4px 10px" }}>{fatto ? "Sostituisci" : "Inserisci"}</button>
-                  {fatto && <button onClick={() => togliMese(r.chiave)} style={{ ...btn("#1a0606", "#f87171", "#7f1d1d"), padding: "4px 10px" }}>Togli</button>}
+                    style={{ ...btn("#f1f5f9", "#1d4ed8", "#cbd5e1", generato), padding: "4px 10px" }}>{fatto ? "Sostituisci" : "Inserisci"}</button>
+                  {fatto && <button onClick={() => togliMese(r.chiave)} style={{ ...btn("#fff1f2", "#be123c", "#fecdd3"), padding: "4px 10px" }}>Togli</button>}
                 </div>
               );
             })}
           </div>
           {esitoIns && (
-            <div style={{ ...LBL, fontSize: "11px", marginTop: "10px", color: esitoIns.saltati.length ? "#fbbf24" : "#86efac" }}>
+            <div style={{ ...LBL, fontSize: "11px", marginTop: "10px", color: esitoIns.saltati.length ? "#b45309" : "#15803d" }}>
               {meseTxt(esitoIns.chiave)}: {esitoIns.inseriti} turn{esitoIns.inseriti === 1 ? "o inserito" : "i inseriti"}{esitoIns.tolti > 0 && <>, {esitoIns.tolti} del sorteggio precedente tolti</>}{esitoIns.saltati.length > 0 && <>, {esitoIns.saltati.length} saltat{esitoIns.saltati.length === 1 ? "o" : "i"}:</>}
               {esitoIns.saltati.map(x => (
-                <div key={x.date + x.tipo} style={{ color: "#fca5a5" }}>✗ {fmtIt(x.date)} {x.tipo === "notturno" ? "notte" : "giorno"} · {nome(x.medico)} — {x.motivo}</div>
+                <div key={x.date + x.tipo} style={{ color: "#be123c" }}>✗ {fmtIt(x.date)} {x.tipo === "notturno" ? "notte" : "giorno"} · {nome(x.medico)} — {x.motivo}</div>
               ))}
             </div>
           )}
@@ -293,7 +293,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
       {STILE}
       <div className="np">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 700, color: "#e2eeff", fontFamily: "monospace" }}>Turni festivi</span>
+          <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", fontFamily: "monospace" }}>Turni festivi</span>
         </div>
         <div style={{ ...LBL, marginBottom: "12px" }}>
           Sorteggio dei turni festivi e superfestivi su un periodo, da fare <b>prima</b> di generare i mesi e di inserire ferie e permessi.
@@ -308,17 +308,17 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
               <input type="date" value={stato.periodo.start} onChange={e => e.target.value && set({ periodo: { ...stato.periodo, start: e.target.value } })} style={INP} /></label>
             <label><div style={LBL}>Al</div>
               <input type="date" value={stato.periodo.end} onChange={e => e.target.value && set({ periodo: { ...stato.periodo, end: e.target.value } })} style={INP} /></label>
-            <button onClick={() => set({ periodo: { start: iso(annoProssimo, 1, 1), end: iso(annoProssimo, 12, 31) } })} style={btn("#0d1930", "#60a5fa", "#2f5a8a")}>Anno {annoProssimo}</button>
+            <button onClick={() => set({ periodo: { start: iso(annoProssimo, 1, 1), end: iso(annoProssimo, 12, 31) } })} style={btn("#f1f5f9", "#1d4ed8", "#cbd5e1")}>Anno {annoProssimo}</button>
             <label><div style={LBL}>Max turni per medico</div>{numInp(stato.maxShifts, 1, 20, v => set({ maxShifts: Math.round(v) }))}</label>
             <label><div style={LBL}>Min superfestivi per medico</div>{numInp(stato.minSuper, 0, 5, v => set({ minSuper: Math.round(v) }))}</label>
           </div>
           {errPeriodo
-            ? <div style={{ ...LBL, color: "#f87171", marginTop: "8px", fontSize: "11px" }}>{errPeriodo}</div>
+            ? <div style={{ ...LBL, color: "#be123c", marginTop: "8px", fontSize: "11px" }}>{errPeriodo}</div>
             : <div style={{ ...LBL, marginTop: "8px" }}>
                 {dati.feste.length} festività · {turniPeriodo.length} turni ({nSuper} superfestivi) · {num(puntiTot)} punti
                 {dati.partecipanti.length > 0 && <> · in media {num(turniPeriodo.length / dati.partecipanti.length)} turni e {num(puntiTot / dati.partecipanti.length)} punti a testa</>}
                 {dati.partecipanti.length * stato.maxShifts < turniPeriodo.length &&
-                  <span style={{ color: "#f87171" }}> · con {dati.partecipanti.length} medici e al massimo {stato.maxShifts} turni non si coprono tutti</span>}
+                  <span style={{ color: "#be123c" }}> · con {dati.partecipanti.length} medici e al massimo {stato.maxShifts} turni non si coprono tutti</span>}
               </div>}
         </div>
 
@@ -338,7 +338,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             {dati.partecipanti.map(m => {
               const on = dati.soloGiorno.has(m.id), base = esenteNotti(m);
               return <button key={m.id} onClick={() => set({ soloGiorno: !on === base ? senza(stato.soloGiorno, m.id) : { ...stato.soloGiorno, [m.id]: !on } })}
-                style={{ ...chip(on, "#c4b5fd"), textDecoration: "none" }}>{on ? "☀ " : ""}{m.nome}</button>;
+                style={{ ...chip(on, "#6d28d9"), textDecoration: "none" }}>{on ? "☀ " : ""}{m.nome}</button>;
             })}
           </div>
         </div>
@@ -351,21 +351,21 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
               ? <>Riparte dal saldo del piano precedente e aggiunge i punti fatti dal {fmtIt(auto.da).slice(4)}: </>
               : <>Punti dei turni festivi fatti dal {fmtIt(auto.da).slice(4)} al {fmtIt(auto.a).slice(4)} ({regole.pianoFestiviAnni} ann{regole.pianoFestiviAnni === 1 ? "o" : "i"}): </>}
             {auto.nMese + auto.nPiano === 0
-              ? <b style={{ color: "#fbbf24" }}>nessun turno festivo trovato nei mesi salvati — si parte alla pari, oppure scrivi i saldi a mano.</b>
-              : <><b style={{ color: "#93c5fd" }}>{auto.nMese}</b> turni letti dai mesi salvati{auto.nPiano > 0 && <>, <b style={{ color: "#93c5fd" }}>{auto.nPiano}</b> dal piano (mese non ancora salvato)</>}. I mesi non salvati non contano.</>}
+              ? <b style={{ color: "#b45309" }}>nessun turno festivo trovato nei mesi salvati — si parte alla pari, oppure scrivi i saldi a mano.</b>
+              : <><b style={{ color: "#2563eb" }}>{auto.nMese}</b> turni letti dai mesi salvati{auto.nPiano > 0 && <>, <b style={{ color: "#2563eb" }}>{auto.nPiano}</b> dal piano (mese non ancora salvato)</>}. I mesi non salvati non contano.</>}
             {" "}Contano solo le differenze: chi parte più alto riceve meno carico. Notti per intero; il giorno vale intero con mattina e pomeriggio, metà con uno solo.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: "8px" }}>
             {dati.partecipanti.map(m => {
               const man = stato.saldoMan[m.id] != null;
               return (
-                <div key={m.id} style={{ background: "#0d1930", border: `1px solid ${man ? "#b45309" : "#16304f"}`, borderRadius: "6px", padding: "7px 8px" }}>
-                  <div style={{ ...LBL, color: "#e2eeff", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nome}</div>
+                <div key={m.id} style={{ background: "#f1f5f9", border: `1px solid ${man ? "#b45309" : "#e2e8f0"}`, borderRadius: "6px", padding: "7px 8px" }}>
+                  <div style={{ ...LBL, color: "#0f172a", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nome}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
                     {numInp(dati.saldo[m.id], -99, 99, v => set({ saldoMan: { ...stato.saldoMan, [m.id]: v } }), "64px", 0.5)}
                     {man
                       ? <button onClick={() => set({ saldoMan: senza(stato.saldoMan, m.id) })} title={`Torna al valore automatico (${num(auto.saldo[m.id] ?? 0)})`}
-                          style={{ ...btn("#0d1930", "#fbbf24", "#b45309"), padding: "3px 7px" }}>↺ {num(auto.saldo[m.id] ?? 0)}</button>
+                          style={{ ...btn("#f1f5f9", "#b45309", "#b45309"), padding: "3px 7px" }}>↺ {num(auto.saldo[m.id] ?? 0)}</button>
                       : <span style={{ ...LBL, fontSize: "9px" }}>auto</span>}
                   </div>
                 </div>
@@ -373,15 +373,15 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             })}
           </div>
           <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-            <button onClick={() => set({ saldoMan: {} })} style={btn("#0d1930", "#60a5fa", "#2f5a8a", !manSaldo)} disabled={!manSaldo}>Tutti automatici</button>
-            <button onClick={() => set({ saldoMan: Object.fromEntries(dati.partecipanti.map(m => [m.id, 0])) })} style={btn("#0d1930", "#60a5fa", "#2f5a8a")}>Tutti a zero</button>
+            <button onClick={() => set({ saldoMan: {} })} style={btn("#f1f5f9", "#1d4ed8", "#cbd5e1", !manSaldo)} disabled={!manSaldo}>Tutti automatici</button>
+            <button onClick={() => set({ saldoMan: Object.fromEntries(dati.partecipanti.map(m => [m.id, 0])) })} style={btn("#f1f5f9", "#1d4ed8", "#cbd5e1")}>Tutti a zero</button>
           </div>
           <div style={{ ...LBL, margin: "14px 0 6px" }}>Precedenza sui superfestivi — chi ne è rimasto senza nel periodo precedente (tocca per cambiare):</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {dati.partecipanti.map(m => {
               const on = dati.precedenza.has(m.id), base = auto.precedenza.includes(m.id);
               return <button key={m.id} onClick={() => set({ precMan: !on === base ? senza(stato.precMan, m.id) : { ...stato.precMan, [m.id]: !on } })}
-                style={{ ...chip(on, "#fbbf24"), textDecoration: "none" }}>{on ? "★ " : ""}{m.nome}</button>;
+                style={{ ...chip(on, "#b45309"), textDecoration: "none" }}>{on ? "★ " : ""}{m.nome}</button>;
             })}
           </div>
         </details>
@@ -408,12 +408,12 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
                       <td style={{ ...TD, fontWeight: 700 }}>{m.nome}</td>
                       {tipiFesta.map(f => (
                         <td key={f} style={{ ...TD, textAlign: "center", padding: "3px" }}>
-                          <input type="checkbox" checked={mio.includes(f)} title={`${m.nome} · ${f}`} style={{ accentColor: "#60a5fa", cursor: "pointer" }}
+                          <input type="checkbox" checked={mio.includes(f)} title={`${m.nome} · ${f}`} style={{ accentColor: "#1d4ed8", cursor: "pointer" }}
                             onChange={e => set({ storicoMan: { ...stato.storicoMan, [m.id]: e.target.checked ? [...mio, f] : mio.filter(x => x !== f) } })} />
                         </td>
                       ))}
                       <td style={{ ...TD, border: "none" }}>
-                        {man && <button onClick={() => set({ storicoMan: senza(stato.storicoMan, m.id) })} title="Torna alla lettura automatica" style={{ ...btn("#0d1930", "#fbbf24", "#b45309"), padding: "2px 7px" }}>↺</button>}
+                        {man && <button onClick={() => set({ storicoMan: senza(stato.storicoMan, m.id) })} title="Torna alla lettura automatica" style={{ ...btn("#f1f5f9", "#b45309", "#b45309"), padding: "2px 7px" }}>↺</button>}
                       </td>
                     </tr>
                   );
@@ -441,16 +441,16 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             <select value={nuovaPref.ruolo} onChange={e => setNuovaPref({ ...nuovaPref, ruolo: e.target.value as RuoloPref })} style={INP}>
               {ruoliDi(nuovaPref.festa).map(([r, l]) => <option key={r} value={r}>{l}</option>)}
             </select>
-            <button disabled={nuovaPref.id == null || !nuovaPref.festa} style={btn("#052e16", "#4ade80", "#16a34a", nuovaPref.id == null || !nuovaPref.festa)}
+            <button disabled={nuovaPref.id == null || !nuovaPref.festa} style={btn("#ecfdf5", "#047857", "#16a34a", nuovaPref.id == null || !nuovaPref.festa)}
               onClick={() => { const id = nuovaPref.id!; set({ preferenze: { ...stato.preferenze, [id]: { ...(stato.preferenze[id] || {}), [nuovaPref.festa]: nuovaPref.ruolo } } }); setNuovaPref({ id, festa: "", ruolo: "any" }); }}>➕ Aggiungi</button>
           </div>
           {elencoPref.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "10px" }}>
               {elencoPref.map(({ m, f, r }) => (
-                <span key={m.id + f} style={{ background: "#0d1930", border: "1px solid #2f5a8a", borderRadius: "999px", padding: "4px 6px 4px 10px", fontSize: "11px", fontFamily: "monospace", color: "#e2f0ff" }}>
-                  <b>{m.nome}</b> · {f} · <span style={{ color: "#f0abfc" }}>{RUOLI.find(x => x[0] === r)?.[1]}</span>
+                <span key={m.id + f} style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "999px", padding: "4px 6px 4px 10px", fontSize: "11px", fontFamily: "monospace", color: "#0f172a" }}>
+                  <b>{m.nome}</b> · {f} · <span style={{ color: "#a21caf" }}>{RUOLI.find(x => x[0] === r)?.[1]}</span>
                   <button title="Togli la richiesta" onClick={() => { const { [f]: _via, ...resto } = stato.preferenze[m.id]; set({ preferenze: { ...stato.preferenze, [m.id]: resto } }); }}
-                    style={{ background: "transparent", border: "none", color: "#f87171", cursor: "pointer", fontWeight: 700, marginLeft: "6px" }}>✕</button>
+                    style={{ background: "transparent", border: "none", color: "#be123c", cursor: "pointer", fontWeight: 700, marginLeft: "6px" }}>✕</button>
                 </span>
               ))}
             </div>
@@ -464,8 +464,8 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             Aggiunge a ogni turno un medico <b>reperibile</b> di riserva. Pesa una frazione dei punti del turno ed entra nell'equità del carico totale. Resta nel piano e nella stampa.
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginBottom: "10px" }}>
-            <input type="checkbox" checked={stato.reperibilita.enabled} onChange={e => set({ reperibilita: { ...stato.reperibilita, enabled: e.target.checked } })} style={{ accentColor: "#60a5fa" }} />
-            <span style={{ ...LBL, color: "#e2eeff", fontSize: "11px" }}>Assegna un reperibile per ogni turno</span>
+            <input type="checkbox" checked={stato.reperibilita.enabled} onChange={e => set({ reperibilita: { ...stato.reperibilita, enabled: e.target.checked } })} style={{ accentColor: "#1d4ed8" }} />
+            <span style={{ ...LBL, color: "#0f172a", fontSize: "11px" }}>Assegna un reperibile per ogni turno</span>
           </label>
           {stato.reperibilita.enabled && <>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "14px", marginBottom: "10px" }}>
@@ -476,7 +476,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
               {dati.partecipanti.map(m => {
                 const on = !stato.reperibilita.nonIdonei.includes(m.id);
-                return <button key={m.id} style={chip(on, "#a78bfa")}
+                return <button key={m.id} style={chip(on, "#6d28d9")}
                   onClick={() => set({ reperibilita: { ...stato.reperibilita, nonIdonei: on ? [...stato.reperibilita.nonIdonei, m.id] : stato.reperibilita.nonIdonei.filter(x => x !== m.id) } })}>{m.nome}</button>;
               })}
             </div>
@@ -488,19 +488,19 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
           <summary style={TIT}>FESTIVITÀ E PUNTI DEL PERIODO <span style={SOTTO}>· {dati.feste.length} festività, {num(puntiTot)} punti</span></summary>
           <div style={{ ...LBL, margin: "8px 0" }}>
             Ogni festività ha tre turni — <b>notte prima</b>, <b>giorno</b> (12 ore), <b>notte</b> — ciascuno coi suoi punti. Una notte condivisa fra due festività consecutive è un turno solo e vale il più alto.
-            Punti e superfestivi (★) si cambiano nelle <button onClick={apriRegole} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontFamily: "monospace", fontSize: "10px", textDecoration: "underline", padding: 0 }}>Regole</button>.
+            Punti e superfestivi (★) si cambiano nelle <button onClick={apriRegole} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontFamily: "monospace", fontSize: "10px", textDecoration: "underline", padding: 0 }}>Regole</button>.
           </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse" }}>
               <thead><tr>{["Data", "Festività", "Notte prima", "Giorno", "Notte"].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
               <tbody>
                 {dati.feste.map(h => (
-                  <tr key={h.name} style={h.sup ? { background: "#1a1430" } : undefined}>
+                  <tr key={h.name} style={h.sup ? { background: "#f5f3ff" } : undefined}>
                     <td style={TD}>{fmtIt(h.date)}</td>
                     <td style={{ ...TD, fontWeight: h.sup ? 700 : 400 }}>{h.sup ? "★ " : ""}{h.name}</td>
-                    <td style={{ ...TD, textAlign: "center", color: "#4ade80" }}>{h.soloGiorno ? "—" : h.skipNottePrima ? "(periodo prima)" : num(h.slots.nottePrima)}</td>
-                    <td style={{ ...TD, textAlign: "center", color: "#93c5fd" }}>{num(h.slots.giorno)}</td>
-                    <td style={{ ...TD, textAlign: "center", color: "#4ade80" }}>{h.soloGiorno ? "—" : num(h.slots.notte)}</td>
+                    <td style={{ ...TD, textAlign: "center", color: "#047857" }}>{h.soloGiorno ? "—" : h.skipNottePrima ? "(periodo prima)" : num(h.slots.nottePrima)}</td>
+                    <td style={{ ...TD, textAlign: "center", color: "#2563eb" }}>{num(h.slots.giorno)}</td>
+                    <td style={{ ...TD, textAlign: "center", color: "#047857" }}>{h.soloGiorno ? "—" : num(h.slots.notte)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -511,7 +511,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
         {/* ── AZIONI ── */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", margin: "16px 0" }}>
           <button onClick={() => genera(stato.seme)} disabled={busy} style={{ ...btn("#1d4ed8", "#fff", "#1d4ed8", busy), padding: "9px 18px", fontSize: "12px" }}>{busy ? "Sorteggio in corso…" : "Genera turni"}</button>
-          <button onClick={() => genera(stato.seme + 1)} disabled={busy || !piano} style={{ ...btn("#0d1930", "#60a5fa", "#2f5a8a", busy || !piano), padding: "9px 14px" }}>Rigenera (altra variante)</button>
+          <button onClick={() => genera(stato.seme + 1)} disabled={busy || !piano} style={{ ...btn("#f1f5f9", "#1d4ed8", "#cbd5e1", busy || !piano), padding: "9px 14px" }}>Rigenera (altra variante)</button>
           {piano && <span style={LBL}>variante n. {piano.seme}</span>}
         </div>
       </div>

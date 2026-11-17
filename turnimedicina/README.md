@@ -1,4 +1,18 @@
-# TurniMedicina 0.3.61
+# TurniMedicina 0.3.62
+
+## Novità 0.3.62 — colori chiari
+
+L'app passa da sfondo scuro a sfondo bianco. La disposizione non cambia:
+cambiano solo i colori.
+- barra in alto blu scuro, con titolo, mese e voci in bianco; «① Copertura»
+  bianco in evidenza, «Rimuovi App» e «Rimuovi Man» solo bordati;
+- turni nel calendario in riquadri pieni con la lettera bianca, negli stessi
+  colori di prima (blu mattina, viola pomeriggio, verde notte, arancio
+  licenze, verde acqua ambulatorio): manuali intensi, automatici più chiari;
+- sabati e domeniche in azzurro, festivi in rosa; copertura verde chiaro se
+  va bene, rosa sotto il minimo, giallo sopra il massimo;
+- finestre, pannelli Regole e Festivi, avvisi: fondi chiari e testi scuri.
+Stampa ed Excel non cambiano.
 
 ## Novità 0.3.61 — il piano festivi nei mesi
 

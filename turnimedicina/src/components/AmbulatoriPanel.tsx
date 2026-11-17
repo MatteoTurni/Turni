@@ -27,9 +27,9 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
   onAmbulatori: (a: Ambulatorio[]) => void;
   onMedici: (m: Medico[]) => void;
 }) {
-  const LBL: React.CSSProperties = { color: "#2d5a8a", fontSize: "10px", fontFamily: "monospace" };
+  const LBL: React.CSSProperties = { color: "#64748b", fontSize: "10px", fontFamily: "monospace" };
   const inp: React.CSSProperties = {
-    background: "#030810", border: "1px solid #1e3a5f", color: "#e2f0ff", borderRadius: "6px",
+    background: "#ffffff", border: "1px solid #e2e8f0", color: "#0f172a", borderRadius: "6px",
     padding: "5px 8px", fontSize: "11px", fontFamily: "monospace", boxSizing: "border-box",
   };
   const upd = (id: string, patch: Partial<Ambulatorio>) =>
@@ -94,7 +94,7 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
       {ambulatori.map(a => {
         const abil = candidati.filter(m => abilitatoAmb(m, a.id));
         return (
-          <div key={a.id} style={{ background: "#0b1626", border: "1px solid #1e3a5f", borderRadius: "8px", padding: "10px", marginBottom: "10px" }}>
+          <div key={a.id} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "10px", marginBottom: "10px" }}>
             <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "10px" }}>
               <div style={{ flex: "1 1 160px" }}>
                 <div style={LBL}>Nome</div>
@@ -104,12 +104,12 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
               </div>
               <div style={{ width: "80px" }}>
                 <div style={LBL}>Sigla</div>
-                <input value={a.sigla} maxLength={5} style={{ ...inp, width: "100%", color: "#6ee7b7", fontWeight: 700 }}
+                <input value={a.sigla} maxLength={5} style={{ ...inp, width: "100%", color: "#047857", fontWeight: 700 }}
                   onChange={e => upd(a.id, { sigla: e.target.value.toUpperCase() })}
                   onBlur={e => { if (!e.target.value.trim()) upd(a.id, { sigla: siglaDaNome(a.nome) }); }} />
               </div>
               <button onClick={() => elimina(a)} title="Elimina ambulatorio"
-                style={{ background: "#1a0606", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: "6px", padding: "5px 10px", cursor: "pointer", fontSize: "11px", fontFamily: "monospace" }}>
+                style={{ background: "#fff1f2", color: "#be123c", border: "1px solid #fecdd3", borderRadius: "6px", padding: "5px 10px", cursor: "pointer", fontSize: "11px", fontFamily: "monospace" }}>
                 Elimina
               </button>
             </div>
@@ -120,11 +120,11 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
                 const ps = perSettimana(a, d);
                 const f = a.giorni[d] ?? "";
                 const attivo = ps ? Object.values(a.settimane![d]!).some(Boolean) : !!f;
-                const sel = (v: string) => ({ ...inp, padding: "3px", color: v ? "#34d399" : "#3d5878", borderColor: v ? "#059669" : "#1e3a5f" });
+                const sel = (v: string) => ({ ...inp, padding: "3px", color: v ? "#047857" : "#94a3b8", borderColor: v ? "#059669" : "#e2e8f0" });
                 return (
                   <div key={d} style={{ display: "flex", flexDirection: "column", gap: "3px",
-                    ...(ps ? { background: "#081120", border: "1px solid #1e3a5f", borderRadius: "6px", padding: "4px" } : {}) }}>
-                    <span style={{ ...LBL, color: attivo ? "#34d399" : "#3d5878", fontWeight: 700 }}>{DF[d].slice(0, 3)}</span>
+                    ...(ps ? { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px" } : {}) }}>
+                    <span style={{ ...LBL, color: attivo ? "#047857" : "#94a3b8", fontWeight: 700 }}>{DF[d].slice(0, 3)}</span>
                     {!ps && (
                       <select value={f} onChange={e => setFascia(a, d, e.target.value as FasciaAmb | "")} style={sel(f)}>
                         {FASCE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -134,7 +134,7 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
                       const fo = a.settimane![d]![o] ?? "";
                       return (
                         <label key={o} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                          <span style={{ ...LBL, width: "38px", color: fo ? "#34d399" : "#3d5878" }}>{OCC_LBL[o]}</span>
+                          <span style={{ ...LBL, width: "38px", color: fo ? "#047857" : "#94a3b8" }}>{OCC_LBL[o]}</span>
                           <select value={fo} onChange={e => setFasciaOcc(a, d, o, e.target.value as FasciaAmb | "")} style={sel(fo)}>
                             {FASCE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                           </select>
@@ -153,15 +153,15 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
 
             <div style={{ ...LBL, marginBottom: "4px" }}>
               Medici abilitati ({abil.length}){abil.length === 0 && ambConfigurato(a) &&
-                <span style={{ color: "#f87171" }}> — nessuno: l'ambulatorio resterà scoperto</span>}
+                <span style={{ color: "#be123c" }}> — nessuno: l'ambulatorio resterà scoperto</span>}
             </div>
             <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
               {candidati.map(m => {
                 const on = abilitatoAmb(m, a.id);
                 return (
                   <button key={m.id} onClick={() => togMed(a, m)}
-                    style={{ background: on ? "#052e16" : "#081120", color: on ? "#34d399" : "#3d5878",
-                      border: `1px solid ${on ? "#059669" : "#1e3a5f"}`, borderRadius: "5px",
+                    style={{ background: on ? "#ecfdf5" : "#ffffff", color: on ? "#047857" : "#94a3b8",
+                      border: `1px solid ${on ? "#059669" : "#e2e8f0"}`, borderRadius: "5px",
                       padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontWeight: 700, fontFamily: "monospace" }}>
                     {m.nome}
                   </button>
@@ -172,7 +172,7 @@ export function AmbulatoriPanel({ ambulatori, medici, onAmbulatori, onMedici }: 
         );
       })}
       <button onClick={aggiungi}
-        style={{ background: "#052e16", color: "#34d399", border: "1px solid #059669", borderRadius: "6px", padding: "6px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 700, fontFamily: "monospace", marginBottom: "8px" }}>
+        style={{ background: "#ecfdf5", color: "#047857", border: "1px solid #059669", borderRadius: "6px", padding: "6px 12px", cursor: "pointer", fontSize: "11px", fontWeight: 700, fontFamily: "monospace", marginBottom: "8px" }}>
         + Aggiungi ambulatorio
       </button>
       <div style={{ ...LBL, fontSize: "9px", lineHeight: 1.6 }}>
