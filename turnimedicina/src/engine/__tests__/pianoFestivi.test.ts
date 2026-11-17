@@ -8,7 +8,7 @@ import {
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
-  controlliPiano, prossimoPeriodo, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
+  controlliPiano, prossimoPeriodo, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
 } from "../festiviApp";
 
 // ── v0.3.60: piano festivi ────────────────────────────────────────────────────
@@ -354,5 +354,69 @@ describe("turni associati: la giornata festiva del piano conta come le altre", (
     expect(c.assInSett(1, 25)).toBe(2);
     expect(c.assInMese(1)).toBe(2);
     expect(c.canAssMese(1)).toBe(false);
+  });
+});
+
+// ── v0.3.63: periodo dei punti del saldo scelto a mano ─────────────────────────
+describe("sezione Festivi: periodo dei punti del saldo", () => {
+  const medici = [med(1), med(2), med(3)];
+  const ids = [1, 2, 3];
+  const cella2 = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
+  // Natale 2025 al medico 1 (giorno, 3 punti); Ferragosto 2026 al medico 2 (notte, 2 punti); Natale 2026 al medico 3 (giorno, 3 punti)
+  const tutti: TurniAll = {
+    "2025-12": { 1: { 25: cella2("M","P") } },
+    "2026-08": { 2: { 15: cella2("N") } },
+    "2026-12": { 3: { 25: cella2("M","P") } },
+  };
+  const base = { ...statoFestiviDefault(new Date(2026,10,16)), periodo:{ start:"2027-01-01", end:"2027-12-31" } };
+  it("automatico: gli ultimi anni (qui 2), come prima", () => {
+    const a = automaticiFestivi(base, tutti, medici, lista, 2, ids);
+    expect(a.origine).toBe("mesi");
+    expect(a.errPeriodoSaldo).toBe("");
+    expect(a.punti).toEqual({ 1:3, 2:2, 3:3 });
+  });
+  it("scelto a mano: contano solo i punti fra le due date", () => {
+    const a = automaticiFestivi({ ...base, periodoSaldo:{ start:"2026-01-01", end:"2026-12-31" } }, tutti, medici, lista, 2, ids);
+    expect(a.origine).toBe("scelto");
+    expect([a.da, a.a]).toEqual(["2026-01-01", "2026-12-31"]);
+    expect(a.punti).toEqual({ 1:0, 2:2, 3:3 });
+    expect(a.saldo).toEqual({ 1:0, 2:2, 3:3 });
+    const solo = automaticiFestivi({ ...base, periodoSaldo:{ start:"2026-08-01", end:"2026-08-31" } }, tutti, medici, lista, 2, ids);
+    expect(solo.punti).toEqual({ 1:0, 2:2, 3:0 });
+  });
+  it("lo storico e la precedenza non cambiano col periodo dei punti", () => {
+    const auto = automaticiFestivi({ ...base, minSuper:1 }, tutti, medici, lista, 2, ids);
+    const scelto = automaticiFestivi({ ...base, minSuper:1, periodoSaldo:{ start:"2026-08-01", end:"2026-08-31" } }, tutti, medici, lista, 2, ids);
+    expect(scelto.storico).toEqual(auto.storico);
+    expect(scelto.precedenza).toEqual(auto.precedenza);
+  });
+  it("con un piano precedente il periodo scelto non somma il suo saldo", () => {
+    const st0 = { ...base, periodo:{ start:"2026-01-01", end:"2026-12-31" } };
+    const { piano } = sorteggia(datiSorteggio({ ...st0, saldoMan:{ 1:10 } }, medici, lista, automaticiFestivi(st0, {}, medici, lista, 2, ids)), { ...st0, saldoMan:{ 1:10 } }, "x");
+    const st1 = prossimoPeriodo({ ...st0, piano });
+    const auto = automaticiFestivi(st1, {}, medici, lista, 2, ids);
+    expect(auto.origine).toBe("piano");
+    expect(auto.riporto[1]).toBe(10);
+    const scelto = automaticiFestivi({ ...st1, periodoSaldo:{ start:"2026-01-01", end:"2026-12-31" } }, {}, medici, lista, 2, ids);
+    expect(scelto.origine).toBe("scelto");
+    expect(scelto.riporto).toEqual({ 1:0, 2:0, 3:0 });
+    // i mesi non salvati si leggono ancora dal piano: tutte le festività del 2026, compresa
+    // la notte prima di Capodanno (31/12/2025), che appartiene a Capodanno 2026
+    expect(scelto.nPiano).toBe(piano.turni.filter(t=>t.medico!=null).length);
+    for(const r of riepilogoPiano(piano)) expect(scelto.punti[r.id]).toBeCloseTo(r.punti, 5);
+  });
+  it("periodo non valido: vale l'automatico e si segnala", () => {
+    const dopo = automaticiFestivi({ ...base, periodoSaldo:{ start:"2026-06-01", end:"2027-02-01" } }, tutti, medici, lista, 2, ids);
+    expect(dopo.errPeriodoSaldo).toMatch(/prima dell'inizio del piano \(01\/01\/2027\)/);
+    expect(dopo.origine).toBe("mesi");
+    expect(dopo.punti).toEqual({ 1:3, 2:2, 3:3 });
+    expect(periodoSaldoOk({ start:"2026-05-01", end:"2026-04-01" }, "2027-01-01")).toMatch(/prima di quella di inizio/);
+  });
+  it("si salva, si sanifica e si azzera passando al periodo successivo", () => {
+    expect(statoFestiviDefault().periodoSaldo).toBeNull();
+    expect(mergeStatoFestivi({ periodoSaldo:{ start:"2026-01-01", end:"2026-12-31" } }).periodoSaldo).toEqual({ start:"2026-01-01", end:"2026-12-31" });
+    expect(mergeStatoFestivi({ periodoSaldo:{ start:"2026-12-31", end:"2026-01-01" } }).periodoSaldo).toBeNull();
+    expect(mergeStatoFestivi({ periodoSaldo:{ start:"boh", end:"2026-01-01" } }).periodoSaldo).toBeNull();
+    expect(prossimoPeriodo({ ...base, periodoSaldo:{ start:"2026-01-01", end:"2026-12-31" } }).periodoSaldo).toBeNull();
   });
 });

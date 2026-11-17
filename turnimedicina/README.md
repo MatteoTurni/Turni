@@ -1,4 +1,23 @@
-# TurniMedicina 0.3.62
+# TurniMedicina 0.3.63
+
+## Novità 0.3.63 — scegliere il periodo dei punti del saldo (sezione Festivi)
+
+Nel riquadro «Saldo punti di partenza» si sceglie da quando a quando contare
+i punti festivi:
+- **Periodo automatico** (come prima): con un piano precedente si riparte dal
+  suo saldo e si aggiungono i punti fatti da allora; senza piano si sommano
+  gli ultimi anni di mesi salvati («Anni riletti» nelle Regole);
+- **Scelgo io il periodo**: due date, dal… al…. Contano solo i punti dei
+  turni festivi fatti in quel periodo; il saldo del piano precedente non si
+  somma. Contano le festività con la data nel periodo, ciascuna con la sua
+  notte prima (la notte del 31/12 appartiene al Capodanno dopo). Il periodo
+  deve finire prima dell'inizio del piano: se no compare un avviso e vale
+  quello automatico.
+
+«Festività già fatte» e la precedenza sui superfestivi non cambiano: lo
+storico guarda gli anni delle Regole, la precedenza il periodo precedente.
+Le correzioni a mano dei singoli saldi restano possibili. Passando al
+periodo successivo si torna all'automatico.
 
 ## Novità 0.3.62 — colori chiari
 
