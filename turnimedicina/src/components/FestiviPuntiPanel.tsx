@@ -22,10 +22,10 @@ export function FestiviPuntiPanel({ regole, onRegole, avviso }: {
   const mod = (id: string, patch: Partial<FestivitaPiano>) => salva(lista.map(f => f.id === id ? { ...f, ...patch } : f));
   const punti = (f: FestivitaPiano, k: keyof PuntiFest, v: number) => mod(f.id, { punti: { ...f.punti, [k]: v } });
 
-  const LBL: React.CSSProperties = { color: "#2d5a8a", fontSize: "10px", fontFamily: "monospace", lineHeight: 1.6 };
-  const INP: React.CSSProperties = { background: "#081120", border: "1px solid #2f5a8a", color: "#60a5fa", borderRadius: "6px", padding: "4px 6px", fontSize: "12px", fontFamily: "monospace" };
+  const LBL: React.CSSProperties = { color: "#64748b", fontSize: "10px", fontFamily: "monospace", lineHeight: 1.6 };
+  const INP: React.CSSProperties = { background: "#ffffff", border: "1px solid #cbd5e1", color: "#1d4ed8", borderRadius: "6px", padding: "4px 6px", fontSize: "12px", fontFamily: "monospace" };
   const TH: React.CSSProperties = { ...LBL, textAlign: "center", padding: "3px 5px", fontWeight: 700 };
-  const btn: React.CSSProperties = { background: "#0d1930", color: "#60a5fa", border: "1px solid #2f5a8a", borderRadius: "6px", padding: "5px 11px", cursor: "pointer", fontSize: "11px", fontWeight: 700, fontFamily: "monospace" };
+  const btn: React.CSSProperties = { background: "#f1f5f9", color: "#1d4ed8", border: "1px solid #cbd5e1", borderRadius: "6px", padding: "5px 11px", cursor: "pointer", fontSize: "11px", fontWeight: 700, fontFamily: "monospace" };
   const pt = (f: FestivitaPiano, k: keyof PuntiFest) => f.soloGiorno && k !== "giorno"
     ? <span style={{ ...LBL, display: "block", textAlign: "center" }}>—</span>
     : <input type="number" min={0} max={20} step={0.5} value={f.punti[k]} aria-label={`${f.nome}: ${k}`}
@@ -59,11 +59,11 @@ export function FestiviPuntiPanel({ regole, onRegole, avviso }: {
                 <tr key={f.id}>
                   <td style={{ padding: "2px 4px 2px 0" }}>
                     <input value={f.nome} onChange={e => mod(f.id, { nome: e.target.value.slice(0, 60) })} aria-label="Nome della festività"
-                      style={{ ...INP, color: "#e2f0ff", width: "150px" }} />
+                      style={{ ...INP, color: "#0f172a", width: "150px" }} />
                   </td>
                   <td style={{ ...LBL, padding: "2px 6px", whiteSpace: "nowrap" }}>{dataTxt(f.data)}{f.soloGiorno ? <><br />solo giorno</> : ""}</td>
                   <td style={{ textAlign: "center", padding: "2px 6px" }}>
-                    <input type="checkbox" checked={f.sup} disabled={!!f.soloGiorno} onChange={e => mod(f.id, { sup: e.target.checked })} title="Superfestivo" style={{ accentColor: "#fbbf24", cursor: "pointer" }} />
+                    <input type="checkbox" checked={f.sup} disabled={!!f.soloGiorno} onChange={e => mod(f.id, { sup: e.target.checked })} title="Superfestivo" style={{ accentColor: "#b45309", cursor: "pointer" }} />
                   </td>
                   <td style={{ padding: "2px 4px" }}>{pt(f, "nottePrima")}</td>
                   <td style={{ padding: "2px 4px" }}>{pt(f, "giorno")}</td>
@@ -72,7 +72,7 @@ export function FestiviPuntiPanel({ regole, onRegole, avviso }: {
                     {locale
                       ? <span style={{ ...LBL, fontSize: "9px" }} title="Festa locale: si toglie dalla scheda reparto">locale</span>
                       : <button onClick={() => salva(lista.filter(x => x.id !== f.id))} title="Togli dal sorteggio"
-                          style={{ background: "#1a0606", color: "#f87171", border: "1px solid #7f1d1d", borderRadius: "4px", padding: "2px 7px", cursor: "pointer", fontSize: "10px", fontWeight: 700, fontFamily: "monospace" }}>✕</button>}
+                          style={{ background: "#fff1f2", color: "#be123c", border: "1px solid #fecdd3", borderRadius: "4px", padding: "2px 7px", cursor: "pointer", fontSize: "10px", fontWeight: 700, fontFamily: "monospace" }}>✕</button>}
                   </td>
                 </tr>
               );
@@ -87,7 +87,7 @@ export function FestiviPuntiPanel({ regole, onRegole, avviso }: {
         <select value={nuova.m} onChange={e => setNuova({ ...nuova, m: +e.target.value })} style={INP} aria-label="Mese">
           {MESI.map((n, i) => <option key={i} value={i + 1}>{n}</option>)}
         </select>
-        <input value={nuova.nome} placeholder="nome della festività" onChange={e => setNuova({ ...nuova, nome: e.target.value })} style={{ ...INP, color: "#e2f0ff", width: "190px" }} />
+        <input value={nuova.nome} placeholder="nome della festività" onChange={e => setNuova({ ...nuova, nome: e.target.value })} style={{ ...INP, color: "#0f172a", width: "190px" }} />
         <button onClick={aggiungi} style={btn}>➕ Aggiungi</button>
         <button onClick={() => { salva(allineaFestiviPiano(festiviPianoDefault(), regole.reparto.festiviLocali)); avviso("Festività e punti riportati ai valori del sondaggio."); }} style={btn}>Valori del sondaggio</button>
       </div>
@@ -96,7 +96,7 @@ export function FestiviPuntiPanel({ regole, onRegole, avviso }: {
           onChange={e => onRegole({ ...regole, pianoFestiviAnni: Math.max(1, Math.min(5, Math.round(+e.target.value) || 1)) })}
           style={{ ...INP, width: "52px", textAlign: "center" }} />
         <div>
-          <div style={{ ...LBL, color: "#e2eeff", fontWeight: 700 }}>Anni riletti</div>
+          <div style={{ ...LBL, color: "#0f172a", fontWeight: 700 }}>Anni riletti</div>
           <div style={{ ...LBL, fontSize: "9px" }}>Quanti anni di mesi salvati la sezione Festivi rilegge per il saldo di partenza e per le festività già fatte.</div>
         </div>
       </div>

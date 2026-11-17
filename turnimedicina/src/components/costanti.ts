@@ -3,33 +3,34 @@
 // Sono dettagli della UI: il motore non li conosce.
 
 export const SC: Record<string, { bg: string; t: string; b: string }> = {
-  MR:  { bg:"#0a1628", t:"#60a5fa", b:"#1d4ed8" },
-  ML:  { bg:"#2a1a06", t:"#fbbf24", b:"#b45309" },
-  MDC: { bg:"#061a0e", t:"#34d399", b:"#059669" },
-  MPS: { bg:"#1a0628", t:"#c084fc", b:"#7c3aed" },
+  MR:  { bg:"#eff6ff", t:"#1d4ed8", b:"#bfdbfe" },
+  ML:  { bg:"#fffbeb", t:"#b45309", b:"#fde68a" },
+  MDC: { bg:"#ecfdf5", t:"#047857", b:"#a7f3d0" },
+  MPS: { bg:"#faf5ff", t:"#7e22ce", b:"#e9d5ff" },
 };
 
+// Turni: pieni (fondo saturo, lettera bianca); gli automatici sono più chiari (opacità nel Badge).
 export const KC: Record<string, { bg: string; t: string; b: string }> = {
-  M:    { bg:"#0f2744", t:"#93c5fd", b:"#2563eb" },
-  P:    { bg:"#1e1044", t:"#a78bfa", b:"#6d28d9" },
-  N:    { bg:"#051a12", t:"#4ade80", b:"#16a34a" },
-  A:    { bg:"#062010", t:"#6ee7b7", b:"#10b981" },
-  // Ambulatorio di POMERIGGIO: stesso verde della A con bordo viola (fascia P).
-  Ap:   { bg:"#062010", t:"#6ee7b7", b:"#8b5cf6" },
-  L:    { bg:"#261a02", t:"#fde68a", b:"#d97706" },
-  "1":  { bg:"#0f2744", t:"#93c5fd", b:"#2563eb" },
-  "2":  { bg:"#1e1044", t:"#a78bfa", b:"#6d28d9" },
-  "3":  { bg:"#051a12", t:"#4ade80", b:"#16a34a" },
-  ANA:  { bg:"#2a0e06", t:"#fb923c", b:"#c2410c" },
-  "104":{ bg:"#2a0e06", t:"#fca5a5", b:"#dc2626" },
-  per11:{ bg:"#261602", t:"#fde68a", b:"#ca8a04" },
-  art37:{ bg:"#1f0f26", t:"#f0abfc", b:"#a21caf" },   // Art.37 (v0.3.49)
-  X:    { bg:"#111",    t:"#4b5563", b:"#1f2937" },
-  // Esclusioni PARZIALI: tinta spenta della fascia che bloccano, così si
+  M:    { bg:"#2563eb", t:"#ffffff", b:"#2563eb" },
+  P:    { bg:"#7c3aed", t:"#ffffff", b:"#7c3aed" },
+  N:    { bg:"#059669", t:"#ffffff", b:"#059669" },
+  A:    { bg:"#0d9488", t:"#ffffff", b:"#0d9488" },
+  // Ambulatorio di POMERIGGIO: stesso verde acqua della A con bordo viola (fascia P).
+  Ap:   { bg:"#0d9488", t:"#ffffff", b:"#7c3aed" },
+  L:    { bg:"#d97706", t:"#ffffff", b:"#d97706" },
+  "1":  { bg:"#2563eb", t:"#ffffff", b:"#1e40af" },
+  "2":  { bg:"#7c3aed", t:"#ffffff", b:"#5b21b6" },
+  "3":  { bg:"#059669", t:"#ffffff", b:"#065f46" },
+  ANA:  { bg:"#ea580c", t:"#ffffff", b:"#ea580c" },
+  "104":{ bg:"#dc2626", t:"#ffffff", b:"#dc2626" },
+  per11:{ bg:"#ca8a04", t:"#ffffff", b:"#ca8a04" },
+  art37:{ bg:"#c026d3", t:"#ffffff", b:"#c026d3" },   // Art.37 (v0.3.49)
+  X:    { bg:"#e2e8f0", t:"#475569", b:"#cbd5e1" },
+  // Esclusioni PARZIALI: tinta tenue della fascia che bloccano, così si
   // riconoscono a colpo d'occhio senza confondersi con un turno vero.
-  Xm:   { bg:"#0f1722", t:"#7ea3cc", b:"#2c4a6e" },
-  Xp:   { bg:"#150f22", t:"#9d8ac9", b:"#4a3a6e" },
-  Xn:   { bg:"#0a1710", t:"#6fae86", b:"#2a5a3d" },
+  Xm:   { bg:"#eff6ff", t:"#2563eb", b:"#bfdbfe" },
+  Xp:   { bg:"#f5f3ff", t:"#7c3aed", b:"#ddd6fe" },
+  Xn:   { bg:"#ecfdf5", t:"#059669", b:"#a7f3d0" },
 };
 
 // Tipi selezionabili nel CellModal e tipi che ammettono la variante sottolineata.
