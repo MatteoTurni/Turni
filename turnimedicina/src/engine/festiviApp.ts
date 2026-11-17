@@ -47,6 +47,10 @@ export interface StatoFestivi {
   soloGiorno: Record<number, boolean>;
   /** Correzioni a mano: se presenti vincono sulla lettura automatica. */
   saldoMan: Record<number, number>;
+  /** Periodo in cui contare i punti del saldo (v0.3.63), scelto a mano: contano
+   *  solo i punti fatti fra queste date, senza il saldo del piano precedente.
+   *  null = automatico (piano precedente + punti da allora, o gli ultimi anni). */
+  periodoSaldo: { start: string; end: string } | null;
   storicoMan: Record<number, string[]>;
   precMan: Record<number, boolean>;
   /** medico → festività del periodo (nome) → turno richiesto. */
@@ -68,7 +72,7 @@ export interface InserimentoMese { generato: string; turni: TurnoInserito[] }
 export function statoFestiviDefault(oggi: Date = new Date()): StatoFestivi {
   const y = oggi.getFullYear() + 1;
   return { periodo: { start: iso(y, 1, 1), end: iso(y, 12, 31) }, maxShifts: 5, minSuper: 1, esclusi: [], soloGiorno: {},
-    saldoMan: {}, storicoMan: {}, precMan: {}, preferenze: {}, reperibilita: { enabled: false, weightPct: 40, maxPer: 5, nonIdonei: [] },
+    saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, reperibilita: { enabled: false, weightPct: 40, maxPer: 5, nonIdonei: [] },
     seme: 1, piano: null, archivio: [], inseriti: {} };
 }
 const isData = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v) && !isNaN(Date.parse(v + "T00:00:00Z"));
@@ -126,6 +130,8 @@ export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFes
     esclusi: ids(s.esclusi),
     soloGiorno: mappa(s.soloGiorno, q => typeof q === "boolean" ? q : undefined),
     saldoMan: mappa(s.saldoMan, q => typeof q === "number" && isFinite(q) ? q : undefined),
+    periodoSaldo: s.periodoSaldo && isData(s.periodoSaldo.start) && isData(s.periodoSaldo.end) && s.periodoSaldo.start <= s.periodoSaldo.end
+      ? { start: s.periodoSaldo.start, end: s.periodoSaldo.end } : null,
     storicoMan: mappa(s.storicoMan, q => Array.isArray(q) ? q.filter(n => typeof n === "string") as string[] : undefined),
     precMan: mappa(s.precMan, q => typeof q === "boolean" ? q : undefined),
     preferenze: mappa(s.preferenze, q => {
@@ -177,8 +183,11 @@ export function leggiTurniFestivi(turniAll: TurniAll, medici: Medico[], lista: F
 }
 
 export interface AutoFestivi {
-  /** Da dove partono i conti: dal piano precedente o dai soli mesi salvati. */
-  origine: "piano" | "mesi";
+  /** Da dove partono i conti: dal piano precedente, dai soli mesi salvati
+   *  degli ultimi anni, o dal periodo scelto a mano. */
+  origine: "piano" | "mesi" | "scelto";
+  /** Periodo scelto a mano non valido (allora vale l'automatico); "" = nessun errore. */
+  errPeriodoSaldo: string;
   /** Intervallo riletto per il saldo. */
   da: string; a: string;
   /** Punti fatti nell'intervallo (per medico). */
@@ -198,18 +207,30 @@ export interface AutoFestivi {
 const anniPrima = (d: string, n: number) => { const [y, m, g] = d.split("-").map(Number); return iso(y - n, m, m === 2 && g === 29 ? 28 : g); };
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
+/** Il periodo dei punti scelto a mano va bene per un piano che inizia a `start`? "" = sì. */
+export function periodoSaldoOk(ps: { start: string; end: string }, start: string): string {
+  if (ps.end < ps.start) return "La data di fine viene prima di quella di inizio.";
+  if (ps.end >= start) return `Il periodo dei punti deve finire prima dell'inizio del piano (${fmtGiorno(start)}).`;
+  return "";
+}
+const fmtGiorno = (d: string) => d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4);
+
 /** Saldo, storico e precedenze letti dai mesi salvati per il periodo che inizia a `start`. */
-export function automaticiFestivi(st: Pick<StatoFestivi, "periodo" | "minSuper" | "archivio" | "piano">, turniAll: TurniAll, medici: Medico[],
-  lista: FestivitaPiano[], anni: number, partecipanti: number[]): AutoFestivi {
-  const start = st.periodo.start, a = addDays(start, -1);
+export function automaticiFestivi(st: Pick<StatoFestivi, "periodo" | "minSuper" | "archivio" | "piano"> & { periodoSaldo?: StatoFestivi["periodoSaldo"] },
+  turniAll: TurniAll, medici: Medico[], lista: FestivitaPiano[], anni: number, partecipanti: number[]): AutoFestivi {
+  const start = st.periodo.start, ieri = addDays(start, -1);
   // i piani che finiscono prima del periodo: l'ultimo è «il piano precedente»
   const piani = [...st.archivio, ...(st.piano ? [st.piano] : [])].filter(p => p.periodo.end < start)
     .sort((x, y) => x.periodo.start.localeCompare(y.periodo.start));
   const prec = piani.length ? piani[piani.length - 1] : null;
-  const da = prec ? prec.periodo.start : anniPrima(start, Math.max(1, anni));
+  // PERIODO SCELTO A MANO (v0.3.63): solo i punti fatti fra le due date, senza riporto
+  const errPeriodoSaldo = st.periodoSaldo ? periodoSaldoOk(st.periodoSaldo, start) : "";
+  const scelto = st.periodoSaldo && !errPeriodoSaldo ? st.periodoSaldo : null;
+  const da = scelto ? scelto.start : prec ? prec.periodo.start : anniPrima(start, Math.max(1, anni));
+  const a = scelto ? scelto.end : ieri;
   const letti = leggiTurniFestivi(turniAll, medici, lista, da, a, piani);
   const punti: Record<number, number> = {}, riporto: Record<number, number> = {};
-  for (const m of medici) { punti[m.id] = 0; riporto[m.id] = prec ? (+prec.saldo[m.id] || 0) : 0; }
+  for (const m of medici) { punti[m.id] = 0; riporto[m.id] = prec && !scelto ? (+prec.saldo[m.id] || 0) : 0; }
   let nMese = 0, nPiano = 0, nVuoti = 0;
   for (const t of letti) {
     if (t.fonte === "mese") nMese++; else if (t.fonte === "piano") nPiano++; else nVuoti++;
@@ -221,7 +242,7 @@ export function automaticiFestivi(st: Pick<StatoFestivi, "periodo" | "minSuper" 
   partecipanti.forEach((id, i) => { saldo[id] = r2(tot[i] - mn); });
 
   // storico: per ogni tipo di festività, chi l'ha fatta l'ULTIMA volta (negli anni chiesti)
-  const lettiSt = leggiTurniFestivi(turniAll, medici, lista, anniPrima(start, Math.max(1, anni)), a, piani);
+  const lettiSt = leggiTurniFestivi(turniAll, medici, lista, anniPrima(start, Math.max(1, anni)), ieri, piani);
   const ultima = new Map<string, string>();           // tipo → data dell'ultima volta con dati
   for (const t of lettiSt) if (t.chi.length) for (const f of t.feste) if (!ultima.has(f.base) || ultima.get(f.base)! < f.data) ultima.set(f.base, f.data);
   const st2: Record<number, Set<string>> = {};
@@ -231,11 +252,13 @@ export function automaticiFestivi(st: Pick<StatoFestivi, "periodo" | "minSuper" 
 
   // precedenza: nel periodo precedente (il piano precedente, o gli ultimi 12 mesi) sotto il minimo di superfestivi
   const daPrec = prec ? prec.periodo.start : anniPrima(start, 1);
-  const sup = lettiSt.concat(letti).filter((t, i, arr) => t.sup && t.date >= addDays(daPrec, -1) && arr.findIndex(q => q.date === t.date && q.tipo === t.tipo) === i);
+  // (non dipende dal periodo dei punti scelto a mano: si rilegge la finestra del periodo precedente)
+  const lettiPrec = scelto ? leggiTurniFestivi(turniAll, medici, lista, addDays(daPrec, -1), ieri, piani) : letti;
+  const sup = lettiSt.concat(lettiPrec).filter((t, i, arr) => t.sup && t.date >= addDays(daPrec, -1) && arr.findIndex(q => q.date === t.date && q.tipo === t.tipo) === i);
   const nSup: Record<number, number> = {};
   for (const t of sup) for (const c of t.chi) nSup[c.id] = (nSup[c.id] || 0) + 1;
   const precedenza = sup.some(t => t.chi.length) && st.minSuper > 0 ? partecipanti.filter(id => (nSup[id] || 0) < st.minSuper) : [];
-  return { origine: prec ? "piano" : "mesi", da, a, punti, riporto, saldo, storico, precedenza, nMese, nPiano, nVuoti, letti };
+  return { origine: scelto ? "scelto" : prec ? "piano" : "mesi", errPeriodoSaldo, da, a, punti, riporto, saldo, storico, precedenza, nMese, nPiano, nVuoti, letti };
 }
 
 // ── DAL PANNELLO AL SORTEGGIO ────────────────────────────────────────────────
@@ -348,7 +371,7 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
 export function prossimoPeriodo(st: StatoFestivi): StatoFestivi {
   const base = st.piano ? st.piano.periodo : st.periodo;
   return { ...st, periodo: periodoSuccessivo(base), piano: null, archivio: st.piano ? [...st.archivio, st.piano].slice(-6) : st.archivio,
-    saldoMan: {}, storicoMan: {}, precMan: {}, preferenze: {}, seme: 1 };
+    saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, seme: 1 };
 }
 /** Un medico eliminato dall'app esce anche dalla sezione Festivi: un nuovo medico con lo stesso numero non eredita nulla. */
 export function rimuoviMedicoFestivi(st: StatoFestivi, id: number): StatoFestivi {

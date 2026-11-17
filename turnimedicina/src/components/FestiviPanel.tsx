@@ -44,7 +44,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const chiavePart = idPart.join(",");
   const auto = useMemo(() => automaticiFestivi(stato, turniAll, medici, lista, regole.pianoFestiviAnni, idPart),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stato.periodo.start, stato.minSuper, stato.archivio, stato.piano, turniAll, medici, lista, regole.pianoFestiviAnni, chiavePart]);
+    [stato.periodo.start, stato.minSuper, stato.archivio, stato.piano, stato.periodoSaldo, turniAll, medici, lista, regole.pianoFestiviAnni, chiavePart]);
   const dati = useMemo(() => datiSorteggio(stato, medici, lista, auto), [stato, medici, lista, auto]);
   const turniPeriodo = useMemo(() => buildShifts(dati.feste), [dati.feste]);
   const tipiFesta = useMemo(() => [...new Set(dati.feste.map(h => h.base))], [dati.feste]);
@@ -345,9 +345,26 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
 
         {/* ── SALDO E PRECEDENZE ── */}
         <details style={BOX} open>
-          <summary style={TIT}>SALDO PUNTI DI PARTENZA <span style={SOTTO}>· {manSaldo ? "con correzioni a mano" : "letto in automatico"}</span></summary>
+          <summary style={TIT}>SALDO PUNTI DI PARTENZA <span style={SOTTO}>· {auto.origine === "scelto" ? `punti dal ${fmtIt(auto.da).slice(4)} al ${fmtIt(auto.a).slice(4)}` : "periodo automatico"}{manSaldo ? ", con correzioni a mano" : ""}</span></summary>
+          {/* PERIODO DEI PUNTI (v0.3.63): automatico oppure scelto a mano */}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px", margin: "10px 0 4px" }}>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button onClick={() => set({ periodoSaldo: null })} style={{ ...chip(!stato.periodoSaldo), textDecoration: "none" }}>Periodo automatico</button>
+              <button onClick={() => !stato.periodoSaldo && set({ periodoSaldo: { start: auto.da, end: auto.a } })} style={{ ...chip(!!stato.periodoSaldo), textDecoration: "none" }}>Scelgo io il periodo</button>
+            </div>
+            {stato.periodoSaldo && <>
+              <label><div style={LBL}>Punti dal</div>
+                <input type="date" aria-label="Punti dal" value={stato.periodoSaldo.start} onChange={e => e.target.value && set({ periodoSaldo: { ...stato.periodoSaldo!, start: e.target.value } })} style={INP} /></label>
+              <label><div style={LBL}>al</div>
+                <input type="date" aria-label="Punti al" value={stato.periodoSaldo.end} onChange={e => e.target.value && set({ periodoSaldo: { ...stato.periodoSaldo!, end: e.target.value } })} style={INP} /></label>
+            </>}
+          </div>
+          {stato.periodoSaldo && <div style={{ ...LBL, fontSize: "9px" }}>Contano le festività con la data nel periodo, ciascuna con la sua notte prima (es. la notte del 31/12 appartiene al Capodanno dopo).</div>}
+          {auto.errPeriodoSaldo && <div style={{ ...LBL, color: "#be123c", fontSize: "11px" }}>{auto.errPeriodoSaldo} Finché non lo correggi vale il periodo automatico.</div>}
           <div style={{ ...LBL, margin: "8px 0" }}>
-            {auto.origine === "piano"
+            {auto.origine === "scelto"
+              ? <>Punti dei turni festivi fatti dal {fmtIt(auto.da).slice(4)} al {fmtIt(auto.a).slice(4)}, periodo scelto a mano; il saldo del piano precedente non si somma: </>
+              : auto.origine === "piano"
               ? <>Riparte dal saldo del piano precedente e aggiunge i punti fatti dal {fmtIt(auto.da).slice(4)}: </>
               : <>Punti dei turni festivi fatti dal {fmtIt(auto.da).slice(4)} al {fmtIt(auto.a).slice(4)} ({regole.pianoFestiviAnni} ann{regole.pianoFestiviAnni === 1 ? "o" : "i"}): </>}
             {auto.nMese + auto.nPiano === 0
