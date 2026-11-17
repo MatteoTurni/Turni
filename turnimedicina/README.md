@@ -1,4 +1,39 @@
-# TurniMedicina 0.3.63
+# TurniMedicina 0.3.64
+
+## Novità 0.3.64 — sezione Desiderate: licenze, permessi ed esclusioni raccolte con un Modulo Google
+
+Nuova voce «Desiderate», accanto a Festivi e Regole (solo in modifica). Serve
+a raccogliere, mese per mese, le richieste di ogni medico senza che nessuno
+veda quelle degli altri, e a inserirle nel mese come turni manuali.
+
+1. **Prepara il modulo**: l'app genera lo script del Modulo Google per il
+   mese scelto, con i giorni (festivi segnati) e l'elenco dei medici. Lo si
+   incolla su script.google.com e si esegue, come per il sondaggio dei punti.
+   Il modulo chiede l'accesso con l'email Google, una risposta a testa
+   (modificabile fino alla chiusura); ognuno sceglie il proprio nome e spunta
+   i codici in una griglia giorni × codici (L, ANA, 104, p11, a37, X, Xm, Xp,
+   Xn). Nello stesso giorno si possono spuntare più esclusioni (Xm + Xp).
+   Le risposte le vede solo chi ha creato il modulo.
+2. **Importa le risposte**: il CSV scaricato dal foglio delle risposte, oppure
+   il foglio copiato e incollato. I medici si riconoscono dal nome con la
+   matricola (anche se il nome nell'app è cambiato). Se un medico ha due
+   risposte vale l'ultima; un file di un altro mese viene rifiutato.
+   I codici di un giorno si sistemano: Xm+Xp+Xn diventa X; una licenza
+   assorbe le esclusioni; due licenze nello stesso giorno vengono scartate e
+   segnalate.
+3. **Anteprima**: il mese con le desiderate di tutti, chi non ha risposto,
+   le note, quanti medici chiedono l'intera giornata per ogni giorno, e in
+   rosso le celle già occupate (per esempio dal piano festivi).
+4. **Nel mese**: le desiderate entrano come turni manuali, solo nelle celle
+   libere; dove c'è già qualcosa il giorno si salta e si elenca. Si fanno
+   prima di generare il mese (in un mese già generato il pulsante è spento) e
+   dopo il piano festivi, che la sezione ricorda se manca. «Sostituisci» dopo
+   una nuova importazione toglie i giorni inseriti la volta prima; «Togli»
+   li leva.
+
+Le risposte importate, con le email, restano solo sul dispositivo di chi
+organizza: non vanno nella copia condivisa, che è pubblica. Nel calendario
+condiviso arrivano solo i turni inseriti.
 
 ## Novità 0.3.63 — scegliere il periodo dei punti del saldo (sezione Festivi)
 
