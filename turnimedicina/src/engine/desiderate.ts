@@ -4,8 +4,10 @@
 // Raccolta con un Modulo Google, un mese alla volta:
 //  1) l'app genera lo script Apps Script del modulo (mese, giorni, elenco dei
 //     medici): chi organizza lo incolla su script.google.com e lo esegue;
-//  2) ogni medico accede con la sua email Google, sceglie il proprio nome e
-//     segna i giorni in una griglia a caselle (giorni × codici). Vede e può
+//  2) ogni medico accede con la sua email Google, sceglie il proprio nome
+//     dall'elenco (tutti i medici dell'app) e segna i giorni in una griglia a
+//     caselle (giorni × codici; le esclusioni a parole: Libero, No mattina,
+//     No pomeriggio, No notte). Vede e può
 //     modificare solo la propria risposta; le risposte le vede solo chi ha
 //     creato il modulo;
 //  3) chi organizza scarica le risposte dal foglio (CSV, o copia e incolla) e
@@ -17,13 +19,21 @@ import { MESI, dimOf, dowOf, isFestivo, isHol } from "./date";
 import { LICENZE } from "./turni";
 import { togliInseriti, meseGenerato, type TurnoInserito } from "./festiviApp";
 
-/** Codici del modulo, nell'ordine delle colonne. p11 e a37 sono le etichette
- *  brevi dell'app per per11 e art37. */
-export const CODICI_MODULO = ["L", "ANA", "104", "p11", "a37", "X", "Xm", "Xp", "Xn"] as const;
-const DA_MODULO: Record<string, string> = { L: "L", ANA: "ANA", "104": "104", p11: "per11", a37: "art37", X: "X", Xm: "Xm", Xp: "Xp", Xn: "Xn" };
+/** Colonne della griglia del modulo, nell'ordine. Le licenze compaiono col
+ *  loro codice (p11 e a37 sono le etichette brevi dell'app per per11 e art37);
+ *  le esclusioni a parole, perché il medico capisca cosa sceglie. */
+export const CODICI_MODULO = ["L", "ANA", "104", "p11", "a37", "Libero", "No mattina", "No pomeriggio", "No notte"] as const;
+/** Etichetta del modulo → codice dell'app (confronto in minuscolo). Valgono
+ *  anche i codici dell'app (X, Xm…), per i fogli preparati a mano. */
+const DA_MODULO: Record<string, string> = {
+  l: "L", ana: "ANA", "104": "104", p11: "per11", a37: "art37",
+  libero: "X", "no mattina": "Xm", "no pomeriggio": "Xp", "no notte": "Xn",
+  x: "X", xm: "Xm", xp: "Xp", xn: "Xn", per11: "per11", art37: "art37",
+};
+const codiceApp = (v: string) => Object.prototype.hasOwnProperty.call(DA_MODULO, v.toLowerCase()) ? DA_MODULO[v.toLowerCase()] : undefined;
 const SIGNIFICATO: Record<string, string> = {
   L: "licenza (ferie)", ANA: "permesso", "104": "legge 104", p11: "art. 11", a37: "art. 37",
-  X: "escluso tutto il giorno", Xm: "niente mattina", Xp: "niente pomeriggio", Xn: "niente notte",
+  Libero: "non lavoro tutto il giorno", "No mattina": "non lavoro di mattina", "No pomeriggio": "non lavoro di pomeriggio", "No notte": "non lavoro di notte",
 };
 const GG = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"];
 
@@ -79,8 +89,8 @@ function creaModulo() {
     '2. Scegli il TUO nome dall\\'elenco.\\n' +
     '3. Nella griglia spunta, per ogni giorno, i codici che ti servono. I giorni senza spunte restano liberi.\\n\\n' +
     'CODICI\\n${legenda}\\n\\n' +
-    'Puoi spuntare più esclusioni nello stesso giorno: Xm + Xp = né mattina né pomeriggio. ' +
-    'Una licenza o un permesso valgono già tutto il giorno: non servono esclusioni in più.\\n\\n' +
+    'Puoi spuntare più voci «No» nello stesso giorno: No mattina + No pomeriggio = lavoro solo di notte. ' +
+    'Una licenza o un permesso valgono già tutto il giorno: non serve spuntare altro.\\n\\n' +
     'Le desiderate entrano nei turni come vincoli. ' +
     'Le risposte le vede solo chi organizza i turni; fino alla chiusura puoi riaprire il link e modificare la tua.'
   );
@@ -239,9 +249,9 @@ export function leggiRisposte(testo: string, anno: number, mese: number, medici:
       if (g < 1 || g > nd) continue;
       const grezzi = cella(c).split(/\s*[,;]\s*/).map(x => x.trim()).filter(Boolean);
       if (!grezzi.length) continue;
-      const ignoti = grezzi.filter(x => !(x in DA_MODULO));
+      const ignoti = grezzi.filter(x => !codiceApp(x));
       if (ignoti.length) r.avvisi.push(`giorno ${g}: codice ${ignoti.join(", ")} sconosciuto, ignorato`);
-      const n = normalizzaGiorno(grezzi.filter(x => x in DA_MODULO).map(x => DA_MODULO[x]));
+      const n = normalizzaGiorno(grezzi.map(codiceApp).filter((x): x is string => !!x));
       if (n.avviso) r.avvisi.push(`giorno ${g}: ${n.avviso}`);
       if (n.tipi.length) r.giorni[g] = n.tipi;
     }

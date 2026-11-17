@@ -137,7 +137,8 @@ export function DesideratePanel({ medici, turniAll, onTurniMese, stato, onStato,
         <div style={{ ...LBL, marginBottom: "10px" }}>
           Copia lo script, apri <b>script.google.com</b> → «Nuovo progetto», cancella il testo che c'è, incolla, salva, scegli la funzione <b>creaModulo</b> e premi <b>Esegui</b>.
           Concedi i permessi; nel «Registro di esecuzione» trovi il link da mandare ai colleghi e quello del foglio delle risposte.
-          Il modulo chiede l'accesso con l'email Google, ammette una risposta a testa (modificabile fino alla chiusura) e permette più esclusioni nello stesso giorno (Xm + Xp).
+          Il modulo chiede l'accesso con l'email Google; ognuno sceglie il proprio nome dall'elenco di tutti i medici dell'app. Una risposta a testa, modificabile fino alla chiusura.
+          Nel modulo le esclusioni sono scritte a parole (Libero, No mattina, No pomeriggio, No notte) e se ne può spuntare più d'una nello stesso giorno; qui tornano X, Xm, Xp e Xn.
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button onClick={copiaScript} style={btn("#1d4ed8", "#fff", "#1d4ed8")}>Copia lo script</button>

@@ -10,9 +10,12 @@ veda quelle degli altri, e a inserirle nel mese come turni manuali.
    mese scelto, con i giorni (festivi segnati) e l'elenco dei medici. Lo si
    incolla su script.google.com e si esegue, come per il sondaggio dei punti.
    Il modulo chiede l'accesso con l'email Google, una risposta a testa
-   (modificabile fino alla chiusura); ognuno sceglie il proprio nome e spunta
-   i codici in una griglia giorni × codici (L, ANA, 104, p11, a37, X, Xm, Xp,
-   Xn). Nello stesso giorno si possono spuntare più esclusioni (Xm + Xp).
+   (modificabile fino alla chiusura); ognuno sceglie il proprio nome da un
+   elenco con tutti i medici dell'app (nome e matricola, niente da scrivere)
+   e spunta i giorni in una griglia giorni × voci: L, ANA, 104, p11, a37 e le
+   esclusioni scritte a parole, «Libero», «No mattina», «No pomeriggio», «No
+   notte», che nell'app diventano X, Xm, Xp, Xn. Nello stesso giorno si
+   possono spuntare più voci «No» (No mattina + No pomeriggio).
    Le risposte le vede solo chi ha creato il modulo.
 2. **Importa le risposte**: il CSV scaricato dal foglio delle risposte, oppure
    il foglio copiato e incollato. I medici si riconoscono dal nome con la

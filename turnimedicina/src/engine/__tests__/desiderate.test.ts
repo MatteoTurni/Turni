@@ -52,7 +52,8 @@ describe("desiderate: lo script del modulo", () => {
     expect(griglia.righe[24]).toBe("25 sab (festivo)");
     expect(note).toMatchObject({ tipo:"testo", obbligatoria:false });
     expect(r.destinazione).toEqual(["SHEET", "ID1"]);
-    expect(r.descrizione).toMatch(/Xm \+ Xp/);
+    expect(griglia.colonne).toEqual(["L","ANA","104","p11","a37","Libero","No mattina","No pomeriggio","No notte"]);
+    expect(r.descrizione).toMatch(/No mattina \+ No pomeriggio/);
     expect(r.log.some((l:string)=>/Link da mandare ai colleghi:\s+https:\/\/docs\.google\.com\/forms\/x\/breve/.test(l))).toBe(true);
   });
   it("nomi con apostrofi e virgolette non rompono lo script", () => {
@@ -71,10 +72,10 @@ const csv = (righe:string[][]) => [intest, ...righe].map(r=>r.map(x=>/[",\n]/.te
 
 describe("desiderate: lettura delle risposte", () => {
   it("CSV con virgolette e incollato con tabulazioni danno lo stesso risultato", () => {
-    const t = csv([rigaCsv("01/11/2027 10:00:00", "a@x.it", "Medico A (101)", { 3:"L", 10:"Xm, Xp" }, "ciao, grazie")]);
+    const t = csv([rigaCsv("01/11/2027 10:00:00", "a@x.it", "Medico A (101)", { 3:"L", 10:"No mattina, No pomeriggio" }, "ciao, grazie")]);
     const tab = leggiTabella(t);
     expect(tab[1][2]).toBe("Medico A (101)");
-    expect(tab[1][12]).toBe("Xm, Xp");
+    expect(tab[1][12]).toBe("No mattina, No pomeriggio");
     expect(tab[1][34]).toBe("ciao, grazie");
     const tsv = tab.map(r=>r.join("\t")).join("\n");
     expect(leggiTabella(tsv)).toEqual(tab);
@@ -89,8 +90,8 @@ describe("desiderate: lettura delle risposte", () => {
   });
   it("riconosce i medici, sistema i codici, segnala doppioni e sconosciuti; l'ultima risposta vince", () => {
     const t = csv([
-      rigaCsv("01/11/2027 10:00:00", "a@x.it", "Medico A (101)", { 3:"L", 4:"L", 10:"Xm, Xp", 12:"p11", 13:"a37", 20:"L, Xn" }),
-      rigaCsv("01/11/2027 11:00:00", "b@x.it", "Medico B (102)", { 25:"X, Xm", 26:"Xm, Xp, Xn", 31:"L, ANA" }, "vorrei Natale libero"),
+      rigaCsv("01/11/2027 10:00:00", "a@x.it", "Medico A (101)", { 3:"L", 4:"L", 10:"No mattina, No pomeriggio", 12:"p11", 13:"a37", 20:"L, No notte" }),
+      rigaCsv("01/11/2027 11:00:00", "b@x.it", "Medico B (102)", { 25:"Libero, No mattina", 26:"No mattina, No pomeriggio, No notte", 31:"L, ANA" }, "vorrei Natale libero"),
       rigaCsv("01/11/2027 12:00:00", "c@x.it", "Medico Z (999)", { 1:"L" }),
       rigaCsv("01/11/2027 13:00:00", "d@x.it", "Medico D", { 7:"104" }),
       rigaCsv("02/11/2027 09:00:00", "a2@x.it", "Medico A (101)", { 5:"L", 6:"QQ, L" }),
@@ -110,8 +111,11 @@ describe("desiderate: lettura delle risposte", () => {
     expect(e.problemi.some(p=>/Medico Z \(999\).*non riconosciuto/.test(p))).toBe(true);
     expect(e.problemi.some(p=>/Medico A: due risposte \(a@x\.it e a2@x\.it\), vale l'ultima/.test(p))).toBe(true);
     // la prima risposta di A, da sola: codici di app (per11, art37), licenza con esclusione
-    const e1 = leggiRisposte(csv([rigaCsv("x","a@x.it","Medico A (101)",{ 12:"p11", 13:"a37", 20:"L, Xn" })]), anno, mese, medici);
-    expect(e1.risposte[0].giorni).toEqual({ 12:["per11"], 13:["art37"], 20:["L"] });
+    const e1 = leggiRisposte(csv([rigaCsv("x","a@x.it","Medico A (101)",{ 10:"No mattina, No pomeriggio", 12:"p11", 13:"a37", 20:"L, No notte", 21:"No notte" })]), anno, mese, medici);
+    expect(e1.risposte[0].giorni).toEqual({ 10:["Xm","Xp"], 12:["per11"], 13:["art37"], 20:["L"], 21:["Xn"] });
+    expect(e1.risposte[0].avvisi).toEqual(["giorno 20: con L le esclusioni (Xn) non servono: inserito solo L"]);
+    // anche i codici dell'app (fogli preparati a mano) vanno bene
+    expect(leggiRisposte(csv([rigaCsv("x","a@x.it","Medico A (101)",{ 3:"Xm, Xp", 4:"X" })]), anno, mese, medici).risposte[0].giorni).toEqual({ 3:["Xm","Xp"], 4:["X"] });
   });
   it("riconosce il medico anche se il nome nell'app è cambiato ma la matricola no", () => {
     const rinominato = medici.map(m=>m.id===1 ? { ...m, nome:"Medico Aa" } : m);
@@ -127,8 +131,8 @@ describe("desiderate: lettura delle risposte", () => {
 
 describe("desiderate: inserimento nel mese", () => {
   const e = leggiRisposte(csv([
-    rigaCsv("x","a@x.it","Medico A (101)",{ 3:"L", 10:"Xm, Xp", 25:"L" }),
-    rigaCsv("x","b@x.it","Medico B (102)",{ 24:"X", 25:"ANA" }),
+    rigaCsv("x","a@x.it","Medico A (101)",{ 3:"L", 10:"No mattina, No pomeriggio", 25:"L" }),
+    rigaCsv("x","b@x.it","Medico B (102)",{ 24:"Libero", 25:"ANA" }),
   ]), anno, mese, medici);
   const man = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
   it("come turni manuali, solo nelle celle libere: il piano festivi già inserito resta e il conflitto si segnala", () => {
