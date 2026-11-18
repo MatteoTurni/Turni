@@ -6,10 +6,11 @@
 //     medici): chi organizza lo incolla su script.google.com e lo esegue;
 //  2) ogni medico accede con la sua email Google, sceglie il proprio nome
 //     dall'elenco (tutti i medici dell'app) e segna i giorni in una griglia a
-//     caselle (giorni × codici; le esclusioni a parole: Libero, No mattina,
-//     No pomeriggio, No notte). Vede e può
-//     modificare solo la propria risposta; le risposte le vede solo chi ha
-//     creato il modulo;
+//     caselle con tutto il mese su una riga, come nel calendario (v0.3.65):
+//     una riga per voce (L, ANA, 104, p11, a37 e le esclusioni a parole:
+//     Libero, No mattina, No pomeriggio, No notte), una colonna per giorno.
+//     Vede e può modificare solo la propria risposta; le risposte le vede
+//     solo chi ha creato il modulo;
 //  3) chi organizza scarica le risposte dal foglio (CSV, o copia e incolla) e
 //     le importa nella sezione Desiderate, che le inserisce nel mese come turni
 //     MANUALI: solo nelle celle libere, saltando e segnalando le altre.
@@ -17,9 +18,11 @@
 import type { Medico, TurniAll, TurniMese } from "./types";
 import { MESI, dimOf, dowOf, isFestivo, isHol } from "./date";
 import { LICENZE } from "./turni";
+import { getRegole } from "./regole";
+import { festiviPianoDefault, festivitaAnno, iso } from "./pianoFestivi";
 import { togliInseriti, meseGenerato, type TurnoInserito } from "./festiviApp";
 
-/** Colonne della griglia del modulo, nell'ordine. Le licenze compaiono col
+/** Righe della griglia del modulo, nell'ordine. Le licenze compaiono col
  *  loro codice (p11 e a37 sono le etichette brevi dell'app per per11 e art37);
  *  le esclusioni a parole, perché il medico capisca cosa sceglie. */
 export const CODICI_MODULO = ["L", "ANA", "104", "p11", "a37", "Libero", "No mattina", "No pomeriggio", "No notte"] as const;
@@ -31,6 +34,9 @@ const DA_MODULO: Record<string, string> = {
   x: "X", xm: "Xm", xp: "Xp", xn: "Xn", per11: "per11", art37: "art37",
 };
 const codiceApp = (v: string) => Object.prototype.hasOwnProperty.call(DA_MODULO, v.toLowerCase()) ? DA_MODULO[v.toLowerCase()] : undefined;
+/** Ordine fisso dei codici di un giorno (quello delle voci del modulo), così
+ *  il foglio di oggi e quello della v0.3.64 danno lo stesso risultato. */
+const ORDINE: string[] = CODICI_MODULO.map(v => DA_MODULO[v.toLowerCase()]);
 const SIGNIFICATO: Record<string, string> = {
   L: "licenza (ferie)", ANA: "permesso", "104": "legge 104", p11: "art. 11", a37: "art. 37",
   Libero: "non lavoro tutto il giorno", "No mattina": "non lavoro di mattina", "No pomeriggio": "non lavoro di pomeriggio", "No notte": "non lavoro di notte",
@@ -39,10 +45,27 @@ const GG = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"];
 
 /** Come compare il medico nell'elenco del modulo: nome e matricola. */
 export const etichettaMedico = (m: Medico) => m.codice ? `${m.nome} (${m.codice})` : m.nome;
-/** Riga della griglia per il giorno g: "1 mer", "8 mer (festivo)". */
-export const etichettaGiorno = (anno: number, mese: number, g: number) =>
-  `${g} ${GG[dowOf(anno, mese, g)]}${isHol(anno, mese, g) ? " (festivo)" : ""}`;
+/** Colonna della griglia per il giorno g (v0.3.65): "1 mer", "4 sab 🔵",
+ *  "5 dom 🔴", "8 mer 🔴". Nel modulo non ci sono colori: i pallini dicono
+ *  domeniche e festivi (rosso) e sabati (blu). */
+export const etichettaGiorno = (anno: number, mese: number, g: number) => {
+  const d = dowOf(anno, mese, g);
+  return `${g} ${GG[d]}${isFestivo(anno, mese, g) ? " 🔴" : d === 5 ? " 🔵" : ""}`;
+};
 export const titoloModulo = (anno: number, mese: number) => `Desiderate ${MESI[mese]} ${anno}`;
+/** Festività del mese col nome (nazionali, Pasqua e locali del reparto), per
+ *  la riga sopra la griglia. Il nome perde la parte fra parentesi. */
+export function festiviDelMese(anno: number, mese: number): { g: number; nome: string }[] {
+  const nomi = new Map<string, string>();
+  for (const f of festivitaAnno(festiviPianoDefault(getRegole().reparto.festiviLocali), anno))
+    if (!f.soloGiorno && !nomi.has(f.date)) nomi.set(f.date, f.name.replace(/\s*\([^()]*\)\s*$/, "") || f.name);
+  const out: { g: number; nome: string }[] = [];
+  for (let g = 1; g <= dimOf(anno, mese); g++) {
+    const nome = nomi.get(iso(anno, mese + 1, g));
+    if (nome || isHol(anno, mese, g)) out.push({ g, nome: nome || "festivo" });
+  }
+  return out;
+}
 
 // ── 1) LO SCRIPT DEL MODULO ──────────────────────────────────────────────────
 /** Testo dello script Apps Script che crea modulo e foglio delle risposte. */
@@ -50,7 +73,8 @@ export function scriptModulo(anno: number, mese: number, medici: Medico[]): stri
   const nd = dimOf(anno, mese);
   const titolo = titoloModulo(anno, mese);
   const giorni = Array.from({ length: nd }, (_, i) => etichettaGiorno(anno, mese, i + 1));
-  const festivi = Array.from({ length: nd }, (_, i) => i + 1).filter(g => isFestivo(anno, mese, g)).length;
+  const fest = festiviDelMese(anno, mese);
+  const aiuto = fest.length ? `Festivi: ${fest.map(f => `${f.nome} (${f.g})`).join(", ")} · scorri di lato →` : "Scorri di lato per vedere tutti i giorni →";
   const J = (v: unknown) => JSON.stringify(v);
   const legenda = CODICI_MODULO.map(c => `• ${c} = ${SIGNIFICATO[c]}`).join("\\n");
   return `/**
@@ -76,8 +100,11 @@ export function scriptModulo(anno: number, mese: number, medici: Medico[]): stri
 
 const TITOLO = ${J(titolo)};
 const MEDICI = ${J(medici.map(etichettaMedico))};
+// la griglia: tutto il mese su una riga, come nel calendario
+const MESE = ${J(`${MESI[mese]} ${anno}`)};
+const VOCI = ${J(CODICI_MODULO)};
 const GIORNI = ${J(giorni)};
-const CODICI = ${J(CODICI_MODULO)};
+const AIUTO = ${J(aiuto)};
 
 function creaModulo() {
   // ---------- 1) IL MODULO ----------
@@ -87,7 +114,8 @@ function creaModulo() {
     'COME FARE\\n' +
     '1. Accedi con il tuo account Google (è obbligatorio).\\n' +
     '2. Scegli il TUO nome dall\\'elenco.\\n' +
-    '3. Nella griglia spunta, per ogni giorno, i codici che ti servono. I giorni senza spunte restano liberi.\\n\\n' +
+    '3. Nella griglia ogni riga è una voce e ogni colonna un giorno: spunta i giorni che ti servono. I giorni senza spunte restano liberi.\\n' +
+    'I giorni sono tutti su una riga, come nel calendario: scorri di lato (col telefono girato se ne vedono di più). 🔴 domeniche e festivi · 🔵 sabati\\n\\n' +
     'CODICI\\n${legenda}\\n\\n' +
     'Puoi spuntare più voci «No» nello stesso giorno: No mattina + No pomeriggio = lavoro solo di notte. ' +
     'Una licenza o un permesso valgono già tutto il giorno: non serve spuntare altro.\\n\\n' +
@@ -114,10 +142,10 @@ function creaModulo() {
     .setRequired(true);
 
   form.addCheckboxGridItem()
-    .setTitle(TITOLO)
-    .setHelpText('Spunta i codici giorno per giorno (${nd} giorni, ${festivi} fra domeniche e festivi). Lascia vuoti i giorni in cui puoi lavorare.')
-    .setRows(GIORNI)
-    .setColumns(CODICI)
+    .setTitle(MESE)
+    .setHelpText(AIUTO)
+    .setRows(VOCI)
+    .setColumns(GIORNI)
     .setRequired(false);
 
   form.addParagraphTextItem()
@@ -216,14 +244,25 @@ export function leggiRisposte(testo: string, anno: number, mese: number, medici:
   const intest = tab[0].map(h => h.trim());
   const col = (re: RegExp) => intest.findIndex(h => re.test(h));
   const cChi = col(/^chi sei/i), cEmail = col(/e-?mail/i), cNote = col(/^note/i), cQuando = col(/cronolog|timestamp|data e ora|^data$/i);
+  // Le intestazioni della griglia sono «Titolo [riga]». Due formati:
+  //  - dalla v0.3.65 una riga per voce: «Dicembre 2026 [No mattina]», con i
+  //    giorni spuntati nella cella ("1 mar, 5 sab 🔵");
+  //  - moduli della v0.3.64 una riga per giorno: «Desiderate Dicembre 2026
+  //    [1 mar]», con le voci spuntate nella cella ("L, No notte").
+  const vociCol: { c: number; voce: string; codice: string }[] = [];
   const giorniCol: { c: number; g: number }[] = [];
+  const reMese = new RegExp(`(${MESI.join("|")})\\s+(\\d{4})`, "i");
   intest.forEach((h, c) => {
-    const m = /\[(\d{1,2})\b[^\]]*\]\s*$/.exec(h);
-    if (m && c !== cChi) giorniCol.push({ c, g: +m[1] });
-    const mm = new RegExp(`(${MESI.join("|")})\\s+(\\d{4})`, "i").exec(h);
+    const dentro = c === cChi ? undefined : /\[([^\]]*)\]\s*$/.exec(h)?.[1].trim();
+    if (dentro) {
+      const codice = codiceApp(dentro), g = /^(\d{1,2})\b/.exec(dentro);
+      if (codice) vociCol.push({ c, voce: dentro, codice });
+      else if (g) giorniCol.push({ c, g: +g[1] });
+    }
+    const mm = reMese.exec(h);
     if (mm && !esito.meseLetto) esito.meseLetto = { anno: +mm[2], mese: MESI.findIndex(x => x.toLowerCase() === mm[1].toLowerCase()) };
   });
-  if (cChi < 0 || !giorniCol.length) { esito.errore = "Non sembra il foglio delle risposte del modulo Desiderate: mancano la domanda «Chi sei?» o la griglia dei giorni."; return esito; }
+  if (cChi < 0 || (!giorniCol.length && !vociCol.length)) { esito.errore = "Non sembra il foglio delle risposte del modulo Desiderate: mancano la domanda «Chi sei?» o la griglia dei giorni."; return esito; }
   if (esito.meseLetto && (esito.meseLetto.anno !== anno || esito.meseLetto.mese !== mese)) {
     esito.errore = `Queste risposte sono di ${MESI[esito.meseLetto.mese]} ${esito.meseLetto.anno}, non di ${MESI[mese]} ${anno}: scegli il mese giusto.`;
     return esito;
@@ -245,13 +284,22 @@ export function leggiRisposte(testo: string, anno: number, mese: number, medici:
     const m = trova(chi);
     if (!m) { esito.problemi.push(`Risposta${email ? " di " + email : ""}: medico «${chi || "(vuoto)"}» non riconosciuto, non importata.`); continue; }
     const r: RispostaDes = { id: m.id, email, quando: cella(cQuando), giorni: {}, note: cella(cNote), avvisi: [] };
-    for (const { c, g } of giorniCol) {
+    const valori = (c: number) => cella(c).split(/\s*[,;]\s*/).map(x => x.trim()).filter(Boolean);
+    const codici: Record<number, string[]> = {}, ignoti: Record<number, string[]> = {};
+    const metti = (g: number, cod: string) => { const v = (codici[g] ||= []); if (!v.includes(cod)) v.push(cod); };
+    for (const { c, g } of giorniCol) {                       // formato 0.3.64: le voci di un giorno
       if (g < 1 || g > nd) continue;
-      const grezzi = cella(c).split(/\s*[,;]\s*/).map(x => x.trim()).filter(Boolean);
-      if (!grezzi.length) continue;
-      const ignoti = grezzi.filter(x => !codiceApp(x));
-      if (ignoti.length) r.avvisi.push(`giorno ${g}: codice ${ignoti.join(", ")} sconosciuto, ignorato`);
-      const n = normalizzaGiorno(grezzi.map(codiceApp).filter((x): x is string => !!x));
+      for (const x of valori(c)) { const cod = codiceApp(x); if (cod) metti(g, cod); else (ignoti[g] ||= []).push(x); }
+    }
+    for (const { c, voce, codice } of vociCol)                // formato 0.3.65: i giorni di una voce
+      for (const x of valori(c)) {
+        const g = +(/^(\d{1,2})\b/.exec(x)?.[1] ?? 0);
+        if (g >= 1 && g <= nd) metti(g, codice);
+        else r.avvisi.push(`${voce}: giorno «${x}» non riconosciuto, ignorato`);
+      }
+    for (const g of [...new Set([...Object.keys(codici), ...Object.keys(ignoti)].map(Number))].sort((a, b) => a - b)) {
+      if (ignoti[g]) r.avvisi.push(`giorno ${g}: codice ${ignoti[g].join(", ")} sconosciuto, ignorato`);
+      const n = normalizzaGiorno((codici[g] || []).sort((a, b) => ORDINE.indexOf(a) - ORDINE.indexOf(b)));
       if (n.avviso) r.avvisi.push(`giorno ${g}: ${n.avviso}`);
       if (n.tipi.length) r.giorni[g] = n.tipi;
     }
