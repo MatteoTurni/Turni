@@ -138,7 +138,8 @@ export function DesideratePanel({ medici, turniAll, onTurniMese, stato, onStato,
           Copia lo script, apri <b>script.google.com</b> → «Nuovo progetto», cancella il testo che c'è, incolla, salva, scegli la funzione <b>creaModulo</b> e premi <b>Esegui</b>.
           Concedi i permessi; nel «Registro di esecuzione» trovi il link da mandare ai colleghi e quello del foglio delle risposte.
           Il modulo chiede l'accesso con l'email Google; ognuno sceglie il proprio nome dall'elenco di tutti i medici dell'app. Una risposta a testa, modificabile fino alla chiusura.
-          Nel modulo le esclusioni sono scritte a parole (Libero, No mattina, No pomeriggio, No notte) e se ne può spuntare più d'una nello stesso giorno; qui tornano X, Xm, Xp e Xn.
+          La griglia ha tutto il mese su una riga, come nel calendario: una riga per voce e una colonna per giorno (🔴 domeniche e festivi, 🔵 sabati); dal telefono si scorre di lato.
+          Le esclusioni sono scritte a parole (Libero, No mattina, No pomeriggio, No notte) e se ne può spuntare più d'una nello stesso giorno; qui tornano X, Xm, Xp e Xn.
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <button onClick={copiaScript} style={btn("#1d4ed8", "#fff", "#1d4ed8")}>Copia lo script</button>
@@ -154,6 +155,7 @@ export function DesideratePanel({ medici, turniAll, onTurniMese, stato, onStato,
         <div style={{ ...LBL, marginBottom: "10px" }}>
           Quando tutti hanno risposto: nel modulo spegni «Accetta risposte»; nel foglio delle risposte <b>File → Scarica → Valori separati da virgola (.csv)</b> e caricalo qui,
           oppure seleziona tutto il foglio, copia e incolla nel riquadro. Una nuova importazione sostituisce la precedente di {meseTxt}. Le risposte, con le email, restano solo su questo dispositivo.
+          Si leggono anche i fogli dei moduli creati con la versione 0.3.64 (un giorno per riga).
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start" }}>
           <button onClick={() => fileRef.current?.click()} style={btn("#1d4ed8", "#fff", "#1d4ed8")}>Carica il file CSV…</button>

@@ -1,4 +1,21 @@
-# TurniMedicina 0.3.64
+# TurniMedicina 0.3.65
+
+## Novità 0.3.65 — modulo Desiderate: tutto il mese su una riga, come nel calendario
+
+La griglia del Modulo Google è girata: **una riga per voce** (L, ANA, 104,
+p11, a37, Libero, No mattina, No pomeriggio, No notte) e **una colonna per
+giorno**, con tutto il mese su una riga come il calendario dell'app. Il
+modulo non ha colori, quindi accanto al giorno c'è 🔴 per domeniche e festivi
+e 🔵 per i sabati («5 dom 🔴», «4 sab 🔵»). Sopra la griglia ci sono i festivi del
+mese col nome, compresi Pasqua e la festa locale del reparto (per esempio
+«Festivi: Immacolata (8), Natale (25), Santo Stefano (26)»). Dal telefono si
+scorre di lato: tenendolo dritto si vedono 4–5 giorni alla volta, girato circa
+due settimane.
+
+L'importazione legge il nuovo foglio delle risposte (una colonna per voce,
+con i giorni spuntati) e anche quello dei moduli creati con la 0.3.64 (una
+colonna per giorno): le stesse risposte danno lo stesso risultato. Un giorno
+illeggibile nel foglio viene saltato e segnalato.
 
 ## Novità 0.3.64 — sezione Desiderate: licenze, permessi ed esclusioni raccolte con un Modulo Google
 
