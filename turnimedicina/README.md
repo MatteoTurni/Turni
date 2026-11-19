@@ -1,4 +1,14 @@
-# TurniMedicina 0.3.70
+# TurniMedicina 0.3.71
+
+## Novità 0.3.71 — cancellare il piano festivi
+
+Accanto a «Genera turni» e «Rigenera» c'è **«Cancella il piano»**, con
+conferma. Se il piano non è stato inserito nei mesi basta confermare; se
+alcuni suoi turni sono già nei tabelloni si sceglie fra **«Cancella e togli
+dai mesi i turni inseriti»** (i tabelloni tornano come prima dell'inserimento,
+il resto non si tocca) e **«Cancella e lascia i turni nei mesi»** (restano come
+turni manuali; un piano nuovo potrà sostituirli o toglierli). Saldo, storico,
+preferenze e archivio restano.
 
 ## Novità 0.3.70 — piano festivi: un turno da titolare a testa, preferenze nella propria parte
 
