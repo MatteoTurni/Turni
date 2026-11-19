@@ -107,10 +107,10 @@ export const FESTIVI_PIANO_NAZIONALI: FestivitaPiano[] = [
   F("ferragosto", "Ferragosto", "08-15", false, 2, 3, 2),
   F("ognissanti", "Ognissanti", "11-01", false, 2, 2, 1),
   F("immacolata", "Immacolata", "12-08", false, 1, 2, 2),
-  G("vigilia", "Vigilia di Natale", "12-24", 1),                        // la notte 24→25 è la notte prima di Natale
+  G("vigilia", "Vigilia di Natale", "12-24", 2),                        // la notte 24→25 è la notte prima di Natale
   F("natale", "Natale", "12-25", true, 3, 3, 3),
   F("santostefano", "Santo Stefano", "12-26", true, 3, 2, 2),           // notte prima = notte di Natale
-  G("sansilvestro", "San Silvestro", "12-31", 1),                       // la notte 31/12→1/1 è la notte prima di Capodanno
+  G("sansilvestro", "San Silvestro", "12-31", 2),                       // la notte 31/12→1/1 è la notte prima di Capodanno
 ];
 /** Elenco predefinito: le nazionali più le festività locali del reparto (1 punto per turno). */
 export function festiviPianoDefault(locali: { data: string; nome: string }[] = []): FestivitaPiano[] {

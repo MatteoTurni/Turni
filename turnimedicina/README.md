@@ -1,4 +1,16 @@
-# TurniMedicina 0.3.65
+# TurniMedicina 0.3.66
+
+## Novità 0.3.66 — 24 e 31 dicembre: il giorno vale 2 punti
+
+Nella sezione Festivi (festività e punti del sorteggio) il turno di giorno
+della Vigilia di Natale e di San Silvestro vale **2 punti** invece di 1. Sono
+le sole due festività con il solo turno di giorno.
+
+Chi aveva già l'elenco salvato con questi due valori a 1 se li trova a 2 al
+primo avvio, una volta sola. Un valore cambiato a mano resta com'è, anche se
+dopo lo si rimette a 1. Gli altri punti non cambiano, e nemmeno i piani già
+sorteggiati: il nuovo valore conta dal prossimo sorteggio e nel saldo letto
+dai mesi.
 
 ## Novità 0.3.65 — modulo Desiderate: tutto il mese su una riga, come nel calendario
 
@@ -142,7 +154,7 @@ Come funziona il sorteggio (identico allo strumento):
 - ogni festività ha tre turni — notte prima, giorno (12 ore), notte — ciascuno
   coi suoi punti; una notte condivisa fra due festività consecutive (25→26
   dicembre) è un turno solo e vale il più alto. Il 24 e il 31 dicembre hanno
-  solo il turno di giorno;
+  solo il turno di giorno (2 punti dalla 0.3.66);
 - si distribuiscono i punti, non il numero di turni; contano il saldo di
   partenza, le festività già fatte l'ultima volta, le preferenze, il massimo
   di turni e il minimo di superfestivi per medico (Capodanno, Pasqua, Natale,

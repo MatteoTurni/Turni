@@ -157,6 +157,9 @@ export interface Regole {
    *  turni (notte prima, giorno, notte) e quali sono superfestivi. Le feste
    *  locali del reparto ci entrano da sole (vedi allineaFestiviPiano). */
   festiviPiano: FestivitaPiano[];
+  /** Revisione dei punti di partenza di festiviPiano già applicata all'elenco
+   *  salvato (v0.3.66: 1 = giorno del 24 e del 31 dicembre portato a 2). */
+  festiviPianoRev: number;
   /** Anni di mesi salvati che la sezione Festivi rilegge per saldo e storico (1-5). */
   pianoFestiviAnni: number;
 }
