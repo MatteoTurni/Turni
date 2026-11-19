@@ -358,7 +358,7 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
     if (miei.some((t, i) => i > 0 && dd(t.date, miei[i - 1].date) < 2)) vicini.push(nome(id));
     if (miei.filter(t => t.sup).length < p.minSuper) senzaSup.push(nome(id));
     if (soloGiorno.has(id) && (miei.some(t => t.tipo === "notturno") || p.turni.some(t => t.reperibile === id && t.tipo === "notturno"))) nottiEs.push(nome(id));
-    if (p.turni.some(t => t.reperibile === id && miei.some(x => x.date === t.date))) doppi.push(nome(id));
+    if (p.turni.some(t => t.reperibile === id && miei.some(x => Math.abs(dd(x.date, t.date)) <= 1))) doppi.push(nome(id));   // v0.3.69: anche il giorno prima o dopo
   }
   out.push({ ok: !troppi.length, testo: troppi.length ? `Oltre il massimo di ${p.maxShifts} turni: ${troppi.join(", ")}` : `Nessuno supera ${p.maxShifts} turni` });
   out.push({ ok: !vicini.length, testo: vicini.length ? `Turni lo stesso giorno o in giorni consecutivi: ${vicini.join(", ")}` : "Mai due turni lo stesso giorno o in giorni consecutivi" });
@@ -370,7 +370,7 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
   if (p.repOn) {
     const senza = p.turni.filter(t => t.reperibile == null).length;
     out.push({ ok: !senza, testo: senza ? `${senza} turni senza reperibile` : "Ogni turno ha un reperibile" });
-    out.push({ ok: !doppi.length, testo: doppi.length ? `Titolare e reperibile lo stesso giorno: ${doppi.join(", ")}` : "Mai titolare e reperibile lo stesso giorno" });
+    out.push({ ok: !doppi.length, testo: doppi.length ? `Reperibile lo stesso giorno, il giorno prima o il giorno dopo un suo turno: ${doppi.join(", ")}` : "Mai reperibile lo stesso giorno, il giorno prima o il giorno dopo un suo turno" });
   }
   return out;
 }

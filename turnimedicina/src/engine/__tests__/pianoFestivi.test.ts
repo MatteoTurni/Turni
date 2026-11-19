@@ -24,13 +24,39 @@ describe("piano festivi: stesso sorteggio dello strumento originale", () => {
     .map(f => f.soloGiorno ? { ...f, punti:{ ...f.punti, giorno:1 } } : f);
   for(const [i, caso] of rif.casi.entries()){
     it(`caso ${i+1}: ${caso.start} → ${caso.end}${caso.cfg.onCall.enabled ? " con reperibilità" : ""}`, () => {
-      const r = generaPiano({ ...caso.cfg, holidays: festivitaPeriodo(lista, caso.start, caso.end) });
+      // dalla v0.3.69 il reperibile non sta accanto ai suoi turni: qui la regola dell'originale (solo lo stesso giorno)
+      const r = generaPiano({ ...caso.cfg, onCall:{ ...caso.cfg.onCall, staccoTitolare:false }, holidays: festivitaPeriodo(lista, caso.start, caso.end) });
       expect(r.assignments.map(a=>[a.date,a.tipo,a.doctor,a.onCall,a.points,a.onCallPoints])).toEqual(caso.atteso.turni);
       expect(r.score).toBe(caso.atteso.score);
       expect(r.totals).toEqual(caso.atteso.totals);
       expect([r.spreadBefore, r.spreadAfter]).toEqual([caso.atteso.scartoPrima, caso.atteso.scartoDopo]);
     });
   }
+});
+
+describe("piano festivi: reperibile mai accanto ai suoi turni (v0.3.69)", () => {
+  const rif = JSON.parse(fs.readFileSync("src/engine/__tests__/fixtures/pianoFestivi_riferimento.json", "utf8"));
+  const vicini = (r:{ assignments:{ date:string; doctor:string|null; onCall:string|null }[] }) => {
+    let n = 0;
+    for (const a of r.assignments) if (a.onCall && r.assignments.some(b => b.doctor===a.onCall && Math.abs(Date.parse(b.date)-Date.parse(a.date))===86400000)) n++;
+    return n;
+  };
+  for (const [i, caso] of rif.casi.entries()) if (caso.cfg.onCall.enabled) it(`caso ${i+1}: ${caso.start} → ${caso.end}`, () => {
+    const holidays = festivitaPeriodo(lista, caso.start, caso.end);
+    const prima = generaPiano({ ...caso.cfg, onCall:{ ...caso.cfg.onCall, staccoTitolare:false }, holidays });
+    const ora = generaPiano({ ...caso.cfg, holidays });
+    expect(vicini(prima)).toBeGreaterThan(0);                        // con la regola dell'originale succede
+    expect(vicini(ora)).toBe(0);
+    expect(verificaPiano(ora, { ...caso.cfg, holidays })).toEqual([]);
+    expect(ora.assignments.every(a=>a.doctor!=null)).toBe(true);
+    // i titolari: mai lo stesso giorno o giorni consecutivi
+    for (const d of caso.cfg.doctors) {
+      const ds = ora.assignments.filter(a=>a.doctor===d).map(a=>a.date).sort();
+      for (let k=1; k<ds.length; k++) expect(Date.parse(ds[k])-Date.parse(ds[k-1])).toBeGreaterThanOrEqual(2*86400000);
+    }
+    // la verifica del piano segnala il reperibile accanto a un suo turno
+    expect(verificaPiano(prima, { ...caso.cfg, holidays }).some(e=>/reperibile il giorno prima o dopo/.test(e))).toBe(true);
+  });
 });
 
 describe("piano festivi: festività e turni", () => {

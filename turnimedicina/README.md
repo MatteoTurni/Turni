@@ -1,4 +1,20 @@
-# TurniMedicina 0.3.68
+# TurniMedicina 0.3.69
+
+## Novità 0.3.69 — piano festivi: il reperibile mai accanto ai suoi turni
+
+Con la reperibilità accesa, un medico non è più reperibile il giorno prima né
+il giorno dopo un suo turno da titolare (per esempio titolare la notte del
+25 e reperibile il giorno del 26). Prima, come nello strumento originale, era
+vietato solo lo stesso giorno. Il controllo sotto il piano ora dice «Mai
+reperibile lo stesso giorno, il giorno prima o il giorno dopo un suo turno»
+(un piano sorteggiato prima di questa versione può risultare segnalato).
+
+Verifica su 105 sorteggi casuali: con la regola dell'originale l'app dà piani
+identici allo strumento; con la regola nuova nessun reperibile è accanto a un
+suo turno, i titolari non hanno mai turni lo stesso giorno o in giorni
+consecutivi, i turni senza reperibile restano gli stessi (dipendono solo da
+quanti reperibili ci sono) e l'equità dei punti resta la stessa (10 medici,
+anno intero: scarto medio 0,41 punti contro 0,37).
 
 ## Novità 0.3.68 — preferenze del piano festivi con più turni
 
