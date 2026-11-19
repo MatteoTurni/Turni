@@ -389,6 +389,21 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
   return out;
 }
 /** Passa al periodo successivo: il piano va in archivio, saldo e storico si rileggono da capo. */
+/** Cancella il piano sorteggiato (v0.3.71). Con `togliDaiMesi` toglie anche dai
+ *  tabelloni i turni che l'app vi aveva inserito dal piano; senza, i turni
+ *  restano nei mesi come manuali e il registro resta (un nuovo piano potrà
+ *  sostituirli o toglierli). Saldo, storico, preferenze e archivio non cambiano. */
+export function cancellaPiano(st: StatoFestivi, turniAll: TurniAll, togliDaiMesi: boolean): { stato: StatoFestivi; mesi: Record<string, TurniMese>; tolti: number } {
+  const mesi: Record<string, TurniMese> = {};
+  let tolti = 0;
+  if (togliDaiMesi) for (const [k, ins] of Object.entries(st.inseriti)) {
+    const r = togliInseriti(turniAll[k], ins.turni);
+    mesi[k] = r.turni; tolti += r.tolti;
+  }
+  return { stato: { ...st, piano: null, inseriti: togliDaiMesi ? {} : st.inseriti }, mesi, tolti };
+}
+/** Turni inseriti nei mesi dal piano (registro), in tutto. */
+export const nInseriti = (st: StatoFestivi) => Object.values(st.inseriti).reduce((n, x) => n + x.turni.length, 0);
 export function prossimoPeriodo(st: StatoFestivi): StatoFestivi {
   const base = st.piano ? st.piano.periodo : st.periodo;
   return { ...st, periodo: periodoSuccessivo(base), piano: null, archivio: st.piano ? [...st.archivio, st.piano].slice(-6) : st.archivio,

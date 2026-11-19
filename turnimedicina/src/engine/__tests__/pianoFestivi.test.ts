@@ -8,7 +8,7 @@ import {
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
-  controlliPiano, prossimoPeriodo, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
+  controlliPiano, prossimoPeriodo, cancellaPiano, nInseriti, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
 } from "../festiviApp";
 
 // ── v0.3.60: piano festivi ────────────────────────────────────────────────────
@@ -391,6 +391,29 @@ describe("sezione Festivi: il piano nei mesi", () => {
   const man = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, man:true })) });
   const diDic = piano.turni.filter(t=>t.date.startsWith("2027-12"));
 
+  it("v0.3.71: cancellare il piano, togliendo o lasciando nei mesi i turni inseriti", () => {
+    const ferie: TurniAll = { "2027-12": { 99: { 3: man("L") } } };
+    const e = inserisciPiano(piano, ferie, "2027-12");
+    const tutti: TurniAll = { ...ferie, "2027-12": e.turni };
+    const conIns = { ...st, piano, preferenze:{ 2:{ Natale:"giorno" as const } }, saldoMan:{ 1:3 }, inseriti:{ "2027-12": { generato: piano.generato, turni: e.inseriti } } };
+    expect(nInseriti(conIns)).toBe(diDic.length);
+    // togli dai mesi: il mese torna com'era (le ferie restano), registro vuoto
+    const a = cancellaPiano(conIns, tutti, true);
+    expect(a.stato.piano).toBeNull();
+    expect(a.stato.inseriti).toEqual({});
+    expect(a.tolti).toBe(diDic.length);
+    expect(a.mesi["2027-12"][99][3].t[0].tipo).toBe("L");
+    expect(Object.entries(a.mesi["2027-12"]).every(([id, gi]) => id==="99" || Object.keys(gi).length===0)).toBe(true);
+    expect([a.stato.preferenze, a.stato.saldoMan, a.stato.periodo]).toEqual([conIns.preferenze, conIns.saldoMan, conIns.periodo]);   // il resto non cambia
+    // lascia nei mesi: nessun mese toccato, registro tenuto (un nuovo piano potrà sostituirli)
+    const b = cancellaPiano(conIns, tutti, false);
+    expect(b.stato.piano).toBeNull();
+    expect(b.mesi).toEqual({});
+    expect(b.stato.inseriti).toEqual(conIns.inseriti);
+    expect(tutti["2027-12"]).toBe(e.turni);                                  // l'originale non viene modificato
+    // senza turni inseriti
+    expect(cancellaPiano({ ...st, piano }, {}, true)).toEqual({ stato:{ ...st, piano:null, inseriti:{} }, mesi:{}, tolti:0 });
+  });
   it("mesi del piano: anche il dicembre prima, per la notte di Capodanno", () => {
     const mesi = mesiDelPiano(piano);
     expect(mesi[0]).toEqual({ chiave:"2026-12", anno:2026, mese:11, turni:1 });

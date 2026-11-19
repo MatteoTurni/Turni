@@ -6,7 +6,7 @@ import {
 } from "../engine/pianoFestivi";
 import {
   type StatoFestivi, type PianoSalvato, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano, controlliPiano,
-  prossimoPeriodo, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type Saltato,
+  prossimoPeriodo, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, cancellaPiano, nInseriti, type Saltato,
 } from "../engine/festiviApp";
 import { SC } from "./costanti";
 
@@ -38,6 +38,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
 }) {
   const [busy, setBusy] = useState(false);
   const [confNext, setConfNext] = useState(false);
+  const [confCanc, setConfCanc] = useState(false);
   const [esitoIns, setEsitoIns] = useState<{ chiave: string; inseriti: number; tolti: number; saltati: Saltato[] } | null>(null);
   const [nuovaPref, setNuovaPref] = useState<{ id: number | null; festa: string; ruoli: RuoloFest[] }>({ id: null, festa: "", ruoli: [] });
 
@@ -94,6 +95,13 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
       } catch (e) { avviso("Errore: " + (e as Error).message, "err"); }
       setBusy(false);
     }, 40);
+  };
+  const cancella = (togliDaiMesi: boolean) => {
+    const r = cancellaPiano(stato, turniAll, togliDaiMesi);
+    for (const [k, t] of Object.entries(r.mesi)) onTurniMese(k, t);
+    onStato(r.stato);
+    setConfCanc(false); setEsitoIns(null);
+    avviso(togliDaiMesi && r.tolti ? `Piano cancellato e ${r.tolti} turn${r.tolti === 1 ? "o tolto" : "i tolti"} dai mesi.` : "Piano cancellato.");
   };
   const preparaProssimo = () => {
     if (!confNext) { setConfNext(true); setTimeout(() => setConfNext(false), 3500); return; }
@@ -546,7 +554,23 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
           <button onClick={() => genera(stato.seme)} disabled={busy} style={{ ...btn("#1d4ed8", "#fff", "#1d4ed8", busy), padding: "9px 18px", fontSize: "12px" }}>{busy ? "Sorteggio in corso…" : "Genera turni"}</button>
           <button onClick={() => genera(stato.seme + 1)} disabled={busy || !piano} style={{ ...btn("#f1f5f9", "#1d4ed8", "#cbd5e1", busy || !piano), padding: "9px 14px" }}>Rigenera (altra variante)</button>
           {piano && <span style={LBL}>variante n. {piano.seme}</span>}
+          {piano && !confCanc && <button onClick={() => setConfCanc(true)} disabled={busy} style={{ ...btn("#fff1f2", "#be123c", "#fecdd3", busy), padding: "9px 14px" }}>Cancella il piano</button>}
         </div>
+        {piano && confCanc && (
+          <div style={{ ...BOX, borderColor: "#fecdd3", background: "#fff1f2" }}>
+            <div style={{ ...LBL, fontSize: "11px", color: "#0f172a", marginBottom: "8px" }}>
+              Cancellare il piano del periodo {periodoTxt(piano.periodo)}? Saldo, storico e preferenze restano.
+              {nInseriti(stato) > 0 && <> Nei mesi ci sono <b>{nInseriti(stato)}</b> turni inseriti dal piano ({Object.keys(stato.inseriti).map(meseTxt).join(", ")}).</>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              {nInseriti(stato) > 0 ? <>
+                <button onClick={() => cancella(true)} style={btn("#be123c", "#fff", "#be123c")}>Cancella e togli dai mesi i turni inseriti</button>
+                <button onClick={() => cancella(false)} style={btn("#ffffff", "#be123c", "#fecdd3")}>Cancella e lascia i turni nei mesi</button>
+              </> : <button onClick={() => cancella(false)} style={btn("#be123c", "#fff", "#be123c")}>Conferma: cancella il piano</button>}
+              <button onClick={() => setConfCanc(false)} style={btn("#ffffff", "#64748b", "#cbd5e1")}>Annulla</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {risultato}
