@@ -52,6 +52,12 @@ export interface CfgPiano {
   /** Medici che ricevono solo turni di giorno (esentati dalle notti). */
   soloDiurni?: string[];
   baseSeed?: number; attempts?: number; topK?: number; localSearch?: boolean;
+  /** A (v0.3.70): almeno un turno da titolare a testa se i turni bastano, e
+   *  proporzione simile fra turni da titolare e reperibilità. */
+  bilanciaRuoli?: boolean;
+  /** B (v0.3.70): un turno chiesto ha la precedenza forte solo finché il medico
+   *  è sotto la media dei punti del periodo (saldo compreso). */
+  prefEntroQuota?: boolean;
 }
 export interface Assegnazione {
   date: string; tipo: "diurno" | "notturno"; holNames: string[]; holBases: string[]; keys: string[];
@@ -331,6 +337,25 @@ export function prefMatches(it: RichiestaPref, s: { holNames: string[]; keys: st
   return it.role === "any" ? s.holNames.includes(it.hol) : s.keys.includes(it.hol + "|" + it.role);
 }
 
+/** B (v0.3.70): quante preferenze di ogni medico stanno nella sua parte di
+ *  punti da titolare del periodo — (punti dei turni + saldi) / medici, meno
+ *  il suo saldo — prendendo prima quelle che costano meno; almeno una, se la
+ *  sua parte è positiva. */
+export function prefNellaParte(cfg: CfgPiano, turni: { holNames: string[]; keys: string[]; points: number }[], prefItems: Record<string, RichiestaPref[]>): Record<string, number> {
+  const sal = (d: string) => (cfg.saldo && +cfg.saldo[d]) || 0;
+  const n = cfg.doctors.length || 1;
+  const parte = (turni.reduce((t, s) => t + s.points, 0) + cfg.doctors.reduce((t, d) => t + sal(d), 0)) / n;
+  const out: Record<string, number> = {};
+  for (const d of cfg.doctors) {
+    const items = prefItems[d] || [];
+    const costi = items.map(it => Math.min(...turni.filter(s => prefMatches(it, s)).map(s => s.points), Infinity)).filter(isFinite).sort((a, b) => a - b);
+    const budget = parte - sal(d);
+    let k = 0, acc = 0;
+    for (const c of costi) { if (acc + c <= budget + 1e-9) { acc += c; k++; } else break; }
+    out[d] = Math.min(items.length, budget > 0 ? Math.max(1, k) : 0);
+  }
+  return out;
+}
 /** Un singolo tentativo di assegnazione, in ordine di data. */
 export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number): Soluzione {
   const counts: Conti = {}, supCounts: Conti = {}, dayCounts: Conti = {}, nightCounts: Conti = {}, prefHits: Conti = {}, points: Conti = {};
@@ -363,6 +388,12 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
   for (const d of cfg.doctors) prefSat[d] = new Set();
   const hitsOf = (d: string, s: TurnoFest) => { const r: number[] = []; pItems(d).forEach((it, i) => { if (prefMatches(it, s)) r.push(i); }); return r; };
 
+  const bilancia = !!cfg.bilanciaRuoli, entroQuota = !!cfg.prefEntroQuota;
+  const nellaParte = entroQuota ? prefNellaParte(cfg, shifts, prefItems) : null;
+  let rimasti = shifts.length;                  // turni da titolare ancora da assegnare (A)
+  const senzaTit = () => cfg.doctors.filter(d => counts[d] === 0).length;
+  const sottoQuota = (d: string) => !nellaParte || prefSat[d].size < nellaParte[d];   // B: preferenze ancora nella sua parte
+
   const isValid = (d: string, s: TurnoFest) => {
     if (counts[d] >= cfg.maxShifts) return false;
     if (s.tipo === "notturno" && soloDiurni.has(d)) return false;     // esentato dalle notti
@@ -379,8 +410,11 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
   const priority = (d: string, s: TurnoFest) => {
     let p = 0;
     const histHit = inSet(hist, d, s.holBases);
-    const newHit = hitsOf(d, s).some(i => !prefSat[d].has(i));
-    const pend = pItems(d).filter((it, i) => !prefSat[d].has(i) && it.lastDate >= s.date);   // richieste ancora raggiungibili
+    const sotto = sottoQuota(d);
+    const newHitTutte = hitsOf(d, s).some(i => !prefSat[d].has(i));
+    const newHit = newHitTutte && sotto;        // B: oltre la propria parte la richiesta non ha la precedenza forte
+    if (newHitTutte && !sotto) p += 3000;       //    ma resta una lieve preferenza
+    const pend = sotto ? pItems(d).filter((it, i) => !prefSat[d].has(i) && it.lastDate >= s.date) : [];   // richieste ancora raggiungibili
     if (histHit) p -= 50000;                    // evita la stessa festività già fatta
     if (newHit) p += 60000;                     // turno richiesto: batte lo storico
     if (s.isSuper && supCounts[d] < cfg.minSuper) {
@@ -398,6 +432,10 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
     }
     p -= (totalPoints(d) + sal(d)) * 1200;      // equità: saldo di partenza + attivo + reperibile
     p -= supCounts[d] * 400;                    // bilanciamento dei superfestivi
+    if (bilancia) {                             // A: nessuno con sole reperibilità, proporzioni simili
+      if (counts[d] === 0 && rimasti >= senzaTit()) p += 80000;
+      p += (onCallCounts[d] - counts[d]) * 1500;
+    }
     if (lastDate[d]) {
       const rest = diffDays(s.date, lastDate[d]!);
       if (rest >= 2) p += Math.min(rest - 1, 30) * 10;                // più riposo = più priorità
@@ -421,6 +459,10 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
     let p = 0;
     p -= (totalPoints(d) + sal(d)) * 1200;
     p -= onCallCounts[d] * 300;
+    if (bilancia) {                             // A: la reperibilità prima a chi è già titolare
+      p += (counts[d] - onCallCounts[d]) * 1500;
+      if (counts[d] === 0 && rimasti >= senzaTit()) p -= 40000;
+    }
     p += rnd() * 0.99;
     return p;
   };
@@ -433,6 +475,7 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
       const p = priority(d, s);
       if (p > bestP) { bestP = p; best = d; }
     }
+    rimasti--;
     const rec: Assegnazione = { date: s.date, tipo: s.tipo, holNames: s.holNames, holBases: s.holBases, keys: s.keys, isSuper: s.isSuper,
       points: s.points, shared: s.shared, doctor: best, histHit: false, prefHit: false, onCall: null, onCallPoints: 0 };
     if (best) {
@@ -485,10 +528,15 @@ export function scoreSolution(sol: Soluzione, cfg: CfgPiano): number {
   score += sol.assignments.filter(a => a.histHit && !a.prefHit).length * 20000;
   const prefItems = cfg.prefItems || normalizePrefs(cfg.preferences, cfg.holidays);
   let missed = 0;
+  const nellaParte = cfg.prefEntroQuota ? prefNellaParte(cfg, sol.assignments, prefItems) : null;
   for (const d of cfg.doctors) {
+    let m = 0;
     for (const it of (prefItems[d] || [])) {
-      if (!sol.assignments.some(a => a.doctor === d && prefMatches(it, a))) missed++;
+      if (!sol.assignments.some(a => a.doctor === d && prefMatches(it, a))) m++;
     }
+    // B: pesano solo le richieste mancate fra quelle che stanno nella sua parte
+    if (nellaParte) m = Math.max(0, m - ((prefItems[d] || []).length - nellaParte[d]));
+    missed += m;
   }
   score += missed * 25000;                      // una richiesta rispettata vale più di qualche decimo di equità
 
@@ -514,6 +562,11 @@ export function scoreSolution(sol: Soluzione, cfg: CfgPiano): number {
   score += (Math.max(...sv) - Math.min(...sv)) * 500;
   const nv = cfg.doctors.map(d => sol.nightCounts[d]);
   score += (Math.max(...nv) - Math.min(...nv)) * 300;
+  if (cfg.bilanciaRuoli) {                      // A
+    const evitabili = cfg.doctors.filter(d => sol.counts[d] === 0).length - Math.max(0, cfg.doctors.length - sol.assignments.length);
+    score += Math.max(0, evitabili) * 2e5;
+    if (ocOn) score += spreadVar(cfg.doctors.map(d => sol.counts[d] - sol.onCallCounts[d]), 400, 200);
+  }
 
   if (ocOn) {
     score += sol.assignments.filter(a => !a.onCall).length * 5e5;     // turni senza reperibile
