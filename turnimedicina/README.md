@@ -1,4 +1,26 @@
-# TurniMedicina 0.3.69
+# TurniMedicina 0.3.70
+
+## Novità 0.3.70 — piano festivi: un turno da titolare a testa, preferenze nella propria parte
+
+Due regole nuove nel sorteggio, accese di serie, con due caselle in «Periodo e
+limiti» per spegnerle:
+- **Almeno un turno da titolare a testa e reperibilità in proporzione**: se i
+  turni bastano, nessuno resta con sole reperibilità (chi non ha ancora un
+  turno da titolare passa davanti, la reperibilità va prima a chi è già
+  titolare) e la proporzione fra turni da titolare e reperibilità è più
+  simile fra i medici. Se i medici sono più dei turni il controllo sotto il
+  piano spiega che è inevitabile.
+- **Preferenze entro la propria parte di punti**: a ogni medico vengono difese
+  le preferenze che stanno nella sua parte di punti del periodo, (punti dei
+  turni + saldi) / medici, meno il suo saldo, prendendo prima le meno
+  pesanti; almeno una. Le altre restano una lieve precedenza.
+
+Misurato su 20 sorteggi per caso. Solo dicembre, 10 medici, reperibilità al
+40%: medici con sole reperibilità da 1 a 0 per piano; scarto fra medici di
+(turni da titolare − reperibilità) da 5 a 2; chi chiede tre turni leggeri
+passa da +3,2 punti sugli altri a −0,3 e ne ottiene uno, sempre fra quelli
+chiesti. Sull'anno intero equità e preferenze rispettate restano le stesse.
+Nuovo controllo sotto il piano: «Tutti hanno almeno un turno da titolare».
 
 ## Novità 0.3.69 — piano festivi: il reperibile mai accanto ai suoi turni
 
