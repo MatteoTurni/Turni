@@ -244,7 +244,7 @@ export function diagnosiCausale(
     regN: REG0.riposoEsteso
       ? "Suggerimento: disattivare \u00ABRiposo esteso dopo la notte\u00BB dal pannello Regole sbloccherebbe questi giorni."
       : "Suggerimento: attivare \u00ABnotte-libero-notte\u00BB dal pannello Regole sbloccherebbe questi giorni.",
-    maxNotti: "Suggerimento: alzare il tetto notti/mese dal pannello Regole (o nella scheda dei medici che ne hanno uno proprio) sbloccherebbe questi giorni.",
+    maxNotti: "Suggerimento: alzare il tetto notti/mese dal pannello Regole (o togliere il massimo più basso nella scheda dei medici che ne hanno uno) sbloccherebbe questi giorni.",
     nottiConsec: "Suggerimento: alzare il tetto di notti ravvicinate dal pannello Regole sbloccherebbe questi giorni.",
     maxConsec: "Suggerimento: alzare il massimo di giorni consecutivi dal pannello Regole sbloccherebbe questi giorni.",
     obiettivo: "Suggerimento: alzare l'obiettivo mensile dei medici coinvolti sbloccherebbe questi giorni.",

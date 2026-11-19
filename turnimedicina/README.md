@@ -3,8 +3,9 @@
 ## Novità 0.3.67 — massimo di notti al mese per medico
 
 Nella scheda del medico (MR e decreto Calabria) c'è il campo **«Max notti al
-mese»**. Vuoto vale «Max notti / mese» delle Regole (5); un numero vale solo
-per quel medico e lo sostituisce, più basso (es. 3) o più alto (es. 7). Come
+mese»**. Vuoto vale «Max notti / mese» delle Regole (5); un numero più basso
+(es. 3) vale solo per quel medico. Il limite delle Regole resta il tetto per
+tutti: un numero più alto vale come quello delle Regole. Come
 per il limite generale contano tutte le notti del mese, N e 3, anche messe a
 mano o sottolineate: la generazione non gliene aggiunge oltre il suo massimo
 e le notti che non fa vanno agli altri, sempre nei loro limiti (se non

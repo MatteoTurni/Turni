@@ -370,8 +370,8 @@ export function makeCtx(
   const canAssDist = (id:number,g:number) => { for(let k=g-2;k<=Math.min(ndim,g+2);k++){ if(k===g) continue; if(haAssB(id,k)) return false; } return true; };
 
   const MAX_NOTTI = REG.maxNotti;
-  // MASSIMO DI NOTTI DEL MEDICO (v0.3.67): quello della scheda medico, se c'è,
-  // al posto di «Max notti / mese» delle Regole (più basso o più alto).
+  // MASSIMO DI NOTTI DEL MEDICO (v0.3.67): quello della scheda medico, se c'è e
+  // se è più basso di «Max notti / mese» delle Regole (che resta il tetto).
   const tettoNottiMap = new Map(medici.map(m => [m.id, tettoNotti(m, REG)]));
   const maxNottiDi = (id:number) => tettoNottiMap.get(id) ?? MAX_NOTTI;
   const maxAssSett = REG.maxAssSett;

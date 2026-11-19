@@ -84,9 +84,9 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
         {(f.stato==="MR"||f.stato==="MDC") && !f.noNotti && (
           <div style={{marginBottom:"16px"}}>
             <label htmlFor="max-notti" style={{color:"#64748b",fontSize:"10px",fontFamily:"monospace",display:"block",marginBottom:"3px"}}>Max notti al mese</label>
-            <input id="max-notti" type="number" min={0} max={31} value={f.maxNotti ?? ""} placeholder={`come le Regole (${getRegole().maxNotti})`} style={inp}
-              onChange={e=>{ const v=e.target.value; setF(p=>({...p, maxNotti: v==="" ? undefined : Math.max(0, Math.min(31, Math.floor(+v)))})); }}/>
-            <div style={{color:"#94a3b8",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Al posto di «Max notti / mese» delle Regole ({getRegole().maxNotti}), più basso o più alto. Contano anche le notti messe a mano. Vuoto = quello delle Regole.</div>
+            <input id="max-notti" type="number" min={0} max={getRegole().maxNotti} value={f.maxNotti ?? ""} placeholder={`come le Regole (${getRegole().maxNotti})`} style={inp}
+              onChange={e=>{ const v=e.target.value; setF(p=>({...p, maxNotti: v==="" ? undefined : Math.max(0, Math.min(getRegole().maxNotti, Math.floor(+v)))})); }}/>
+            <div style={{color:"#94a3b8",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Più basso di «Max notti / mese» delle Regole ({getRegole().maxNotti}), che resta il tetto per tutti. Contano anche le notti messe a mano. Vuoto = quello delle Regole.</div>
           </div>
         )}
         <div style={{marginBottom:"16px"}}>

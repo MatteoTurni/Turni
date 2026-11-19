@@ -205,8 +205,9 @@ let REGOLE: Regole = dft();
 export function setRegole(r: Regole){ REGOLE = mergeRegole(r); setFestiviLocali(REGOLE.reparto.festiviLocali.map(f=>f.data)); }
 export function getRegole(): Regole { return REGOLE; }
 /** Massimo di notti nel mese del medico (v0.3.67): il suo, se impostato nella
- *  scheda (intero ≥ 0), altrimenti «Max notti / mese» delle Regole. */
+ *  scheda (intero ≥ 0), ma mai sopra «Max notti / mese» delle Regole, che resta
+ *  il tetto per tutti; altrimenti quello delle Regole. */
 export function tettoNotti(m: { maxNotti?: number }, reg: Regole = REGOLE): number {
   const x = m.maxNotti;
-  return typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : reg.maxNotti;
+  return typeof x === "number" && Number.isInteger(x) && x >= 0 ? Math.min(x, reg.maxNotti) : reg.maxNotti;
 }

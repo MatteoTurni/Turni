@@ -80,8 +80,8 @@ export function violazioniIndip(c: CasoVal, T: TurniMese): string[] {
     // ── max notti/mese e catene di notti a passo 2
     let notti=0, auto=0;
     for(let g=1;g<=nd;g++) for(const s of cell(m.id,g)) if(isN(s.tipo)){ notti++; if(!s.man) auto++; }
-    // massimo del medico (scheda, v0.3.67) o, se assente, quello delle Regole
-    const maxN = typeof m.maxNotti==="number" && Number.isInteger(m.maxNotti) && m.maxNotti>=0 ? m.maxNotti : R.maxNotti;
+    // massimo del medico (scheda, v0.3.67), mai sopra quello delle Regole
+    const maxN = typeof m.maxNotti==="number" && Number.isInteger(m.maxNotti) && m.maxNotti>=0 ? Math.min(m.maxNotti, R.maxNotti) : R.maxNotti;
     if(notti>maxN && auto>0) V.push(`${nome(m)}: ${notti} notti (max ${maxN})`);
     for(let g=1;g<=nd;g++){
       if(!cell(m.id,g).some(s=>isN(s.tipo)) || cellB(m.id,g-2).some(s=>isN(s.tipo))) continue;

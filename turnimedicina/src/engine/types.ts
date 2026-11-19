@@ -25,8 +25,8 @@ export interface Medico {
    *  finita l'esenzione, le notti non fatte non si recuperano. */
   noNotti?: boolean;
   /** MASSIMO DI NOTTI NEL MESE DEL MEDICO (v0.3.67), solo MR e decreto
-   *  Calabria: sostituisce «Max notti / mese» delle Regole, più basso o più
-   *  alto. Assente = vale quello delle Regole. Contano tutte le notti del mese
+   *  Calabria: può solo abbassare «Max notti / mese» delle Regole (un valore
+   *  più alto vale come quello delle Regole). Assente = vale quello delle Regole. Contano tutte le notti del mese
    *  (N e 3, anche manuali o sottolineate), come per il limite generale. */
   maxNotti?: number;
 }

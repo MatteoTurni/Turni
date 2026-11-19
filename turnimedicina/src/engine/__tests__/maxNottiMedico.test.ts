@@ -21,11 +21,12 @@ beforeEach(()=>{ setRegole(dft()); ENG.PREV = null; ENG.DEADLINE = 0; ENG.STORIC
 afterEach(()=>{ setRegole(dft()); ENG.STORICO_EQ = null; });
 
 describe("massimo di notti del medico: regole del motore", () => {
-  it("vale quello della scheda, più basso o più alto; vuoto o non valido = quello delle Regole", () => {
+  it("vale quello della scheda se più basso; più alto, vuoto o non valido = quello delle Regole", () => {
     expect(getRegole().maxNotti).toBe(5);
     expect(tettoNotti(med(1))).toBe(5);
     expect(tettoNotti(med(1, 3))).toBe(3);
-    expect(tettoNotti(med(1, 7))).toBe(7);
+    expect(tettoNotti(med(1, 7))).toBe(5);                    // le Regole restano il tetto per tutti
+    expect(tettoNotti(med(1, 5))).toBe(5);
     expect(tettoNotti(med(1, 0))).toBe(0);
     for (const x of [-1, 2.5, NaN, "3" as any]) expect(tettoNotti({ maxNotti:x })).toBe(5);
   });
@@ -37,11 +38,12 @@ describe("massimo di notti del medico: regole del motore", () => {
     expect(c.canR(med(1, 2), 20, "N")).toBe(false);          // 2 notti su 2
     expect(c.canR(med(2), 20, "N")).toBe(true);              // 2 notti su 5
   });
-  it("un massimo più alto delle Regole permette notti oltre il limite generale", () => {
+  it("un massimo più alto delle Regole non permette notti oltre il limite generale", () => {
     const T: TurniMese = { 1:{}, 2:{} };
     for (const g of [2, 6, 10, 14, 18]) { T[1][g] = cella("N",true); T[2][g] = cella("N",true); }   // 5 notti a testa
     const c = makeCtx(anno, mese, nd, [med(1, 7), med(2)], T);
-    expect(c.canR(med(1, 7), 24, "N")).toBe(true);           // 5 su 7
+    expect(c.maxNottiDi(1)).toBe(5);
+    expect(c.canR(med(1, 7), 24, "N")).toBe(false);          // 5 su 5: il 7 della scheda vale come le Regole
     expect(c.canR(med(2), 24, "N")).toBe(false);             // 5 su 5 (Regole)
   });
 });
@@ -62,16 +64,14 @@ describe("massimo di notti del medico: novembre reale (anonimizzato)", () => {
       expect(violazioniIndip({ anno, mese, medici, ex:sc.ex, regole:getRegole(), prevT:null }, T)).toEqual([]);
     }
   });
-  it("più alto: con le Regole a 2 notti, i due medici col massimo 6 ne fanno più di 2 e gli altri al più 2", () => {
+  it("più alto delle Regole: con le Regole a 2 notti, nemmeno i medici col massimo 6 ne fanno più di 2", () => {
     setRegole({ ...dft(), maxNotti:2 });
     const alti = [2, 5];
     const medici: Medico[] = sc.medici.map((m:Medico)=> alti.includes(m.id) ? { ...m, maxNotti:6 } : m);
     for (const T of pipeline(medici)) {
       for (const m of medici) if (m.stato==="MR"||m.stato==="MDC") {
-        const lim = alti.includes(m.id) ? 6 : 2;
-        expect(notti(T, m.id), `medico ${m.id}`).toBeLessThanOrEqual(Math.max(lim, notti(sc.ex, m.id)));
+        expect(notti(T, m.id), `medico ${m.id}`).toBeLessThanOrEqual(Math.max(2, notti(sc.ex, m.id)));
       }
-      expect(alti.some(id => notti(T, id) > 2)).toBe(true);
       expect(violazioniIndip({ anno, mese, medici, ex:sc.ex, regole:getRegole(), prevT:null }, T)).toEqual([]);
     }
   });
