@@ -32,7 +32,13 @@ export interface TurnoFest {
   isSuper: boolean; holNames: string[]; holBases: string[]; keys: string[]; points: number; shared: boolean;
 }
 export interface RichiestaPref { hol: string; role: RuoloPref; date: string; lastDate: string; sup: boolean; /** più turni (v0.3.68): basta uno */ roles?: RuoloFest[] }
-export interface Reperibilita { enabled: boolean; weightPct: number; maxPer: number; eligible: string[] }
+export interface Reperibilita {
+  enabled: boolean; weightPct: number; maxPer: number; eligible: string[];
+  /** v0.3.69: il reperibile non sta il giorno prima né il giorno dopo un suo
+   *  turno da titolare (assente = sì; false = come lo strumento originale,
+   *  che vieta solo lo stesso giorno). */
+  staccoTitolare?: boolean;
+}
 export interface CfgPiano {
   doctors: string[];
   holidays: FestData[];
@@ -337,6 +343,9 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
   const ocEligible = new Set(oc?.eligible || []);
   const ocWeight = (typeof oc?.weightPct === "number" ? oc.weightPct : 40) / 100;
   const ocMax = (typeof oc?.maxPer === "number" ? oc.maxPer : 999);
+  const stacco = oc?.staccoTitolare !== false;
+  /** Data che il reperibile non può avere rispetto ai turni da titolare (e viceversa). */
+  const vicino = (dates: Set<string>, date: string) => dates.has(date) || (stacco && (dates.has(addDays(date, -1)) || dates.has(addDays(date, 1))));
   const onCallCounts: Conti = {}, onCallPoints: Conti = {};
   const activeDates: Record<string, Set<string>> = {}, onCallDates: Record<string, Set<string>> = {};
   for (const d of cfg.doctors) { onCallCounts[d] = 0; onCallPoints[d] = 0; activeDates[d] = new Set(); onCallDates[d] = new Set(); }
@@ -357,7 +366,7 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
   const isValid = (d: string, s: TurnoFest) => {
     if (counts[d] >= cfg.maxShifts) return false;
     if (s.tipo === "notturno" && soloDiurni.has(d)) return false;     // esentato dalle notti
-    if (onCallDates[d].has(s.date)) return false;                     // già reperibile quel giorno
+    if (vicino(onCallDates[d], s.date)) return false;                 // reperibile quel giorno (o, v0.3.69, il giorno prima/dopo)
     if (lastDate[d]) {
       const df = diffDays(s.date, lastDate[d]!);
       if (df === 0) return false;                                     // mai diurno + notturno lo stesso giorno
@@ -404,7 +413,7 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
     if (d === titolare) return false;
     if (s.tipo === "notturno" && soloDiurni.has(d)) return false;     // esentato dalle notti
     if (onCallCounts[d] >= ocMax) return false;
-    if (activeDates[d].has(s.date)) return false;
+    if (vicino(activeDates[d], s.date)) return false;                 // titolare quel giorno (o, v0.3.69, il giorno prima/dopo)
     if (onCallDates[d].has(s.date)) return false;
     return true;
   };
@@ -565,6 +574,8 @@ export function feasibleFor(A: Assegnazione[], cfg: CfgPiano, ds: (string | null
       if (!ocOn || !elig.has(d) || onc.length > ocMax) return false;
       if (new Set(onc).size !== onc.length) return false;
       for (const x of onc) if (act.includes(x)) return false;         // mai titolare e reperibile lo stesso giorno
+      if (oc?.staccoTitolare !== false)                               // v0.3.69: né il giorno prima o dopo
+        for (const x of onc) if (act.some(y => Math.abs(diffDays(x, y)) === 1)) return false;
     }
   }
   return true;
@@ -661,6 +672,8 @@ export function verificaPiano(sol: Soluzione, cfg: CfgPiano): string[] {
     if (soloDiurni.has(d) && miei.some(a => a.tipo === "notturno")) err.push(`${d}: esentato dalle notti ma ha una notte`);
     const rep = sol.assignments.filter(a => a.onCall === d);
     for (const a of rep) if (miei.some(x => x.date === a.date)) err.push(`${d}: titolare e reperibile lo stesso giorno (${fmtIt(a.date)})`);
+    if (cfg.onCall?.staccoTitolare !== false)
+      for (const a of rep) if (miei.some(x => Math.abs(diffDays(x.date, a.date)) === 1)) err.push(`${d}: reperibile il giorno prima o dopo un suo turno (${fmtIt(a.date)})`);
   }
   return err;
 }
