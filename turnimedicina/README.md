@@ -1,4 +1,14 @@
-# TurniMedicina 0.3.67
+# TurniMedicina 0.3.68
+
+## Novità 0.3.68 — preferenze del piano festivi con più turni
+
+Nella sezione Festivi, riquadro «Preferenze», dopo il medico e la festività
+si spuntano i turni che vanno bene: notte prima, giorno, notte. Spuntarne più
+d'uno vuol dire «uno di questi»: per esempio Santo Stefano con giorno e notte
+è rispettata se il medico ha il giorno **o** la notte del 26. Accanto compare
+come verrà letta («= giorno o notte»); spuntarli tutti equivale a «qualsiasi
+turno», uno solo a quel turno. Le preferenze già salvate (un turno o
+«qualsiasi») restano come sono e il sorteggio le tratta come prima.
 
 ## Novità 0.3.67 — massimo di notti al mese per medico
 
