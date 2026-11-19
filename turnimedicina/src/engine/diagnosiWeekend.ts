@@ -14,7 +14,7 @@
 // Nulla qui modifica il tabellone o il modo in cui il motore genera.
 import type { Medico, TurniMese, Regole, Turno } from "./types";
 import { DF, dowOf } from "./date";
-import { getRegole, setRegole } from "./regole";
+import { getRegole, setRegole, tettoNotti } from "./regole";
 import { makeCtx } from "./ctx";
 import { compagnoMDC, affiancaMDC, isNot, LICENZE, SPEC, etichettaTurno } from "./turni";
 import { generaMigliorTentativo, misuraTabellone } from "./genera";
@@ -65,7 +65,7 @@ export function bilancioNotti(anno:number, mese:number, ndim:number, medici:Medi
     }
     const notteMan_ = manuali.length;
     const daGiorni = Math.ceil(giorni/2);                              // una notte e il riposo: al più un giorno su due
-    const daTetto = Math.max(0, REG.maxNotti - notteMan_);
+    const daTetto = Math.max(0, tettoNotti(m, REG) - notteMan_);      // il suo tetto, se impostato (v0.3.67)
     const daObiettivo = Math.max(0, Math.floor((m.obiettivo - cm.cnt(m.id))/2));   // una notte vale 2 punti
     const tetto = Math.min(daTetto, daGiorni, daObiettivo);
     if(tetto===0 && !manuali.length) continue;
@@ -95,7 +95,7 @@ function motivoNo(c:Ctx, m:Medico, g:number, f:"M"|"P"|"N"): string|null {
   if(m.stato==="ML" && f!=="M") return null;                           // l'ML non è un candidato: non lo si elenca
   if(sh.some(s=>!SPEC.includes(s.tipo))) return "già in turno quel giorno";
   if(c.haN(m.id,g-1)) return "riposo dopo la notte";
-  if(f==="N" && c.cntN(m.id)>=c.MAX_NOTTI) return "già al massimo notti";
+  if(f==="N" && c.cntN(m.id)>=c.maxNottiDi(m.id)) return "già al massimo notti";
   if(c.cnt(m.id)>=m.obiettivo) return "obiettivo già raggiunto";
   if(!c.canConsec(m.id,g)) return "troppi giorni di fila";
   if(!c.mdcOk(m,g,f)) return "MDC senza affiancamento";

@@ -1,7 +1,7 @@
 import type { Medico, Turno, TurniMese } from "./types";
 import { dowOf, isSabN, isDomN, isFestivo } from "./date";
 import { isMatt, isPom, isNot, vt, SPEC, LICENZE, isLicenza, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, affiancaMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
-import { getRegole } from "./regole";
+import { getRegole, tettoNotti } from "./regole";
 import { pesoWeekend } from "./bilancio";
 import { ENG } from "./state";
 import { EQ_MESI, spostaEq } from "./storico";
@@ -370,6 +370,10 @@ export function makeCtx(
   const canAssDist = (id:number,g:number) => { for(let k=g-2;k<=Math.min(ndim,g+2);k++){ if(k===g) continue; if(haAssB(id,k)) return false; } return true; };
 
   const MAX_NOTTI = REG.maxNotti;
+  // MASSIMO DI NOTTI DEL MEDICO (v0.3.67): quello della scheda medico, se c'è,
+  // al posto di «Max notti / mese» delle Regole (più basso o più alto).
+  const tettoNottiMap = new Map(medici.map(m => [m.id, tettoNotti(m, REG)]));
+  const maxNottiDi = (id:number) => tettoNottiMap.get(id) ?? MAX_NOTTI;
   const maxAssSett = REG.maxAssSett;
 
   // ── MAX TURNI ASSOCIATI PER SETTIMANA (v0.3.37) ────────────────────────────
@@ -489,7 +493,7 @@ export function makeCtx(
     if(!canConsec(m.id,g)) return false;
     if(f==="N"){
       if(m.stato==="ML") return false;
-      if(cntN(m.id)>=MAX_NOTTI) return false;
+      if(cntN(m.id)>=maxNottiDi(m.id)) return false;
       if(haQ(m.id,g)) return false;
       return canN(m.id,g);
     }
@@ -831,7 +835,7 @@ export function makeCtx(
     ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
     dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, psEstOccupa, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
-    canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxAssSett, trailingPrev, BLOCCO_M,
+    canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxNottiDi, maxAssSett, trailingPrev, BLOCCO_M,
     settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB, assInMese, canAssMese, maxAssMeseDi,
     att, ml, mdc, mr, mrMdc, mrNotti, esentiNotti, ambilitati, giorniArr, feriali, weekend, wkPairs,
     pesoSlot, wkPortatori: wkPortatoriL, wkCapacita, wkPavimento, wkQuota, byWkQuota,

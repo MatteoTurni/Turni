@@ -1,4 +1,17 @@
-# TurniMedicina 0.3.66
+# TurniMedicina 0.3.67
+
+## Novità 0.3.67 — massimo di notti al mese per medico
+
+Nella scheda del medico (MR e decreto Calabria) c'è il campo **«Max notti al
+mese»**. Vuoto vale «Max notti / mese» delle Regole (5); un numero vale solo
+per quel medico e lo sostituisce, più basso (es. 3) o più alto (es. 7). Come
+per il limite generale contano tutte le notti del mese, N e 3, anche messe a
+mano o sottolineate: la generazione non gliene aggiunge oltre il suo massimo
+e le notti che non fa vanno agli altri, sempre nei loro limiti (se non
+bastano restano scoperte e vengono segnalate). Nell'elenco dei medici
+compare l'etichetta «max 3 N». Le diagnosi (notti che si possono coprire,
+motivi dei buchi) tengono conto dei massimi dei singoli medici. Con
+l'esenzione dalle notti il campo non serve e non compare.
 
 ## Novità 0.3.66 — 24 e 31 dicembre: il giorno vale 2 punti
 

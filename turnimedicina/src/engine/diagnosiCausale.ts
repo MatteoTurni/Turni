@@ -2,7 +2,7 @@ import type { Medico, TurniMese, CellaScoperta, CausaVincolo, CausaCluster, Diag
 import { DF, dowOf } from "./date";
 import { cloneT, isAmbT, isLicenza, abilitatoAmb, type SlotAmb } from "./turni";
 import { ENG, mkRng } from "./state";
-import { getRegole, setRegole } from "./regole";
+import { getRegole, setRegole, tettoNotti } from "./regole";
 import { makeCtx } from "./ctx";
 import { risolviCluster, ambAssegnabile } from "./fasi";
 import { calcolaBilancio } from "./bilancio";
@@ -150,7 +150,10 @@ export function diagnosiCausale(
       riposoEsteso: mod.relaxN ? false : REG0.riposoEsteso,  // la sonda regN prova anche senza riposo esteso
     });
     try {
-      const meds = mod.obiettivo ? medici.map(m => ({ ...m, obiettivo: 9999 })) : medici;
+      // tetto notti illimitato: vale anche per i massimi della scheda medico (v0.3.67)
+      const meds = mod.obiettivo || mod.maxNotti
+        ? medici.map(m => ({ ...m, ...(mod.obiettivo ? { obiettivo: 9999 } : {}), ...(mod.maxNotti ? { maxNotti: undefined } : {}) }))
+        : medici;
       const ctx = makeCtx(anno, mese, ndim, meds, cloneT(turni), null, mod.relaxN);
       // Svuota gli AUTOMATICI M/P/N della finestra; con ambMove/ambOff anche le
       // A automatiche (i manuali restano fatti immovibili, come sempre).
@@ -230,7 +233,7 @@ export function diagnosiCausale(
     ambMove: "l'assegnatario dell'ambulatorio",
     ambOff: "l'obbligo di coprire l'ambulatorio",
     regN: REG0.riposoEsteso ? "il riposo esteso dopo la notte (anche g+2 libero)" : "il riposo a g+2 dopo la notte (Regola N stretta)",
-    maxNotti: `il tetto di ${REG0.maxNotti} notti/mese per medico`,
+    maxNotti: medici.some(m => m.maxNotti !== undefined) ? "il tetto di notti/mese (Regole e schede dei medici)" : `il tetto di ${REG0.maxNotti} notti/mese per medico`,
     nottiConsec: `il tetto di ${REG0.maxNottiConsec} notti ravvicinate`,
     maxConsec: `il massimo di ${REG0.maxConsec} giorni lavorativi consecutivi`,
     obiettivo: "gli obiettivi mensili già raggiunti dai medici disponibili",
@@ -241,7 +244,7 @@ export function diagnosiCausale(
     regN: REG0.riposoEsteso
       ? "Suggerimento: disattivare \u00ABRiposo esteso dopo la notte\u00BB dal pannello Regole sbloccherebbe questi giorni."
       : "Suggerimento: attivare \u00ABnotte-libero-notte\u00BB dal pannello Regole sbloccherebbe questi giorni.",
-    maxNotti: "Suggerimento: alzare il tetto notti/mese dal pannello Regole sbloccherebbe questi giorni.",
+    maxNotti: "Suggerimento: alzare il tetto notti/mese dal pannello Regole (o nella scheda dei medici che ne hanno uno proprio) sbloccherebbe questi giorni.",
     nottiConsec: "Suggerimento: alzare il tetto di notti ravvicinate dal pannello Regole sbloccherebbe questi giorni.",
     maxConsec: "Suggerimento: alzare il massimo di giorni consecutivi dal pannello Regole sbloccherebbe questi giorni.",
     obiettivo: "Suggerimento: alzare l'obiettivo mensile dei medici coinvolti sbloccherebbe questi giorni.",
@@ -304,7 +307,7 @@ export function diagnosiCausale(
         const attivi = [...c0.ml, ...c0.mrMdc].filter(presente);
         const indizio: Partial<Record<CausaVincolo, boolean>> = {
           obiettivo: attivi.some(m => c0.cnt(m.id) >= m.obiettivo),
-          maxNotti: c0.mrMdc.filter(presente).some(m => c0.cntN(m.id) >= REG0.maxNotti),
+          maxNotti: c0.mrMdc.filter(presente).some(m => c0.cntN(m.id) >= tettoNotti(m, REG0)),
         };
         const sonde: [CausaVincolo, Mod][] = [
           ["ambMove", { ambMove: true }],

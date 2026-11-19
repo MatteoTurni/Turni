@@ -1,7 +1,7 @@
 import type { Medico, TurniMese, Regole } from "./types";
 import { DF, dowOf, isSabN, isDomN, isFestivo } from "./date";
 import { isMatt, isPom, isNot, SPEC, isLicenza, escludeFascia, compagnoMDC, affiancaMDC } from "./turni";
-import { getRegole } from "./regole";
+import { getRegole, tettoNotti } from "./regole";
 import { calcolaBilancio } from "./bilancio";
 
 // ─── DIAGNOSI STATICA (v0.3.10) ───────────────────────────────────────────────
@@ -170,11 +170,12 @@ export function diagnosiStatica(
     // certificato resta una sovrastima corretta della capacità.
     let nMan = 0;
     for(let g=1;g<=ndim;g++) nMan += man(m.id,g).filter(s=>isNot(s.tipo)).length;
-    const budget = Math.max(0, REG.maxNotti - nMan);
+    const tetto = tettoNotti(m, REG);                       // il suo, se impostato nella scheda (v0.3.67)
+    const budget = Math.max(0, tetto - nMan);
     const c = Math.min(budget, gg);
     capNotti += c;
     if(esentiN.has(m.id)) dett.push(`${m.nome.split(" ").pop()} esentato dalle notti`);
-    else if(c<REG.maxNotti) dett.push(`${m.nome.split(" ").pop()} max ${c}${nMan?` (${nMan} nott${nMan===1?"e":"i"} manuali nel mese)`:""}${m.stato==="MDC"?" (MDC: serve un \u00AB3\u00BB in giornata)":""}`);
+    else if(c<REG.maxNotti || tetto!==REG.maxNotti) dett.push(`${m.nome.split(" ").pop()} max ${c}${tetto!==REG.maxNotti?` (scheda medico: ${tetto} al mese)`:""}${nMan?` (${nMan} nott${nMan===1?"e":"i"} manuali nel mese)`:""}${m.stato==="MDC"?" (MDC: serve un \u00AB3\u00BB in giornata)":""}`);
   }
   const mesi: CertMese[] = [];
   if(richieste > capNotti){
