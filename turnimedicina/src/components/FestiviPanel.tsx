@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Medico, Regole, TurniAll, TurniMese } from "../engine/types";
 import { MESI } from "../engine/date";
 import {
-  allineaFestiviPiano, buildShifts, periodoOk, fmtIt, hasSlot, iso, type RuoloPref, type RuoloFest,
+  allineaFestiviPiano, buildShifts, periodoOk, fmtIt, iso, ruoliFesta, semplificaPref, type RuoloPref, type RuoloFest, type PrefFesta,
 } from "../engine/pianoFestivi";
 import {
   type StatoFestivi, type PianoSalvato, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano, controlliPiano,
@@ -17,6 +17,9 @@ import { SC } from "./costanti";
 // lo si inserisce, un mese alla volta, come turni manuali (v0.3.61).
 
 const RUOLI: [RuoloPref, string][] = [["any", "qualsiasi turno"], ["nottePrima", "notte prima"], ["giorno", "giorno"], ["notte", "notte"]];
+const nomeRuolo = (r: RuoloPref) => RUOLI.find(x => x[0] === r)?.[1] ?? r;
+/** «giorno», «giorno o notte», «qualsiasi turno». */
+const etichettaPref = (v: PrefFesta) => Array.isArray(v) ? v.map(nomeRuolo).join(" o ") : nomeRuolo(v);
 const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
 const dataBreve = (d: string) => fmtIt(d).slice(0, 9);                       // "ven 25/12"
 const periodoTxt = (p: { start: string; end: string }) => `${fmtIt(p.start).slice(4)} – ${fmtIt(p.end).slice(4)}`;
@@ -36,7 +39,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const [busy, setBusy] = useState(false);
   const [confNext, setConfNext] = useState(false);
   const [esitoIns, setEsitoIns] = useState<{ chiave: string; inseriti: number; tolti: number; saltati: Saltato[] } | null>(null);
-  const [nuovaPref, setNuovaPref] = useState<{ id: number | null; festa: string; ruolo: RuoloPref }>({ id: null, festa: "", ruolo: "any" });
+  const [nuovaPref, setNuovaPref] = useState<{ id: number | null; festa: string; ruoli: RuoloFest[] }>({ id: null, festa: "", ruoli: [] });
 
   const lista = useMemo(() => allineaFestiviPiano(regole.festiviPiano, regole.reparto.festiviLocali), [regole.festiviPiano, regole.reparto.festiviLocali]);
   const errPeriodo = periodoOk(stato.periodo.start, stato.periodo.end);
@@ -280,11 +283,8 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const nSuper = turniPeriodo.filter(t => t.isSuper).length;
   const puntiTot = turniPeriodo.reduce((s, t) => s + t.points, 0);
   const manSaldo = dati.partecipanti.some(m => stato.saldoMan[m.id] != null);
-  const ruoliDi = (festa: string): [RuoloPref, string][] => {
-    const h = dati.feste.find(x => x.name === festa);
-    if (!h) return RUOLI;
-    return RUOLI.filter(([r]) => r === "any" || (hasSlot(h, r as RuoloFest) && !(r === "nottePrima" && h.skipNottePrima)));
-  };
+  const festaPref = dati.feste.find(x => x.name === nuovaPref.festa);
+  const valorePref = festaPref ? semplificaPref(festaPref, nuovaPref.ruoli) : null;
   const elencoPref = dati.partecipanti.flatMap(m => Object.entries(stato.preferenze[m.id] || {}).filter(([f]) => dati.feste.some(h => h.name === f)).map(([f, r]) => ({ m, f, r })));
   const annoProssimo = new Date().getFullYear() + 1;
 
@@ -444,28 +444,34 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
         <details style={BOX}>
           <summary style={TIT}>PREFERENZE <span style={SOTTO}>· {nPref ? `${nPref} richiest${nPref === 1 ? "a" : "e"}` : "nessuna"}</span></summary>
           <div style={{ ...LBL, margin: "8px 0" }}>
-            Chi vorrebbe un turno preciso di una festività. Il sorteggio cerca di darglielo: le preferenze battono lo storico, non i vincoli. Valgono per questo periodo soltanto.
+            Chi vorrebbe un turno preciso di una festività. Si possono spuntare più turni: vuol dire «uno di questi» (es. giorno o notte); spuntarli tutti = qualsiasi turno.
+            Il sorteggio cerca di darglielo: le preferenze battono lo storico, non i vincoli. Valgono per questo periodo soltanto.
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
             <select value={nuovaPref.id ?? ""} onChange={e => setNuovaPref({ ...nuovaPref, id: e.target.value ? +e.target.value : null })} style={INP}>
               <option value="">medico…</option>
               {dati.partecipanti.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
             </select>
-            <select value={nuovaPref.festa} onChange={e => setNuovaPref({ ...nuovaPref, festa: e.target.value, ruolo: "any" })} style={INP}>
+            <select value={nuovaPref.festa} onChange={e => setNuovaPref({ ...nuovaPref, festa: e.target.value, ruoli: [] })} style={INP}>
               <option value="">festività…</option>
               {dati.feste.map(h => <option key={h.name} value={h.name}>{h.name} ({dataBreve(h.date)})</option>)}
             </select>
-            <select value={nuovaPref.ruolo} onChange={e => setNuovaPref({ ...nuovaPref, ruolo: e.target.value as RuoloPref })} style={INP}>
-              {ruoliDi(nuovaPref.festa).map(([r, l]) => <option key={r} value={r}>{l}</option>)}
-            </select>
-            <button disabled={nuovaPref.id == null || !nuovaPref.festa} style={btn("#ecfdf5", "#047857", "#16a34a", nuovaPref.id == null || !nuovaPref.festa)}
-              onClick={() => { const id = nuovaPref.id!; set({ preferenze: { ...stato.preferenze, [id]: { ...(stato.preferenze[id] || {}), [nuovaPref.festa]: nuovaPref.ruolo } } }); setNuovaPref({ id, festa: "", ruolo: "any" }); }}>➕ Aggiungi</button>
+            {festaPref && ruoliFesta(festaPref).map(r => (
+              <label key={r} style={{ ...LBL, fontSize: "11px", color: "#0f172a", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                <input type="checkbox" checked={nuovaPref.ruoli.includes(r)} aria-label={"Turno: " + nomeRuolo(r)}
+                  onChange={e => setNuovaPref({ ...nuovaPref, ruoli: e.target.checked ? [...nuovaPref.ruoli, r] : nuovaPref.ruoli.filter(x => x !== r) })} />
+                {nomeRuolo(r)}
+              </label>
+            ))}
+            {valorePref != null && <span style={{ ...LBL, fontSize: "11px", color: "#a21caf" }}>= {etichettaPref(valorePref)}</span>}
+            <button disabled={nuovaPref.id == null || valorePref == null} style={btn("#ecfdf5", "#047857", "#16a34a", nuovaPref.id == null || valorePref == null)}
+              onClick={() => { const id = nuovaPref.id!; set({ preferenze: { ...stato.preferenze, [id]: { ...(stato.preferenze[id] || {}), [nuovaPref.festa]: valorePref! } } }); setNuovaPref({ id, festa: "", ruoli: [] }); }}>➕ Aggiungi</button>
           </div>
           {elencoPref.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "10px" }}>
               {elencoPref.map(({ m, f, r }) => (
                 <span key={m.id + f} style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "999px", padding: "4px 6px 4px 10px", fontSize: "11px", fontFamily: "monospace", color: "#0f172a" }}>
-                  <b>{m.nome}</b> · {f} · <span style={{ color: "#a21caf" }}>{RUOLI.find(x => x[0] === r)?.[1]}</span>
+                  <b>{m.nome}</b> · {f} · <span style={{ color: "#a21caf" }}>{etichettaPref(r)}</span>
                   <button title="Togli la richiesta" onClick={() => { const { [f]: _via, ...resto } = stato.preferenze[m.id]; set({ preferenze: { ...stato.preferenze, [m.id]: resto } }); }}
                     style={{ background: "transparent", border: "none", color: "#be123c", cursor: "pointer", fontWeight: 700, marginLeft: "6px" }}>✕</button>
                 </span>

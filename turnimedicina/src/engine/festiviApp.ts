@@ -16,7 +16,7 @@ import { mkKey, dowOf, isSabN, isFestivo } from "./date";
 import { getRegole } from "./regole";
 import { isMatt, isPom, isNot, SPEC } from "./turni";
 import {
-  type FestivitaPiano, type FestData, type RuoloPref, type CfgPiano, type Soluzione,
+  type FestivitaPiano, type FestData, type RuoloPref, type PrefFesta, type CfgPiano, type Soluzione, prefMatches,
   festivitaPeriodo, buildShifts, generaPiano, addDays, iso, periodoSuccessivo, periodoOk,
 } from "./pianoFestivi";
 
@@ -53,8 +53,9 @@ export interface StatoFestivi {
   periodoSaldo: { start: string; end: string } | null;
   storicoMan: Record<number, string[]>;
   precMan: Record<number, boolean>;
-  /** medico → festività del periodo (nome) → turno richiesto. */
-  preferenze: Record<number, Record<string, RuoloPref>>;
+  /** medico → festività del periodo (nome) → turno richiesto, o più turni
+   *  (v0.3.68) di cui ne basta uno. */
+  preferenze: Record<number, Record<string, PrefFesta>>;
   reperibilita: { enabled: boolean; weightPct: number; maxPer: number; nonIdonei: number[] };
   seme: number;
   piano: PianoSalvato | null;
@@ -136,8 +137,14 @@ export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFes
     precMan: mappa(s.precMan, q => typeof q === "boolean" ? q : undefined),
     preferenze: mappa(s.preferenze, q => {
       if (!q || typeof q !== "object") return undefined;
-      const o: Record<string, RuoloPref> = {};
-      for (const [n, ru] of Object.entries(q)) if (RUOLI.includes(ru as string)) o[n] = ru as RuoloPref;
+      const o: Record<string, PrefFesta> = {};
+      for (const [n, ru] of Object.entries(q)) {
+        if (RUOLI.includes(ru as string)) o[n] = ru as RuoloPref;
+        else if (Array.isArray(ru)) {                                        // più turni (v0.3.68)
+          const v = (["nottePrima", "giorno", "notte"] as const).filter(r => ru.includes(r));
+          if (v.length) o[n] = v.length === 1 ? v[0] : [...v];
+        }
+      }
       return o;
     }),
     reperibilita: { enabled: !!r.enabled, weightPct: numIn(r.weightPct, 0, 100, 40), maxPer: Math.round(numIn(r.maxPer, 1, 99, 5)), nonIdonei: ids(r.nonIdonei) },
@@ -287,7 +294,7 @@ export function datiSorteggio(st: StatoFestivi, medici: Medico[], lista: Festivi
     storico[m.id] = st.storicoMan[m.id] ?? auto.storico[m.id] ?? [];
     if (st.precMan[m.id] ?? auto.precedenza.includes(m.id)) precedenza.add(m.id);
   }
-  const preferences: Record<string, Record<string, RuoloPref>> = {};
+  const preferences: Record<string, Record<string, PrefFesta>> = {};
   for (const m of partecipanti) {
     const p = Object.entries(st.preferenze[m.id] || {}).filter(([n]) => nomiFeste.has(n));
     if (p.length) preferences[k(m.id)] = Object.fromEntries(p);
@@ -310,7 +317,7 @@ export function sorteggia(d: DatiSorteggio, st: StatoFestivi, quando: string): {
   const richieste = Object.values(sol.prefItems || {}).reduce((n, a) => n + a.length, 0);
   let richiesteOk = 0;
   for (const [doc, items] of Object.entries(sol.prefItems || {})) for (const it of items)
-    if (sol.assignments.some(a => a.doctor === doc && (it.role === "any" ? a.holNames.includes(it.hol) : a.keys.includes(it.hol + "|" + it.role)))) richiesteOk++;
+    if (sol.assignments.some(a => a.doctor === doc && prefMatches(it, a))) richiesteOk++;
   const piano: PianoSalvato = {
     periodo: { ...st.periodo }, generato: quando, seme: st.seme, partecipanti: d.partecipanti.map(m => m.id),
     maxShifts: st.maxShifts, minSuper: st.minSuper, repOn: st.reperibilita.enabled, repPct: st.reperibilita.weightPct,

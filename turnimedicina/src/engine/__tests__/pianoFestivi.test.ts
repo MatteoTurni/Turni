@@ -4,7 +4,7 @@ import type { Medico, TurniAll, TurniMese } from "../types";
 import { mergeRegole, REGOLE_DEFAULT, setRegole } from "../regole";
 import {
   festiviPianoDefault, festivitaPeriodo, festivitaAnno, buildShifts, generaPiano, verificaPiano, periodoOk, periodoSuccessivo,
-  easter, allineaFestiviPiano, sanaFestiviPiano, type CfgPiano,
+  easter, allineaFestiviPiano, sanaFestiviPiano, ruoliFesta, semplificaPref, normalizePrefs, prefMatches, type CfgPiano, type RuoloFest,
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
@@ -243,6 +243,41 @@ describe("sezione Festivi: dal pannello al piano", () => {
     expect(m.preferenze).toEqual({ 2:{ Natale:"giorno" } });
     expect((m.piano as PianoSalvato).turni.length).toBe(1);
     expect(m.archivio).toEqual([]);
+  });
+  it("v0.3.68: preferenza con più turni (es. Santo Stefano giorno o notte): basta uno", () => {
+    const feste = festivitaPeriodo(lista, "2027-01-01", "2027-12-31");
+    const ss = feste.find(h=>h.name==="Santo Stefano")!, vigilia = feste.find(h=>h.name==="Vigilia di Natale")!;
+    expect(ruoliFesta(ss)).toEqual(["nottePrima","giorno","notte"]);
+    expect(ruoliFesta(vigilia)).toEqual(["giorno"]);
+    // forma più semplice: tutti i turni = qualsiasi, uno solo = quel turno
+    expect(semplificaPref(ss, ["notte","giorno"])).toEqual(["giorno","notte"]);
+    expect(semplificaPref(ss, ["giorno","notte","nottePrima"])).toBe("any");
+    expect(semplificaPref(ss, ["notte"])).toBe("notte");
+    expect(semplificaPref(vigilia, ["giorno","notte"])).toBe("giorno");
+    expect(semplificaPref(ss, [])).toBeNull();
+    // quali turni la soddisfano
+    const [it] = normalizePrefs({ "7": { "Santo Stefano":["giorno","notte"] } }, feste)["7"];
+    expect(it).toMatchObject({ hol:"Santo Stefano", roles:["giorno","notte"], date:"2027-12-26", lastDate:"2027-12-26" });
+    const turni = buildShifts(feste), t = (date:string, tipo:string) => turni.find(s=>s.date===date && s.tipo===tipo)!;
+    expect(prefMatches(it, t("2027-12-26","diurno"))).toBe(true);
+    expect(prefMatches(it, t("2027-12-26","notturno"))).toBe(true);
+    expect(prefMatches(it, t("2027-12-25","notturno"))).toBe(false);          // notte prima di S. Stefano: non chiesta
+    // sorteggio: il 2 chiede il giorno di S. Stefano, il 7 giorno o notte → tutte e due rispettate
+    const ids = medici.filter(m=>m.id!==6).map(m=>m.id);
+    const auto = automaticiFestivi(st0, {}, medici, lista, 2, ids);
+    const conPiu = { ...st0, preferenze:{ 2:{ "Santo Stefano":"giorno" as const }, 7:{ "Santo Stefano":["giorno","notte"] as RuoloFest[] } } };
+    const p1 = sorteggia(datiSorteggio(conPiu, medici, lista, auto), conPiu, "x").piano;
+    const chi = (p:PianoSalvato, date:string, tipo:string) => p.turni.find(x=>x.date===date && x.tipo===tipo)!.medico;
+    expect([chi(p1,"2027-12-26","diurno"), chi(p1,"2027-12-26","notturno")]).toEqual([2, 7]);
+    expect([p1.richieste, p1.richiesteOk]).toEqual([2, 2]);
+    expect(controlliPiano(p1, new Set(), id=>`M${id}`).filter(x=>!x.ok)).toEqual([]);
+    // con un turno solo (giorno) per entrambi, una delle due resta scoperta
+    const conUno = { ...st0, preferenze:{ 2:{ "Santo Stefano":"giorno" as const }, 7:{ "Santo Stefano":"giorno" as const } } };
+    const p2 = sorteggia(datiSorteggio(conUno, medici, lista, auto), conUno, "x").piano;
+    expect([p2.richieste, p2.richiesteOk]).toEqual([2, 1]);
+    // salvataggio: turni sconosciuti scartati, un turno solo torna semplice, nessun turno = via
+    const m = mergeStatoFestivi({ preferenze:{ 7:{ "Santo Stefano":["notte","giorno","boh"], Natale:["notte"], Pasqua:[] } } }, new Date(2026,10,16));
+    expect(m.preferenze).toEqual({ 7:{ "Santo Stefano":["giorno","notte"], Natale:"notte" } });
   });
 });
 

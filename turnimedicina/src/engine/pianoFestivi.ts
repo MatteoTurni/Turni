@@ -16,6 +16,10 @@
 
 export type RuoloFest = "nottePrima" | "giorno" | "notte";
 export type RuoloPref = RuoloFest | "any";
+/** Preferenza su una festività: un turno, «any» o (v0.3.68) più turni, uno
+ *  qualsiasi dei quali la soddisfa (es. ["giorno", "notte"] = giorno o notte). */
+export type PrefFesta = RuoloPref | RuoloFest[];
+const ORDINE_RUOLI: RuoloFest[] = ["nottePrima", "giorno", "notte"];
 export interface PuntiFest { nottePrima: number; giorno: number; notte: number }
 /** Festività di calendario del piano (Regole.festiviPiano). `data`: "MM-GG",
  *  "pasqua" o "pasquetta". `soloGiorno`: voce senza notti proprie (24 e 31/12). */
@@ -27,7 +31,7 @@ export interface TurnoFest {
   contribs: { hol: FestData; role: RuoloFest; val: number }[];
   isSuper: boolean; holNames: string[]; holBases: string[]; keys: string[]; points: number; shared: boolean;
 }
-export interface RichiestaPref { hol: string; role: RuoloPref; date: string; lastDate: string; sup: boolean }
+export interface RichiestaPref { hol: string; role: RuoloPref; date: string; lastDate: string; sup: boolean; /** più turni (v0.3.68): basta uno */ roles?: RuoloFest[] }
 export interface Reperibilita { enabled: boolean; weightPct: number; maxPer: number; eligible: string[] }
 export interface CfgPiano {
   doctors: string[];
@@ -36,7 +40,7 @@ export interface CfgPiano {
   saldo?: Record<string, number>;
   superPrio?: string[];
   history?: Record<string, string[]>;
-  preferences?: Record<string, Record<string, RuoloPref>>;
+  preferences?: Record<string, Record<string, PrefFesta>>;
   prefItems?: Record<string, RichiestaPref[]>;
   onCall?: Reperibilita;
   /** Medici che ricevono solo turni di giorno (esentati dalle notti). */
@@ -268,16 +272,44 @@ export function buildShifts(holidays: FestData[]): TurnoFest[] {
   return shifts;
 }
 
-/** Preferenze { medico: { festività: ruolo } } → richieste per medico. */
+/** Turni della festività che si possono chiedere (v0.3.68). */
+export const ruoliFesta = (h: { soloGiorno?: boolean; skipNottePrima?: boolean }): RuoloFest[] =>
+  ORDINE_RUOLI.filter(r => hasSlot(h, r) && !(r === "nottePrima" && h.skipNottePrima));
+/** Preferenza con più turni → la forma più semplice: tutti i turni della
+ *  festività = "any", uno solo = quel turno; null se nessuno è valido. */
+export function semplificaPref(h: { soloGiorno?: boolean; skipNottePrima?: boolean }, v: PrefFesta): PrefFesta | null {
+  if (!Array.isArray(v)) return v;
+  const possibili = ruoliFesta(h);
+  const ok = possibili.filter(r => v.includes(r));
+  if (!ok.length) return null;
+  if (ok.length === possibili.length && possibili.length > 1) return "any";
+  return ok.length === 1 ? ok[0] : ok;
+}
+/** Preferenze { medico: { festività: ruolo o ruoli } } → richieste per medico. */
 export function normalizePrefs(prefs: CfgPiano["preferences"], holidays: FestData[]): Record<string, RichiestaPref[]> {
   const byName: Record<string, FestData> = {};
   for (const h of holidays) byName[h.name] = h;
   const out: Record<string, RichiestaPref[]> = {};
   for (const d of Object.keys(prefs || {})) {
     const items: RichiestaPref[] = [];
-    for (const [hol, role] of Object.entries(prefs![d] || {})) {
+    for (const [hol, val] of Object.entries(prefs![d] || {})) {
       const h = byName[hol];
-      if (!h || !["any", "nottePrima", "giorno", "notte"].includes(role)) continue;
+      if (!h) continue;
+      if (Array.isArray(val)) {                                              // più turni (v0.3.68)
+        const v = semplificaPref(h, val);
+        if (v === null) continue;
+        if (Array.isArray(v)) {
+          const np = (h.skipNottePrima || h.soloGiorno) ? h.date : addDays(h.date, -1);
+          items.push({ hol, role: v[0], roles: v, date: v.includes("nottePrima") ? np : h.date, lastDate: h.date, sup: !!h.sup });
+          continue;
+        }
+        if (v !== "any" && !hasSlot(h, v)) continue;
+        const np = (h.skipNottePrima || h.soloGiorno) ? h.date : addDays(h.date, -1);
+        items.push({ hol, role: v, date: (v === "nottePrima" || v === "any") ? np : h.date, lastDate: v === "nottePrima" ? np : h.date, sup: !!h.sup });
+        continue;
+      }
+      const role = val;
+      if (!["any", "nottePrima", "giorno", "notte"].includes(role)) continue;
       if (role !== "any" && !hasSlot(h, role)) continue;
       const np = (h.skipNottePrima || h.soloGiorno) ? h.date : addDays(h.date, -1);
       const date = (role === "nottePrima" || role === "any") ? np : h.date;    // primo turno utile
@@ -289,6 +321,7 @@ export function normalizePrefs(prefs: CfgPiano["preferences"], holidays: FestDat
   return out;
 }
 export function prefMatches(it: RichiestaPref, s: { holNames: string[]; keys: string[] }): boolean {
+  if (it.roles) return it.roles.some(r => s.keys.includes(it.hol + "|" + r));   // più turni: basta uno
   return it.role === "any" ? s.holNames.includes(it.hol) : s.keys.includes(it.hol + "|" + it.role);
 }
 
