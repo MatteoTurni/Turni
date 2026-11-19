@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Medico, Stato, Ambulatorio } from "../engine/types";
 import { abilitatoAmb } from "../engine/turni";
+import { getRegole } from "../engine/regole";
 
 // ─── DOC MODAL ────────────────────────────────────────────────────────────────
 // Creazione/modifica di un medico. `doc` senza id = nuovo medico; l'attribuzione
@@ -29,10 +30,11 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
   const inp: React.CSSProperties = {width:"100%",background:"#ffffff",border:"1px solid #e2e8f0",color:"#0f172a",borderRadius:"7px",padding:"7px 10px",fontSize:"12px",fontFamily:"monospace",boxSizing:"border-box"};
   const salva = () => {
     if(!f.nome?.trim()) return;
-    // Il limite di turni associati e l'esenzione dalle notti valgono solo per MR e decreto Calabria.
+    // Il limite di turni associati, l'esenzione e il massimo di notti valgono solo per MR e decreto Calabria.
     const out = {...f};
-    if(!(out.stato==="MR"||out.stato==="MDC")){ delete out.maxAssMese; delete out.noNotti; }
+    if(!(out.stato==="MR"||out.stato==="MDC")){ delete out.maxAssMese; delete out.noNotti; delete out.maxNotti; }
     if(!out.noNotti) delete out.noNotti;
+    if(out.maxNotti===undefined) delete out.maxNotti;
     onSalva(out);
     onClose();
   };
@@ -77,6 +79,14 @@ export function DocModal({ doc, ambulatori, onSalva, onClose }: {
               <label htmlFor="no-notti" style={{color:"#6d28d9",fontSize:"11px",fontFamily:"monospace",cursor:"pointer",userSelect:"none"}}>Esentato dalle notti</label>
             </div>
             <div style={{color:"#94a3b8",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Il motore non gli assegna notti; quelle messe a mano restano. Tolta la spunta, le notti non fatte non si recuperano.</div>
+          </div>
+        )}
+        {(f.stato==="MR"||f.stato==="MDC") && !f.noNotti && (
+          <div style={{marginBottom:"16px"}}>
+            <label htmlFor="max-notti" style={{color:"#64748b",fontSize:"10px",fontFamily:"monospace",display:"block",marginBottom:"3px"}}>Max notti al mese</label>
+            <input id="max-notti" type="number" min={0} max={getRegole().maxNotti} value={f.maxNotti ?? ""} placeholder={`come le Regole (${getRegole().maxNotti})`} style={inp}
+              onChange={e=>{ const v=e.target.value; setF(p=>({...p, maxNotti: v==="" ? undefined : Math.max(0, Math.min(getRegole().maxNotti, Math.floor(+v)))})); }}/>
+            <div style={{color:"#94a3b8",fontSize:"9px",fontFamily:"monospace",marginTop:"3px"}}>Più basso di «Max notti / mese» delle Regole ({getRegole().maxNotti}), che resta il tetto per tutti. Contano anche le notti messe a mano. Vuoto = quello delle Regole.</div>
           </div>
         )}
         <div style={{marginBottom:"16px"}}>

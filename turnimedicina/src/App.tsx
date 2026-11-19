@@ -968,6 +968,8 @@ export default function App(){
                       <span key={x.id} title={"Abilitato: "+x.nome} style={{background:"#ecfdf5",color:"#047857",border:"1px solid #059669",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>{x.sigla}</span>)}
                     {m.noNotti && (m.stato==="MR"||m.stato==="MDC") &&
                       <span title="Esentato dalle notti: il motore non gliene assegna" style={{background:"#f5f3ff",color:"#6d28d9",border:"1px solid #6d28d9",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>no notti</span>}
+                    {!m.noNotti && m.maxNotti!==undefined && m.maxNotti<regole.maxNotti && (m.stato==="MR"||m.stato==="MDC") &&
+                      <span title={`Al massimo ${m.maxNotti} notti al mese (scheda medico; nelle Regole ${regole.maxNotti})`} style={{background:"#f5f3ff",color:"#6d28d9",border:"1px solid #6d28d9",borderRadius:"3px",padding:"1px 5px",fontSize:"8px",fontWeight:700}}>max {m.maxNotti} N</span>}
                     <span style={{background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,borderRadius:"3px",padding:"1px 6px",fontSize:"9px",fontWeight:700}}>{m.stato}</span>
                     <button onClick={()=>setEditDoc(m)} style={{background:"#e2e8f0",color:"#1d4ed8",border:"1px solid #cbd5e1",borderRadius:"4px",padding:"2px 7px",cursor:"pointer",fontSize:"10px"}}>✏</button>
                     <button onClick={()=>eliminaDoc(m)}
@@ -1051,7 +1053,7 @@ export default function App(){
         // maxNotti e maxNottiConsec sono migrati nel box REGOLA DELLA NOTTE
         // (v0.3.33): tutto ciò che riguarda le notti sta ora in un posto solo.
         const NUM_NOTTE: [CampoTop,string,string][] = [
-          ["maxNotti","Max notti / mese","Tetto di notti per medico nel mese. Contano tutte le notti già in tabellone — N e 3, anche sottolineate — più quelle assegnate in automatico."],
+          ["maxNotti","Max notti / mese","Tetto di notti per medico nel mese. Contano tutte le notti già in tabellone — N e 3, anche sottolineate — più quelle assegnate in automatico. Nella scheda di un medico se ne può impostare uno più basso, solo per lui."],
           ["maxNottiConsec","Max notti di fila","Notti ravvicinate (una sola notte libera in mezzo: N-libero-N-libero-N) oltre le quali la successiva è vietata. 2 = ammesse due notti così, la terza no."],
         ];
         // Varianti della Regola N. `spegne` = le regole in conflitto, disattivate

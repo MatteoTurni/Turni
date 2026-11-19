@@ -19,6 +19,9 @@ const cella = (...tipi:string[]) => ({ t: tipi.map(tipo=>({ tipo, sott:false, ma
 
 describe("piano festivi: stesso sorteggio dello strumento originale", () => {
   const rif = JSON.parse(fs.readFileSync("src/engine/__tests__/fixtures/pianoFestivi_riferimento.json", "utf8"));
+  // i riferimenti sono stati calcolati coi punti dello strumento originale: 24 e 31 dicembre a 1 (dalla v0.3.66 valgono 2)
+  const lista = festiviPianoDefault([{ data:"09-08", nome:"Santa Maria dell'Olmo" }])
+    .map(f => f.soloGiorno ? { ...f, punti:{ ...f.punti, giorno:1 } } : f);
   for(const [i, caso] of rif.casi.entries()){
     it(`caso ${i+1}: ${caso.start} → ${caso.end}${caso.cfg.onCall.enabled ? " con reperibilità" : ""}`, () => {
       const r = generaPiano({ ...caso.cfg, holidays: festivitaPeriodo(lista, caso.start, caso.end) });
@@ -40,7 +43,8 @@ describe("piano festivi: festività e turni", () => {
     const notteNatale = t.find(s=>s.date==="2027-12-25" && s.tipo==="notturno")!;
     expect(notteNatale.holNames).toEqual(["Natale","Santo Stefano"]);
     expect(notteNatale.points).toBe(3);                      // notte di Natale 3, notte prima di S. Stefano 3
-    expect(t.find(s=>s.date==="2027-12-24" && s.tipo==="diurno")!.points).toBe(1);   // vigilia: solo diurno
+    expect(t.find(s=>s.date==="2027-12-24" && s.tipo==="diurno")!.points).toBe(2);   // vigilia: solo diurno, 2 punti
+    expect(t.find(s=>s.date==="2027-12-31" && s.tipo==="diurno")!.points).toBe(2);   // San Silvestro: solo diurno, 2 punti
     expect(t.some(s=>s.date==="2027-12-31" && s.tipo==="notturno")).toBe(false);     // è la notte prima del Capodanno dopo
     expect(easter(2027)).toBe("2027-03-28");
   });
@@ -78,6 +82,24 @@ describe("piano festivi: festività e turni", () => {
     expect(sanaFestiviPiano([{ data:"13-40" }, { data:"02-30" }, { data:"pasqua", punti:{ giorno:"3" } }])!.map(f=>[f.data,f.punti.giorno])).toEqual([["pasqua",3]]);
     expect(sanaFestiviPiano("x")).toBeNull();
   });
+  it("v0.3.66: il giorno del 24 e del 31 dicembre vale 2; gli elenchi salvati prima passano da 1 a 2 una volta sola", () => {
+    const giorno = (r:{ festiviPiano:{ data:string; punti:{ giorno:number } }[] }, data:string) => r.festiviPiano.find(f=>f.data===data)!.punti.giorno;
+    const d = mergeRegole({});
+    expect([giorno(d,"12-24"), giorno(d,"12-31"), d.festiviPianoRev]).toEqual([2, 2, 1]);
+    // salvataggio di prima: 24 e 31 a 1, senza revisione → 2; gli altri punti restano
+    const prima = JSON.parse(JSON.stringify(REGOLE_DEFAULT));
+    delete prima.festiviPianoRev;
+    for (const f of prima.festiviPiano) if (f.soloGiorno) f.punti.giorno = 1;
+    prima.festiviPiano.find((f:any)=>f.id==="natale").punti.giorno = 2.5;
+    const m = mergeRegole(prima);
+    expect([giorno(m,"12-24"), giorno(m,"12-31"), giorno(m,"12-25"), m.festiviPianoRev]).toEqual([2, 2, 2.5, 1]);
+    // un valore già cambiato a mano prima (1,5) non si tocca
+    const amano = JSON.parse(JSON.stringify(prima)); amano.festiviPiano.find((f:any)=>f.data==="12-24").punti.giorno = 1.5;
+    expect(giorno(mergeRegole(amano),"12-24")).toBe(1.5);
+    // dopo la revisione, un 1 rimesso a mano resta 1 (anche dopo un nuovo salvataggio)
+    const dopo = JSON.parse(JSON.stringify(m)); dopo.festiviPiano.find((f:any)=>f.data==="12-31").punti.giorno = 1;
+    expect(giorno(mergeRegole(JSON.parse(JSON.stringify(mergeRegole(dopo)))),"12-31")).toBe(1);
+  });
 });
 
 describe("piano festivi: chi fa solo turni di giorno", () => {
@@ -104,7 +126,7 @@ describe("sezione Festivi: lettura dai mesi salvati", () => {
   const dic: TurniMese = {
     1: { 24: cella("N"), 26: cella("M","P") },                 // notte prima di Natale (3) + giorno di S. Stefano (2)
     2: { 25: cella("M"), 8: cella("P") },                      // mezza giornata di Natale (1,5) + mezza Immacolata (1)
-    3: { 25: cella("P"), 24: cella("M","P") },                 // mezza giornata di Natale (1,5) + vigilia (1)
+    3: { 25: cella("P"), 24: cella("M","P") },                 // mezza giornata di Natale (1,5) + vigilia (2)
     4: { 25: cella("N") },                                     // notte di Natale = notte prima di S. Stefano (3)
     5: { 26: { t:[{ tipo:"3", sott:true, man:true }] }, 7: cella("N") },   // PS notte sottolineato a S. Stefano (2) + notte prima dell'Immacolata (1)
   };
@@ -123,8 +145,8 @@ describe("sezione Festivi: lettura dai mesi salvati", () => {
     const st = { ...statoFestiviDefault(new Date(2026,10,16)), periodo:{ start:"2027-01-01", end:"2027-12-31" } };
     const a = automaticiFestivi(st, tutti, medici, lista, 2, [1,2,3,4,5]);
     expect(a.origine).toBe("mesi");
-    expect(a.punti).toEqual({ 1:5, 2:2.5, 3:2.5, 4:3, 5:3 });
-    expect(a.saldo).toEqual({ 1:2.5, 2:0, 3:0, 4:0.5, 5:0.5 });
+    expect(a.punti).toEqual({ 1:5, 2:2.5, 3:3.5, 4:3, 5:3 });
+    expect(a.saldo).toEqual({ 1:2.5, 2:0, 3:1, 4:0.5, 5:0.5 });
     expect(a.storico[1].sort()).toEqual(["Natale","Santo Stefano"]);
     expect(a.storico[4].sort()).toEqual(["Natale","Santo Stefano"]);    // la notte condivisa vale per entrambe
     expect(a.storico[3].sort()).toEqual(["Natale","Vigilia di Natale"]);

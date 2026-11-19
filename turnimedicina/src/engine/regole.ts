@@ -46,6 +46,7 @@ export const REGOLE_DEFAULT: Regole = {
   coperturaSoloVuoti: false,
   // Piano festivi (v0.3.60): festività e punti del sorteggio (sezione Festivi).
   festiviPiano: festiviPianoDefault([{ data:"09-08", nome:"Madonna dell'Olmo (patrona di Cava de' Tirreni)" }]),
+  festiviPianoRev: 1,
   pianoFestiviAnni: 2,
   fabb: {
     fer:  { mMin:2, mMax:3, pMin:1, pMax:2 },  // feriale
@@ -84,8 +85,16 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const { giorniAmb: _gA, fasceAmb: _fA, superfestivi: _sf, superfestiviAttivi: _sfA, superfestiviAnni: _sfN, alternanzaNataleCapodanno: _aNC, ...resto } = s as Partial<Regole> & typeof vecchie;
   const anni15 = (v:unknown) => Number.isInteger(v) && (v as number)>=1 && (v as number)<=5 ? (v as number) : undefined;
   const rep = sanaReparto(s.reparto, d.reparto);
+  // PUNTI DEL 24 E DEL 31 DICEMBRE (v0.3.66): il giorno vale 2 invece di 1. Negli
+  // elenchi salvati prima (senza festiviPianoRev) il vecchio 1 diventa 2, una
+  // volta sola: un valore cambiato a mano, o rimesso a 1 dopo, resta com'è.
+  const fpSalvato = sanaFestiviPiano(s.festiviPiano);
+  const giaRev = Number.isInteger(s.festiviPianoRev) && (s.festiviPianoRev as number) >= 1;
+  const fp = fpSalvato && !giaRev
+    ? fpSalvato.map(f => f.soloGiorno && (f.data==="12-24" || f.data==="12-31") && f.punti.giorno===1 ? { ...f, punti:{ ...f.punti, giorno:2 } } : f)
+    : fpSalvato;
   return { ...d, ...resto, ambulatori: amb, reparto: rep, psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti,
-           festiviPiano: allineaFestiviPiano(sanaFestiviPiano(s.festiviPiano) ?? festiviPianoDefault(), rep.festiviLocali),
+           festiviPiano: allineaFestiviPiano(fp ?? festiviPianoDefault(), rep.festiviLocali), festiviPianoRev: 1,
            pianoFestiviAnni: anni15(s.pianoFestiviAnni) ?? anni15(vecchie.superfestiviAnni) ?? d.pianoFestiviAnni,
            notteLiberoNotte: nLN, riposoEsteso: rE,
            mattinaDopoNotte: mDN, blocchiMattina: bM, rotazioneFestiviMesi: rFM,
@@ -195,3 +204,10 @@ function sanaAmbulatori(s: Partial<Regole>): Ambulatorio[] {
 let REGOLE: Regole = dft();
 export function setRegole(r: Regole){ REGOLE = mergeRegole(r); setFestiviLocali(REGOLE.reparto.festiviLocali.map(f=>f.data)); }
 export function getRegole(): Regole { return REGOLE; }
+/** Massimo di notti nel mese del medico (v0.3.67): il suo, se impostato nella
+ *  scheda (intero ≥ 0), ma mai sopra «Max notti / mese» delle Regole, che resta
+ *  il tetto per tutti; altrimenti quello delle Regole. */
+export function tettoNotti(m: { maxNotti?: number }, reg: Regole = REGOLE): number {
+  const x = m.maxNotti;
+  return typeof x === "number" && Number.isInteger(x) && x >= 0 ? Math.min(x, reg.maxNotti) : reg.maxNotti;
+}

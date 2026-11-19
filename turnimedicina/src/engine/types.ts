@@ -24,6 +24,11 @@ export interface Medico {
    *  messe a mano restano. L'equità delle notti si calcola fra gli altri e,
    *  finita l'esenzione, le notti non fatte non si recuperano. */
   noNotti?: boolean;
+  /** MASSIMO DI NOTTI NEL MESE DEL MEDICO (v0.3.67), solo MR e decreto
+   *  Calabria: può solo abbassare «Max notti / mese» delle Regole (un valore
+   *  più alto vale come quello delle Regole). Assente = vale quello delle Regole. Contano tutte le notti del mese
+   *  (N e 3, anche manuali o sottolineate), come per il limite generale. */
+  maxNotti?: number;
 }
 
 export interface Turno {
@@ -157,6 +162,9 @@ export interface Regole {
    *  turni (notte prima, giorno, notte) e quali sono superfestivi. Le feste
    *  locali del reparto ci entrano da sole (vedi allineaFestiviPiano). */
   festiviPiano: FestivitaPiano[];
+  /** Revisione dei punti di partenza di festiviPiano già applicata all'elenco
+   *  salvato (v0.3.66: 1 = giorno del 24 e del 31 dicembre portato a 2). */
+  festiviPianoRev: number;
   /** Anni di mesi salvati che la sezione Festivi rilegge per saldo e storico (1-5). */
   pianoFestiviAnni: number;
 }

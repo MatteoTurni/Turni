@@ -1,4 +1,30 @@
-# TurniMedicina 0.3.65
+# TurniMedicina 0.3.67
+
+## Novità 0.3.67 — massimo di notti al mese per medico
+
+Nella scheda del medico (MR e decreto Calabria) c'è il campo **«Max notti al
+mese»**. Vuoto vale «Max notti / mese» delle Regole (5); un numero più basso
+(es. 3) vale solo per quel medico. Il limite delle Regole resta il tetto per
+tutti: un numero più alto vale come quello delle Regole. Come
+per il limite generale contano tutte le notti del mese, N e 3, anche messe a
+mano o sottolineate: la generazione non gliene aggiunge oltre il suo massimo
+e le notti che non fa vanno agli altri, sempre nei loro limiti (se non
+bastano restano scoperte e vengono segnalate). Nell'elenco dei medici
+compare l'etichetta «max 3 N». Le diagnosi (notti che si possono coprire,
+motivi dei buchi) tengono conto dei massimi dei singoli medici. Con
+l'esenzione dalle notti il campo non serve e non compare.
+
+## Novità 0.3.66 — 24 e 31 dicembre: il giorno vale 2 punti
+
+Nella sezione Festivi (festività e punti del sorteggio) il turno di giorno
+della Vigilia di Natale e di San Silvestro vale **2 punti** invece di 1. Sono
+le sole due festività con il solo turno di giorno.
+
+Chi aveva già l'elenco salvato con questi due valori a 1 se li trova a 2 al
+primo avvio, una volta sola. Un valore cambiato a mano resta com'è, anche se
+dopo lo si rimette a 1. Gli altri punti non cambiano, e nemmeno i piani già
+sorteggiati: il nuovo valore conta dal prossimo sorteggio e nel saldo letto
+dai mesi.
 
 ## Novità 0.3.65 — modulo Desiderate: tutto il mese su una riga, come nel calendario
 
@@ -142,7 +168,7 @@ Come funziona il sorteggio (identico allo strumento):
 - ogni festività ha tre turni — notte prima, giorno (12 ore), notte — ciascuno
   coi suoi punti; una notte condivisa fra due festività consecutive (25→26
   dicembre) è un turno solo e vale il più alto. Il 24 e il 31 dicembre hanno
-  solo il turno di giorno;
+  solo il turno di giorno (2 punti dalla 0.3.66);
 - si distribuiscono i punti, non il numero di turni; contano il saldo di
   partenza, le festività già fatte l'ultima volta, le preferenze, il massimo
   di turni e il minimo di superfestivi per medico (Capodanno, Pasqua, Natale,
