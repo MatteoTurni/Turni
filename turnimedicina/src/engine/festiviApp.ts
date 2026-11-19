@@ -57,6 +57,11 @@ export interface StatoFestivi {
    *  (v0.3.68) di cui ne basta uno. */
   preferenze: Record<number, Record<string, PrefFesta>>;
   reperibilita: { enabled: boolean; weightPct: number; maxPer: number; nonIdonei: number[] };
+  /** v0.3.70: almeno un turno da titolare a testa (se i turni bastano) e
+   *  reperibilità in proporzione. */
+  bilanciaRuoli: boolean;
+  /** v0.3.70: preferenze difese solo se stanno nella parte di punti del medico. */
+  prefEntroQuota: boolean;
   seme: number;
   piano: PianoSalvato | null;
   /** Piani dei periodi precedenti (i più recenti in fondo). */
@@ -74,7 +79,7 @@ export function statoFestiviDefault(oggi: Date = new Date()): StatoFestivi {
   const y = oggi.getFullYear() + 1;
   return { periodo: { start: iso(y, 1, 1), end: iso(y, 12, 31) }, maxShifts: 5, minSuper: 1, esclusi: [], soloGiorno: {},
     saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, reperibilita: { enabled: false, weightPct: 40, maxPer: 5, nonIdonei: [] },
-    seme: 1, piano: null, archivio: [], inseriti: {} };
+    bilanciaRuoli: true, prefEntroQuota: true, seme: 1, piano: null, archivio: [], inseriti: {} };
 }
 const isData = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v) && !isNaN(Date.parse(v + "T00:00:00Z"));
 const numIn = (v: unknown, lo: number, hi: number, def: number) => typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? v : def;
@@ -148,6 +153,8 @@ export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFes
       return o;
     }),
     reperibilita: { enabled: !!r.enabled, weightPct: numIn(r.weightPct, 0, 100, 40), maxPer: Math.round(numIn(r.maxPer, 1, 99, 5)), nonIdonei: ids(r.nonIdonei) },
+    bilanciaRuoli: typeof s.bilanciaRuoli === "boolean" ? s.bilanciaRuoli : d.bilanciaRuoli,
+    prefEntroQuota: typeof s.prefEntroQuota === "boolean" ? s.prefEntroQuota : d.prefEntroQuota,
     seme: Math.round(numIn(s.seme, 1, 1e9, 1)),
     piano: sanaPiano(s.piano),
     archivio: (Array.isArray(s.archivio) ? s.archivio.map(sanaPiano).filter((p): p is PianoSalvato => !!p) : []).slice(-6),
@@ -307,6 +314,7 @@ export function datiSorteggio(st: StatoFestivi, medici: Medico[], lista: Festivi
     onCall: { enabled: st.reperibilita.enabled, weightPct: st.reperibilita.weightPct, maxPer: st.reperibilita.maxPer,
       eligible: partecipanti.filter(m => !st.reperibilita.nonIdonei.includes(m.id)).map(m => k(m.id)) },
     soloDiurni: [...soloGiorno].map(k), baseSeed: st.seme,
+    bilanciaRuoli: st.bilanciaRuoli !== false, prefEntroQuota: st.prefEntroQuota !== false,
   };
   return { partecipanti, feste, soloGiorno, saldo, storico, precedenza, cfg };
 }
@@ -361,6 +369,12 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
     if (p.turni.some(t => t.reperibile === id && miei.some(x => Math.abs(dd(x.date, t.date)) <= 1))) doppi.push(nome(id));   // v0.3.69: anche il giorno prima o dopo
   }
   out.push({ ok: !troppi.length, testo: troppi.length ? `Oltre il massimo di ${p.maxShifts} turni: ${troppi.join(", ")}` : `Nessuno supera ${p.maxShifts} turni` });
+  // v0.3.70: chi è rimasto senza turni da titolare (inevitabile se i turni sono meno dei medici)
+  const senzaTit = p.partecipanti.filter(id => !p.turni.some(t => t.medico === id));
+  const inevitabili = Math.max(0, p.partecipanti.length - p.turni.length);
+  out.push(!senzaTit.length ? { ok: true, testo: "Tutti hanno almeno un turno da titolare" }
+    : senzaTit.length <= inevitabili ? { ok: true, testo: `${senzaTit.length} senza turni da titolare (${senzaTit.map(nome).join(", ")}): i turni sono ${p.turni.length}, i medici ${p.partecipanti.length}` }
+    : { ok: false, testo: `Senza turni da titolare: ${senzaTit.map(nome).join(", ")}` });
   out.push({ ok: !vicini.length, testo: vicini.length ? `Turni lo stesso giorno o in giorni consecutivi: ${vicini.join(", ")}` : "Mai due turni lo stesso giorno o in giorni consecutivi" });
   if (p.minSuper > 0) out.push({ ok: !senzaSup.length, testo: senzaSup.length ? `Sotto il minimo di ${p.minSuper} superfestiv${p.minSuper === 1 ? "o" : "i"}: ${senzaSup.join(", ")}` : `Tutti hanno almeno ${p.minSuper} superfestiv${p.minSuper === 1 ? "o" : "i"}` });
   if (soloGiorno.size) out.push({ ok: !nottiEs.length, testo: nottiEs.length ? `Notti a chi fa solo turni di giorno: ${nottiEs.join(", ")}` : "Chi fa solo turni di giorno non ha notti" });

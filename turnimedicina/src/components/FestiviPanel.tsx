@@ -312,6 +312,16 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             <label><div style={LBL}>Max turni per medico</div>{numInp(stato.maxShifts, 1, 20, v => set({ maxShifts: Math.round(v) }))}</label>
             <label><div style={LBL}>Min superfestivi per medico</div>{numInp(stato.minSuper, 0, 5, v => set({ minSuper: Math.round(v) }))}</label>
           </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: "10px" }}>
+            <label style={{ ...LBL, fontSize: "11px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+              <input type="checkbox" checked={stato.bilanciaRuoli} onChange={e => set({ bilanciaRuoli: e.target.checked })} />
+              Almeno un turno da titolare a testa e reperibilità in proporzione
+            </label>
+            <label style={{ ...LBL, fontSize: "11px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+              <input type="checkbox" checked={stato.prefEntroQuota} onChange={e => set({ prefEntroQuota: e.target.checked })} />
+              Preferenze entro la propria parte di punti
+            </label>
+          </div>
           {errPeriodo
             ? <div style={{ ...LBL, color: "#be123c", marginTop: "8px", fontSize: "11px" }}>{errPeriodo}</div>
             : <div style={{ ...LBL, marginTop: "8px" }}>

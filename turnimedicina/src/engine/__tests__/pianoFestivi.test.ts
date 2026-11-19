@@ -4,7 +4,7 @@ import type { Medico, TurniAll, TurniMese } from "../types";
 import { mergeRegole, REGOLE_DEFAULT, setRegole } from "../regole";
 import {
   festiviPianoDefault, festivitaPeriodo, festivitaAnno, buildShifts, generaPiano, verificaPiano, periodoOk, periodoSuccessivo,
-  easter, allineaFestiviPiano, sanaFestiviPiano, ruoliFesta, semplificaPref, normalizePrefs, prefMatches, type CfgPiano, type RuoloFest,
+  easter, allineaFestiviPiano, sanaFestiviPiano, ruoliFesta, semplificaPref, normalizePrefs, prefMatches, prefNellaParte, type CfgPiano, type RuoloFest,
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
@@ -304,6 +304,81 @@ describe("sezione Festivi: dal pannello al piano", () => {
     // salvataggio: turni sconosciuti scartati, un turno solo torna semplice, nessun turno = via
     const m = mergeStatoFestivi({ preferenze:{ 7:{ "Santo Stefano":["notte","giorno","boh"], Natale:["notte"], Pasqua:[] } } }, new Date(2026,10,16));
     expect(m.preferenze).toEqual({ 7:{ "Santo Stefano":["giorno","notte"], Natale:"notte" } });
+  });
+});
+
+// ── v0.3.70: solo dicembre — un turno da titolare a testa, preferenze entro la propria parte ──
+describe("sezione Festivi: titolari e reperibili in proporzione, preferenze nella propria parte", () => {
+  const dieci = Array.from({ length:10 }, (_,i)=>med(i+1));
+  const ids = dieci.map(m=>m.id);
+  const base = { ...statoFestiviDefault(new Date(2026,10,16)), periodo:{ start:"2027-12-01", end:"2027-12-31" },
+    reperibilita:{ enabled:true, weightPct:40, maxPer:5, nonIdonei:[] as number[] } };
+  const piano = (st: typeof base) => { const auto = automaticiFestivi(st, {}, dieci, lista, 2, ids); const d = datiSorteggio(st, dieci, lista, auto); return { d, p: sorteggia(d, st, "x").piano }; };
+  const senzaTit = (p:PianoSalvato) => ids.filter(id=>!p.turni.some(t=>t.medico===id)).length;
+  it("accese di serie, salvate, passate al sorteggio", () => {
+    expect([base.bilanciaRuoli, base.prefEntroQuota]).toEqual([true, true]);
+    expect(mergeStatoFestivi({ maxShifts:4 }, new Date(2026,10,16))).toMatchObject({ bilanciaRuoli:true, prefEntroQuota:true });   // stato di prima
+    expect(mergeStatoFestivi({ bilanciaRuoli:false, prefEntroQuota:false }, new Date(2026,10,16))).toMatchObject({ bilanciaRuoli:false, prefEntroQuota:false });
+    const { d } = piano(base);
+    expect([d.cfg.bilanciaRuoli, d.cfg.prefEntroQuota]).toEqual([true, true]);
+  });
+  it("dicembre, 10 medici e 10 turni con reperibilità: nessuno con sole reperibilità (prima sì)", () => {
+    for (const seme of [1, 2, 3]) {
+      const { p } = piano({ ...base, seme });
+      expect(p.turni.length).toBe(10);
+      expect(senzaTit(p)).toBe(0);
+      expect(p.turni.every(t=>t.medico!=null && t.reperibile!=null)).toBe(true);
+      // (5 turni superfestivi per 10 medici: il minimo di 1 a testa non si può rispettare, con o senza le regole)
+      expect(controlliPiano(p, new Set(), id=>`M${id}`).filter(x=>!x.ok && !/superfestiv/.test(x.testo))).toEqual([]);
+      const spento = piano({ ...base, seme, bilanciaRuoli:false, prefEntroQuota:false }).p;
+      expect(senzaTit(spento)).toBeGreaterThan(0);
+      expect(controlliPiano(spento, new Set(), id=>`M${id}`).some(x=>!x.ok && /Senza turni da titolare/.test(x.testo))).toBe(true);
+    }
+  });
+  it("chi chiede tre turni leggeri ne ottiene quanti stanno nella sua parte (uno), e non più punti degli altri", () => {
+    const pref = { 1:{ "Vigilia di Natale":"giorno" as const, "San Silvestro":"giorno" as const, "Immacolata":"notte" as const } };
+    const { d, p } = piano({ ...base, preferenze:pref });
+    expect(prefNellaParte(d.cfg, buildShifts(d.feste), normalizePrefs(d.cfg.preferences, d.cfg.holidays))["1"]).toBe(1);   // 22 punti / 10 = 2,2: ci sta la notte (1)
+    const miei = p.turni.filter(t=>t.medico===1);
+    expect(miei.length).toBe(1);
+    expect(miei[0].pref).toBe(true);                                       // il suo turno è uno di quelli chiesti
+    const tot = (id:number) => p.turni.reduce((s,t)=>s+(t.medico===id ? t.punti : 0)+(t.reperibile===id ? t.puntiRep : 0), 0);
+    const media = ids.slice(1).reduce((s,id)=>s+tot(id),0)/9;
+    expect(tot(1) - media).toBeLessThan(1);
+    const prima = piano({ ...base, preferenze:pref, bilanciaRuoli:false, prefEntroQuota:false }).p;
+    expect(prima.turni.filter(t=>t.medico===1).length).toBe(3);           // prima li prendeva tutti
+  });
+  it("B da sola: con 8 medici e senza reperibilità chi chiede tre turni leggeri non li prende più tutti", () => {
+    const otto = dieci.slice(0, 8), ids8 = otto.map(m=>m.id);
+    const pref = { 1:{ "Vigilia di Natale":"giorno" as const, "San Silvestro":"giorno" as const, "Immacolata":"notte" as const } };
+    for (const seme of [1, 2, 3]) {
+      const st = { ...base, seme, preferenze:pref, reperibilita:{ ...base.reperibilita, enabled:false } };
+      const giro = (x: typeof st) => sorteggia(datiSorteggio(x, otto, lista, automaticiFestivi(x, {}, otto, lista, 2, ids8)), x, "x").piano;
+      const conB = giro(st), senzaB = giro({ ...st, prefEntroQuota:false });
+      const n = (p:PianoSalvato) => p.turni.filter(t=>t.medico===1).length;
+      expect(n(senzaB)).toBe(3);
+      expect(n(conB)).toBeLessThan(3);
+      expect(conB.turni.filter(t=>t.medico===1).some(t=>t.pref)).toBe(true);
+    }
+  });
+  it("la parte di preferenze: almeno una se la parte è positiva, nessuna se il saldo l'ha già consumata", () => {
+    const cfg: CfgPiano = { doctors:["1","2"], holidays:[], maxShifts:5, minSuper:0, saldo:{ "1":0, "2":10 } };
+    const turni = [{ holNames:["Natale"], keys:["Natale|giorno"], points:3 }, { holNames:["Immacolata"], keys:["Immacolata|notte"], points:1 }];
+    const items = { "1":[{ hol:"Natale", role:"giorno" as const, date:"", lastDate:"", sup:true }, { hol:"Immacolata", role:"notte" as const, date:"", lastDate:"", sup:false }],
+                    "2":[{ hol:"Natale", role:"giorno" as const, date:"", lastDate:"", sup:true }] };
+    // parte = (4 punti + 10 di saldo) / 2 = 7: al medico 1 stanno entrambe (1 + 3); al 2, con 10 di saldo, nessuna
+    expect(prefNellaParte(cfg, turni, items)).toEqual({ "1":2, "2":0 });
+    expect(prefNellaParte({ ...cfg, saldo:{} }, turni, items)).toEqual({ "1":1, "2":1 });   // parte 2: ci sta solo la notte (1), al 2 almeno una
+  });
+  it("con più medici che turni il controllo spiega che è inevitabile", () => {
+    const dodici = Array.from({ length:12 }, (_,i)=>med(i+1));
+    const st = { ...base };
+    const auto = automaticiFestivi(st, {}, dodici, lista, 2, dodici.map(m=>m.id));
+    const p = sorteggia(datiSorteggio(st, dodici, lista, auto), st, "x").piano;
+    expect(dodici.filter(m=>!p.turni.some(t=>t.medico===m.id)).length).toBe(2);
+    const c = controlliPiano(p, new Set(), id=>`M${id}`).find(x=>/senza turni da titolare/.test(x.testo))!;
+    expect(c.ok).toBe(true);
+    expect(c.testo).toMatch(/i turni sono 10, i medici 12/);
   });
 });
 
