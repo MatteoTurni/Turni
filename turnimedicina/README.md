@@ -1,4 +1,22 @@
-# TurniMedicina 0.3.71
+# TurniMedicina 0.3.72
+
+## Novità 0.3.72 — dicembre con il 1° gennaio
+
+Sul calendario di dicembre, accanto a mese e anno, c'è la casella
+**«Comprendi il 1° gennaio»**. Accesa:
+- dopo ① Copertura (e dopo ② Obiettivi, ③ Equilibra, la variante proposta e
+  l'Annulla di Equilibra) l'app genera anche il 1° gennaio, partendo dal
+  dicembre appena fatto: chi fa la notte del 31 riposa, i turni già messi a
+  mano il 1° (anche dal piano festivi) e il 2–3 gennaio si rispettano;
+- i turni vanno nel giorno 1 del mese di gennaio, come turni fissi: generando
+  gennaio restano lì e contano per gennaio. Rigenerando dicembre si rifanno;
+  «Rimuovi App» su dicembre toglie anche quelli. Se gennaio è già generato il
+  1° non si tocca;
+- nel tabellone di dicembre c'è la colonna «1 gen» (in sola lettura: si
+  modifica in gennaio), e l'Excel di dicembre ha la colonna «1 gen», festiva.
+
+Misurato su 10 dicembri: il 1° gennaio sempre coperto, nessuna violazione,
+circa mezzo secondo.
 
 ## Novità 0.3.71 — cancellare il piano festivi
 

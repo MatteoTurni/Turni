@@ -22,8 +22,14 @@ const BORD: Partial<ExcelJS.Borders> = { top: THIN, bottom: THIN, left: THIN, ri
 const DL_IT = ["L", "M", "M", "G", "V", "S", "D"];
 
 // Costruisce il workbook (separato dal download per poterlo testare in Node).
-export function costruisciWorkbook(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese): ExcelJS.Workbook {
+// v0.3.72: con `primoGennaio` (i turni del mese di gennaio) il foglio di dicembre
+// ha una colonna in più dopo il 31: il 1° gennaio, festivo.
+export function costruisciWorkbook(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese, primoGennaio?: TurniMese): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
+  const extra = mese === 11 && !!primoGennaio;
+  const nc = nd + (extra ? 1 : 0);                                // colonne-giorno
+  /** Giorno della colonna g (1..nc): data e turni (l'ultima, con extra, è il 1° gennaio). */
+  const col = (g: number) => g <= nd ? { a: anno, m: mese, d: g, T: turni } : { a: anno + 1, m: 0, d: 1, T: primoGennaio || {} };
   const ws = wb.addWorksheet("Foglio1", {
     pageSetup: {
       paperSize: 9,                 // A4
@@ -47,7 +53,7 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   const hdr = rep.righeExcel.slice(0, 3);
   hdr.forEach((t, i) => {
     const r = 2 + i;
-    ws.mergeCells(r, 1, r, nd + 1);               // centra su tutta la larghezza
+    ws.mergeCells(r, 1, r, nc + 1);               // centra su tutta la larghezza
     const cell = ws.getCell(r, 1);
     cell.value = t;
     cell.font = { name: "Arial", size: 12 };
@@ -60,18 +66,20 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   const R_NUM = 7, R_DOW = 8, FIRST_MED = 9;
   ws.getCell(R_NUM, 1).value = anno;
   ws.getCell(R_DOW, 1).value = MESI[mese].toLowerCase();
-  for (let g = 1; g <= nd; g++) {
-    ws.getCell(R_NUM, 1 + g).value = g;
-    ws.getCell(R_DOW, 1 + g).value = DL_IT[dowOf(anno, mese, g)];
+  for (let g = 1; g <= nc; g++) {
+    const c = col(g);
+    ws.getCell(R_NUM, 1 + g).value = g <= nd ? g : "1 gen";
+    ws.getCell(R_DOW, 1 + g).value = DL_IT[dowOf(c.a, c.m, c.d)];
   }
   medici.forEach((m, i) => {
     const r = FIRST_MED + i;
     ws.getCell(r, 1).value = m.nome + (m.codice ? "  " + m.codice : "");
-    for (let g = 1; g <= nd; g++) {
+    for (let g = 1; g <= nc; g++) {
+      const cg = col(g);
       // Turni associati (es. mattina + pomeriggio): vanno scritti in ordine
       // temporale — prima il turno del mattino, poi quello del pomeriggio, poi
       // la notte — e concatenati senza "+" (es. "MP", non "M+P" né "PM").
-      const ts = (turni[m.id]?.[g]?.t || [])
+      const ts = (cg.T[m.id]?.[cg.d]?.t || [])
         .filter(s => !isEscl(s.tipo))                 // X e Xm/Xp/Xn non si stampano
         .sort((a, b) => rankTurno(a.tipo) - rankTurno(b.tipo));
       if (ts.length > 0) {
@@ -110,21 +118,22 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
   // ---------- stili griglia: bordo su OGNI cella, font, fondo festivi ----------
   for (let r = R_NUM; r <= lastRow; r++) {
     const isDow = r === R_DOW, isMed = r >= FIRST_MED;
-    for (let c = 1; c <= nd + 1; c++) {
+    for (let c = 1; c <= nc + 1; c++) {
       const cell = ws.getCell(r, c);
       cell.border = BORD;
       cell.font = (c === 1 || r === R_NUM || isDow)
         ? { name: "Arial", size: 12, bold: isDow }
         : { name: "Calibri", size: corpoCella(cell), bold: true };
       cell.alignment = { horizontal: (c === 1 && isMed) ? "left" : "center", vertical: "middle" };
-      if (c >= 2 && isFestivo(anno, mese, c - 1))
+      if (c >= 2 && (() => { const cg = col(c - 1); return isFestivo(cg.a, cg.m, cg.d); })())
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORANGE } };
     }
   }
 
   // ---------- dimensioni ----------
   ws.getColumn(1).width = 26;
-  for (let c = 2; c <= nd + 1; c++) ws.getColumn(c).width = 6.3;
+  for (let c = 2; c <= nc + 1; c++) ws.getColumn(c).width = 6.3;
+  if (extra) ws.getColumn(nc + 1).width = 7.5;      // «1 gen»
   ws.getRow(1).height = 42;                       // fascia banner in cima (~56 px)
   ws.getRow(5).height = 8;                        // margine fra testo e MEDICINA
   for (let r = R_NUM - 1; r <= lastRow; r++) ws.getRow(r).height = 23;
@@ -143,11 +152,11 @@ export function costruisciWorkbook(anno: number, mese: number, nd: number, medic
     const imgId = m
       ? wb.addImage({ base64: m[2], extension: m[1] as "png" | "jpeg" })
       : wb.addImage({ base64: LOGO_PNG_BASE64, extension: "png" });
-    ws.addImage(imgId, `A1:${colLetter(nd + 1)}1`);
+    ws.addImage(imgId, `A1:${colLetter(nc + 1)}1`);
   } else ws.getRow(1).height = 8;
 
   // ---------- area di stampa ----------
-  const lastColL = colLetter(nd + 1);
+  const lastColL = colLetter(nc + 1);
   ws.pageSetup.printArea = `A1:${lastColL}${lastRow}`;
 
   return wb;
@@ -187,8 +196,8 @@ function colLetter(n: number): string {
   return s;
 }
 
-export async function esportaExcel(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese): Promise<void> {
-  const wb = costruisciWorkbook(anno, mese, nd, medici, turni);
+export async function esportaExcel(anno: number, mese: number, nd: number, medici: Medico[], turni: TurniMese, primoGennaio?: TurniMese): Promise<void> {
+  const wb = costruisciWorkbook(anno, mese, nd, medici, turni, primoGennaio);
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);

@@ -41,6 +41,9 @@ export interface Turno {
    *  sempre per chi lo fa (punti, riposo, notti) ma non affianca mai l'MDC.
    *  In tabellone ed Excel la sigla ha un asterisco (es. "3*"). */
   est?: boolean;
+  /** Turno del 1° gennaio generato insieme a dicembre (v0.3.72): in gennaio è
+   *  fisso (manuale), ma rigenerando dicembre si rifà. */
+  dic?: boolean;
 }
 
 /** Turni PS validi per affiancare l'MDC (v0.3.45), per codice: ordinario e
@@ -158,6 +161,9 @@ export interface Regole {
    *  turni automatici già presenti possono essere spostati; true = riempie
    *  SOLO i posti vuoti, tutti i turni presenti restano dove sono. */
   coperturaSoloVuoti: boolean;
+  /** v0.3.72: generando dicembre si genera anche il 1° gennaio (casella sul
+   *  calendario di dicembre); i turni vanno nel giorno 1 di gennaio. */
+  primoGennaio: boolean;
   /** PIANO FESTIVI (v0.3.60): le festività del sorteggio con i punti dei tre
    *  turni (notte prima, giorno, notte) e quali sono superfestivi. Le feste
    *  locali del reparto ci entrano da sole (vedi allineaFestiviPiano). */

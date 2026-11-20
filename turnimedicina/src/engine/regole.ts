@@ -44,6 +44,8 @@ export const REGOLE_DEFAULT: Regole = {
   psEstGiornata: true,
   // Pulsante Copertura: ottimizza tutto (comportamento storico) (v0.3.50).
   coperturaSoloVuoti: false,
+  // Dicembre comprende il 1° gennaio (v0.3.72): spento.
+  primoGennaio: false,
   // Piano festivi (v0.3.60): festività e punti del sorteggio (sezione Festivi).
   festiviPiano: festiviPianoDefault([{ data:"09-08", nome:"Madonna dell'Olmo (patrona di Cava de' Tirreni)" }]),
   festiviPianoRev: 1,
@@ -93,7 +95,7 @@ export function mergeRegole(s: Partial<Regole> | null | undefined): Regole {
   const fp = fpSalvato && !giaRev
     ? fpSalvato.map(f => f.soloGiorno && (f.data==="12-24" || f.data==="12-31") && f.punti.giorno===1 ? { ...f, punti:{ ...f.punti, giorno:2 } } : f)
     : fpSalvato;
-  return { ...d, ...resto, ambulatori: amb, reparto: rep, psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti,
+  return { ...d, ...resto, ambulatori: amb, reparto: rep, psAff: sanaPsAff(s.psAff, d.psAff), psEstGiornata: typeof s.psEstGiornata==="boolean" ? s.psEstGiornata : d.psEstGiornata, coperturaSoloVuoti: typeof s.coperturaSoloVuoti==="boolean" ? s.coperturaSoloVuoti : d.coperturaSoloVuoti, primoGennaio: s.primoGennaio===true,
            festiviPiano: allineaFestiviPiano(fp ?? festiviPianoDefault(), rep.festiviLocali), festiviPianoRev: 1,
            pianoFestiviAnni: anni15(s.pianoFestiviAnni) ?? anni15(vecchie.superfestiviAnni) ?? d.pianoFestiviAnni,
            notteLiberoNotte: nLN, riposoEsteso: rE,

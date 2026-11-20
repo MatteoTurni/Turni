@@ -18,6 +18,7 @@ import { equilibra, type EsitoEquilibra } from "./engine/equilibra";
 import { bilancioNotti, spiegaWeekend, type EsitoProvaWeekend } from "./engine/diagnosiWeekend";
 import { provaWeekendParallelo } from "./provaWeekendParallelo";
 import { generaParallelo } from "./generaParallelo";
+import { generaPrimoGennaio, togliPrimoGennaio, chiaveGennaio } from "./engine/primoGennaio";
 import { loadS, saveS, loadRegole, saveRegole, loadAmbRot, saveAmbRot, loadFestivi, saveFestivi, loadDesiderate, saveDesiderate } from "./storage";
 import { caricaRemoto, salvaRemoto, puoModificare, remotoConfigurato } from "./remote";
 import { esportaExcel } from "./export/excel";
@@ -163,6 +164,21 @@ export default function App(){
 
   const showMsg = (txt:string,tp="ok") => { setToast({txt,tp}); setTimeout(()=>setToast(null),3200); };
 
+  // ── DICEMBRE CON IL 1° GENNAIO (v0.3.72) ──────────────────────────────────
+  // Con la casella accesa, dopo ogni passo su dicembre si genera anche il 1°
+  // gennaio (giorno 1 del mese di gennaio, turni fissi segnati «dic»).
+  const conPG = mese===11 && regole.primoGennaio;
+  const keyGen = chiaveGennaio(anno);
+  const gennaio = turniAll[keyGen] || {};
+  /** Rigenera il 1° gennaio dal dicembre dato; restituisce il testo da aggiungere al messaggio. */
+  const aggiornaPrimoGennaio = (dic: TurniAll[string]): string => {
+    if(!conPG) return "";
+    const e = generaPrimoGennaio(anno, medici, turniAll, dic);
+    if(e.blocco) return " "+e.blocco;
+    setTurniAll(prev=>({ ...prev, [keyGen]: e.gennaio }));
+    return e.scoperti.length ? ` 1° gennaio: scoperto ${e.scoperti.join(", ")}.` : " Generato anche il 1° gennaio.";
+  };
+
   // ── Generazione (pulsante ①) ───────────────────────────────────────────────
   // La UI INIETTA nel motore tutto ciò che prima il motore leggeva da solo:
   // coda del mese precedente e indice di rotazione ambulatorio. La rotazione
@@ -195,8 +211,9 @@ export default function App(){
         saveAmbRot({ nextIdx: calcAmbRotNext(r.turni, medici, anno, mese, nd, rotStart) });
         salvaRemoto("ambRot", loadAmbRot());
         setTurni(r.turni);
-        if(r.ok) showMsg("✓ Copertura minima completata!");
-        else showMsg("⚠ Copertura parziale (mostrato il tabellone migliore): "+r.problemi.slice(0,4).join(" · "),"warn");
+        const pg = aggiornaPrimoGennaio(r.turni);
+        if(r.ok) showMsg("✓ Copertura minima completata!"+pg);
+        else showMsg("⚠ Copertura parziale (mostrato il tabellone migliore): "+r.problemi.slice(0,4).join(" · ")+pg,"warn");
         // Variante di ultima chance disponibile → si propone senza applicarla.
         if(r.alternativaUC) setAltUC({ alt:r.alternativaUC, rotStart });
         setDiagGen(r.diagnosi ?? null);
@@ -221,6 +238,7 @@ export default function App(){
   const applicaAltUC = () => {
     if(!altUC) return;
     setTurni(altUC.alt.turni);
+    aggiornaPrimoGennaio(altUC.alt.turni);
     saveAmbRot({ nextIdx: calcAmbRotNext(altUC.alt.turni, medici, anno, mese, nd, altUC.rotStart) });
     salvaRemoto("ambRot", loadAmbRot());
     const nc = altUC.alt.celleCoperte.length;
@@ -238,13 +256,14 @@ export default function App(){
         setStoricoEquita(turniAll,anno,mese,medici,regole.equitaNottiMesi,regole.equitaWeekendMesi);
         const r = completaObiettivi(anno,mese,nd,medici,turni);
         setTurni(r.turni);
-        if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!");
+        const pg = aggiornaPrimoGennaio(r.turni);
+        if(r.rimasti.length===0) showMsg("✓ Obiettivi mensili completati!"+pg);
         else {
           const elenco = r.rimasti.map(x=>`${x.nome.split(" ").pop()} −${x.mancano}`).join(", ");
           const perche = r.postiLiberi===0
             ? "mattine e pomeriggi feriali sono già al massimo previsto (pannello Regole)"
             : "i giorni ancora liberi sono bloccati da riposi, consecutivi o turni già presenti";
-          showMsg(`Obiettivi completati dove possibile. Restano sotto: ${elenco} — ${perche}.`,"warn");
+          showMsg(`Obiettivi completati dove possibile. Restano sotto: ${elenco} — ${perche}.`+pg,"warn");
         }
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
@@ -265,7 +284,7 @@ export default function App(){
         const prima = turni;
         const e = equilibra(anno,mese,nd,medici,turni,{ traGiorni:true });
         if(e.scambiNotti+e.scambiMP===0){ showMsg("Il tabellone è già equilibrato: nessuno scambio possibile senza peggiorare altro."); }
-        else { setTurni(e.turni); setEqRes({ esito:e, prima }); }
+        else { setTurni(e.turni); setEqRes({ esito:e, prima }); aggiornaPrimoGennaio(e.turni); }
       }catch(e){ showMsg("Errore: "+(e as Error).message,"err"); }
       setBusy(false);
     },50);
@@ -274,7 +293,7 @@ export default function App(){
   const handlePrint = async () => {
     setPrinting(true);
     try {
-      esportaExcel(anno, mese, nd, medici, turni);
+      esportaExcel(anno, mese, nd, medici, turni, conPG ? gennaio : undefined);
       showMsg("✓ Excel scaricato!");
     } catch(e) {
       showMsg("Errore Excel: " + (e as Error).message, "err");
@@ -524,6 +543,12 @@ export default function App(){
           </select>
           <input type="number" value={anno} onChange={e=>setAnno(+e.target.value)}
             style={{background:"#ffffff",border:"1px solid #cbd5e1",color:"#1d4ed8",borderRadius:"6px",padding:"6px 8px",fontSize:"12px",fontFamily:"monospace",width:"78px"}}/>
+          {mese===11 && editabile && tab==="cal" &&
+            <label title="Generando dicembre si genera anche il 1° gennaio: i turni vanno nel giorno 1 di gennaio e restano fissi quando si genera gennaio"
+              style={{display:"flex",alignItems:"center",gap:"5px",background:"#ffffff",border:"1px solid #cbd5e1",borderRadius:"6px",padding:"5px 8px",fontSize:"11px",fontFamily:"monospace",color:"#1d4ed8",cursor:"pointer",whiteSpace:"nowrap"}}>
+              <input type="checkbox" checked={regole.primoGennaio} onChange={e=>updRegole({ ...regole, primoGennaio: e.target.checked })}/>
+              Comprendi il 1° gennaio
+            </label>}
         </div>
 
         <div style={{display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center"}}>
@@ -537,7 +562,9 @@ export default function App(){
             ["①","Copertura", busy?"#e2e8f0":"#1d4ed8", generaCopertura, busy],
             ["②","Obiettivi", busy?"#e2e8f0":"#6d28d9", generaObiettivi, busy],
             ["③","Equilibra", busy?"#e2e8f0":"#0f766e", equilibraTab, busy],
-            ["⊘","Rimuovi App","#6d28d9", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>s.man)}; } return n; }); showMsg("Turni app rimossi."); }, false],
+            ["⊘","Rimuovi App","#6d28d9", ()=>{ setTurni(p=>{ const n: TurniAll[string]={}; for(const k in p){ n[k]={}; for(const d in p[k]) n[k][d]={t:(p[k][d].t||[]).filter(s=>s.man)}; } return n; });
+              if(conPG) setTurniAll(prev=>({ ...prev, [keyGen]: togliPrimoGennaio(prev[keyGen]) }));
+              showMsg(conPG ? "Turni app rimossi, anche quelli del 1° gennaio." : "Turni app rimossi."); }, false],
             ["x",confMan?"Conferma ✕":"Rimuovi Man",confMan?"#dc2626":"#fecdd3", rimuoviManuali, false],
             ["⎙","Excel", printing?"#e2e8f0":"#047857", handlePrint, printing],
           ] as [string,string,string,()=>void,boolean][])
@@ -623,7 +650,7 @@ export default function App(){
               <button onClick={()=>setEqRes(null)}
                 style={{background:"#0f766e",color:"#fff",border:"none",borderRadius:"6px",padding:"7px 14px",
                   cursor:"pointer",fontSize:"11px",fontWeight:700,fontFamily:"monospace"}}>Tieni</button>
-              <button onClick={()=>{ const p=eqRes.prima; setEqRes(null); setTurni(p); showMsg("Equilibrio annullato."); }}
+              <button onClick={()=>{ const p=eqRes.prima; setEqRes(null); setTurni(p); aggiornaPrimoGennaio(p); showMsg("Equilibrio annullato."); }}
                 style={{background:"#e2e8f0",color:"#64748b",border:"1px solid #cbd5e1",borderRadius:"6px",padding:"7px 14px",
                   cursor:"pointer",fontSize:"11px",fontFamily:"monospace"}}>Annulla</button>
             </div>
@@ -799,7 +826,7 @@ export default function App(){
       {/* CALENDARIO */}
       {tab==="cal"&&(
         <div ref={calRef} style={{overflowX:"auto"}}>
-          <table style={{borderCollapse:"collapse",width:"100%",minWidth:`${200+nd*35}px`,fontSize:"10px"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:`${200+(nd+(conPG?1:0))*35}px`,fontSize:"10px"}}>
             <thead>
               <tr>
                 <th colSpan={2} style={{...TH,textAlign:"left",padding:"6px 10px",color:"#1d4ed8",fontSize:"11px",minWidth:"200px"}}>
@@ -809,6 +836,7 @@ export default function App(){
                   const mt=metaG(g);
                   return <th key={g} style={{...TH,background:mt.h?"#fff1f2":mt.sat||mt.dom?"#eef2ff":"#f8fafc",color:mt.h?"#dc2626":mt.sat||mt.dom?"#6d28d9":"#334155",minWidth:"34px",fontSize:"10px",fontWeight:700}}>{g}</th>;
                 })}
+                {conPG && <th title="1° gennaio: generato con dicembre, si modifica in gennaio" style={{...TH,background:"#fff1f2",color:"#dc2626",minWidth:"34px",fontSize:"10px",fontWeight:700,borderLeft:"2px solid #94a3b8"}}>1</th>}
                 <th style={{...TH,minWidth:"34px",fontSize:"9px"}}>Tot</th>
                 <th style={{...TH,minWidth:"34px",fontSize:"9px"}}>Ob.</th>
                 <th style={{...TH,minWidth:"28px",fontSize:"9px",color:"#5412c5"}}>WkL</th>
@@ -820,6 +848,7 @@ export default function App(){
                   const mt=metaG(g);
                   return <th key={g} style={{...TH,background:mt.h?"#fff1f2":mt.sat||mt.dom?"#eef2ff":"#f8fafc",color:mt.h?"#dc2626":mt.sat||mt.dom?"#6d28d9":"#94a3b8",fontSize:"8px"}}>{DL[mt.d]}</th>;
                 })}
+                {conPG && <th style={{...TH,background:"#fff1f2",color:"#dc2626",fontSize:"8px",borderLeft:"2px solid #94a3b8"}}>gen</th>}
                 <th colSpan={4} style={TH}/>
               </tr>
             </thead>
@@ -853,6 +882,18 @@ export default function App(){
                         </td>
                       );
                     })}
+                    {conPG && (()=>{
+                      const ct = gennaio[med.id]?.[1]?.t || [];
+                      const hX = ct.some(s=>s.tipo==="X"), vis = ct.filter(s=>s.tipo!=="X");
+                      return (
+                        <td title="1° gennaio (si modifica nel mese di gennaio)" style={{background:hX?"#f1f1f4":"#fff1f2",border:"1px solid #e2e8f0",borderLeft:"2px solid #94a3b8",padding:"1px 2px",textAlign:"center",minWidth:"34px",height:"25px",verticalAlign:"middle"}}>
+                          <div style={{display:"flex",gap:"1px",justifyContent:"center",flexWrap:"wrap"}}>
+                            {hX && <span style={{color:KC.X.t,fontWeight:700,fontSize:"11px",fontFamily:"monospace"}}>/</span>}
+                            {vis.map((s,i)=><Badge key={i} tipo={s.tipo} sott={s.sott} man={!s.dic && s.man} lbl={etichettaTurno(s,regole.ambulatori)}/>)}
+                          </div>
+                        </td>
+                      );
+                    })()}
                     <td style={{background:ov?"#fff1f2":un?"#f1f9f1":"#f8fafc",border:"1px solid #e2e8f0",padding:"2px 5px",textAlign:"center",fontWeight:700,fontSize:"12px",color:ov?"#be123c":un?"#047857":"#0f172a",fontFamily:"monospace"}}>{tot}</td>
                     <td style={{background:"#f8fafc",border:"1px solid #e2e8f0",padding:"2px 5px",textAlign:"center",color:"#64748b",fontSize:"11px",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":med.obiettivo}</td>
                     <td style={{background:"#f5f3ff",border:"1px solid #e2e8f0",padding:"2px 4px",textAlign:"center",fontWeight:700,fontSize:"11px",color:wkLib>=2?"#6d28d9":wkLib===1?"#5412c5":"#64748b",fontFamily:"monospace"}}>{med.stato==="MPS"?"—":wkLib}</td>
@@ -882,6 +923,14 @@ export default function App(){
                     </td>
                   );
                 })}
+                {conPG && (()=>{
+                  const n = (f:string) => Object.values(gennaio).reduce((k,gi)=>k+(gi[1]?.t||[]).filter(s=>s.tipo===f).length,0);
+                  return (
+                    <td style={{background:"#ffffff",border:"1px solid #e2e8f0",borderLeft:"2px solid #94a3b8",padding:"3px 1px",textAlign:"center",verticalAlign:"top"}}>
+                      <CovDots mc={n("M")} pc={n("P")} nc={n("N")} sp={true} sat={false} fabb={regole.fabb}/>
+                    </td>
+                  );
+                })()}
                 <td colSpan={4} style={{background:"#f8fafc",border:"1px solid #e2e8f0"}}/>
               </tr>
               {/* BILANCIO DEL MESE — L+P · S · D · F. Solo F cambia colore: è il
@@ -898,7 +947,7 @@ export default function App(){
                 );
                 return (
                   <tr>
-                    <td colSpan={2+nd} style={{background:"#f8fafc",border:"1px solid #e2e8f0",textAlign:"right",
+                    <td colSpan={2+nd+(conPG?1:0)} style={{background:"#f8fafc",border:"1px solid #e2e8f0",textAlign:"right",
                       padding:"2px 8px",fontSize:"8px",color:"#94a3b8",letterSpacing:".12em",fontFamily:"monospace"}}>
                       BILANCIO MESE ▸
                     </td>
