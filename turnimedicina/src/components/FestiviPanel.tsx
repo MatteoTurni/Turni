@@ -6,7 +6,7 @@ import {
 } from "../engine/pianoFestivi";
 import {
   type StatoFestivi, type PianoSalvato, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano, controlliPiano,
-  prossimoPeriodo, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, cancellaPiano, nInseriti, type Saltato,
+  prossimoPeriodo, periodoEffettivo, capodannoPossibile, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, cancellaPiano, nInseriti, type Saltato,
 } from "../engine/festiviApp";
 import { SC } from "./costanti";
 
@@ -137,7 +137,8 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const piano = stato.piano;
   const righe = piano ? riepilogoPiano(piano) : [];
   const controlli = piano ? controlliPiano(piano, dati.soloGiorno, id => nome(id)) : [];
-  const pianoAltroPeriodo = !!piano && (piano.periodo.start !== stato.periodo.start || piano.periodo.end !== stato.periodo.end);
+  const perEff = periodoEffettivo(stato);
+  const pianoAltroPeriodo = !!piano && (piano.periodo.start !== perEff.start || piano.periodo.end !== perEff.end);
   const scarto = righe.length ? Math.max(...righe.map(r => r.totale)) - Math.min(...righe.map(r => r.totale)) : 0;
   const note = (t: PianoSalvato["turni"][number]) => [t.sup ? "★ superfestivo" : "", t.condiviso ? "notte condivisa" : "", t.pref ? "♥ richiesto" : "", t.storico && !t.pref ? "↻ già fatta l'ultima volta" : ""].filter(Boolean).join(" · ");
 
@@ -321,6 +322,13 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
             <label><div style={LBL}>Min superfestivi per medico</div>{numInp(stato.minSuper, 0, 5, v => set({ minSuper: Math.round(v) }))}</label>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: "10px" }}>
+            {capodannoPossibile(stato.periodo) && (
+              <label style={{ ...LBL, fontSize: "11px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
+                title="Comprende Capodanno: la notte del 31/12, il giorno e la notte del 1° gennaio">
+                <input type="checkbox" checked={stato.conCapodanno} onChange={e => set({ conCapodanno: e.target.checked })} />
+                Comprendi anche il 1° gennaio (Capodanno)
+              </label>
+            )}
             <label style={{ ...LBL, fontSize: "11px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
               <input type="checkbox" checked={stato.bilanciaRuoli} onChange={e => set({ bilanciaRuoli: e.target.checked })} />
               Almeno un turno da titolare a testa e reperibilità in proporzione

@@ -62,6 +62,10 @@ export interface StatoFestivi {
   bilanciaRuoli: boolean;
   /** v0.3.70: preferenze difese solo se stanno nella parte di punti del medico. */
   prefEntroQuota: boolean;
+  /** v0.3.72: il periodo che finisce il 31/12 comprende anche il 1° gennaio
+   *  (Capodanno, con la sua notte prima del 31). Vale solo se il periodo non
+   *  comincia già il 1° gennaio di quell'anno (vedi capodannoPossibile). */
+  conCapodanno: boolean;
   seme: number;
   piano: PianoSalvato | null;
   /** Piani dei periodi precedenti (i più recenti in fondo). */
@@ -74,12 +78,19 @@ export interface StatoFestivi {
 export interface TurnoInserito { id: number; g: number; tipi: string[] }
 export interface InserimentoMese { generato: string; turni: TurnoInserito[] }
 
+/** Il periodo può comprendere anche il 1° gennaio dopo (v0.3.72): finisce il
+ *  31/12 e non comincia il 1° gennaio di quell'anno (altrimenti due Capodanni). */
+export const capodannoPossibile = (p: { start: string; end: string }) => p.end.endsWith("-12-31") && p.start > p.end.slice(0, 4) + "-01-01";
+/** Periodo usato dal sorteggio: quello scelto, più il 1° gennaio se richiesto. */
+export function periodoEffettivo(st: { periodo: { start: string; end: string }; conCapodanno?: boolean }): { start: string; end: string } {
+  return st.conCapodanno && capodannoPossibile(st.periodo) ? { start: st.periodo.start, end: addDays(st.periodo.end, 1) } : { ...st.periodo };
+}
 /** Periodo proposto la prima volta: l'anno solare che segue `oggi`. */
 export function statoFestiviDefault(oggi: Date = new Date()): StatoFestivi {
   const y = oggi.getFullYear() + 1;
   return { periodo: { start: iso(y, 1, 1), end: iso(y, 12, 31) }, maxShifts: 5, minSuper: 1, esclusi: [], soloGiorno: {},
     saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, reperibilita: { enabled: false, weightPct: 40, maxPer: 5, nonIdonei: [] },
-    bilanciaRuoli: true, prefEntroQuota: true, seme: 1, piano: null, archivio: [], inseriti: {} };
+    bilanciaRuoli: true, prefEntroQuota: true, conCapodanno: false, seme: 1, piano: null, archivio: [], inseriti: {} };
 }
 const isData = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v) && !isNaN(Date.parse(v + "T00:00:00Z"));
 const numIn = (v: unknown, lo: number, hi: number, def: number) => typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? v : def;
@@ -155,6 +166,7 @@ export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFes
     reperibilita: { enabled: !!r.enabled, weightPct: numIn(r.weightPct, 0, 100, 40), maxPer: Math.round(numIn(r.maxPer, 1, 99, 5)), nonIdonei: ids(r.nonIdonei) },
     bilanciaRuoli: typeof s.bilanciaRuoli === "boolean" ? s.bilanciaRuoli : d.bilanciaRuoli,
     prefEntroQuota: typeof s.prefEntroQuota === "boolean" ? s.prefEntroQuota : d.prefEntroQuota,
+    conCapodanno: s.conCapodanno === true,
     seme: Math.round(numIn(s.seme, 1, 1e9, 1)),
     piano: sanaPiano(s.piano),
     archivio: (Array.isArray(s.archivio) ? s.archivio.map(sanaPiano).filter((p): p is PianoSalvato => !!p) : []).slice(-6),
@@ -290,7 +302,16 @@ export const esenteNotti = (m: Medico) => !!m.noNotti && (m.stato === "MR" || m.
 /** Tutto ciò che serve al sorteggio: scelte del pannello, con i valori automatici dove non corretti a mano. */
 export function datiSorteggio(st: StatoFestivi, medici: Medico[], lista: FestivitaPiano[], auto: AutoFestivi): DatiSorteggio {
   const partecipanti = medici.filter(m => !st.esclusi.includes(m.id));
-  const feste = periodoOk(st.periodo.start, st.periodo.end) ? [] : festivitaPeriodo(lista, st.periodo.start, st.periodo.end);
+  const per = periodoEffettivo(st);
+  let feste = periodoOk(per.start, per.end) ? [] : festivitaPeriodo(lista, per.start, per.end);
+  // col 1° gennaio aggiunto il periodo passa d'anno e i nomi prenderebbero l'anno
+  // («Natale 2027»): se nessuna festività compare due volte restano senza, così
+  // le preferenze già scritte («Natale») continuano a valere (v0.3.72)
+  if (per.end !== st.periodo.end) {
+    const quante = new Map<string, number>();
+    for (const h of feste) quante.set(h.base, (quante.get(h.base) || 0) + 1);
+    feste = feste.map(h => quante.get(h.base) === 1 ? { ...h, name: h.base } : h);
+  }
   const nomiFeste = new Set(feste.map(h => h.name));
   const k = (id: number) => String(id);
   const soloGiorno = new Set(partecipanti.filter(m => st.soloGiorno[m.id] ?? esenteNotti(m)).map(m => m.id));
@@ -327,7 +348,7 @@ export function sorteggia(d: DatiSorteggio, st: StatoFestivi, quando: string): {
   for (const [doc, items] of Object.entries(sol.prefItems || {})) for (const it of items)
     if (sol.assignments.some(a => a.doctor === doc && prefMatches(it, a))) richiesteOk++;
   const piano: PianoSalvato = {
-    periodo: { ...st.periodo }, generato: quando, seme: st.seme, partecipanti: d.partecipanti.map(m => m.id),
+    periodo: periodoEffettivo(st), generato: quando, seme: st.seme, partecipanti: d.partecipanti.map(m => m.id),
     maxShifts: st.maxShifts, minSuper: st.minSuper, repOn: st.reperibilita.enabled, repPct: st.reperibilita.weightPct,
     saldo: { ...d.saldo },
     turni: sol.assignments.map(a => ({ date: a.date, tipo: a.tipo, nomi: a.holNames, basi: a.holBases, chiavi: a.keys, sup: a.isSuper, punti: a.points,
@@ -405,8 +426,15 @@ export function cancellaPiano(st: StatoFestivi, turniAll: TurniAll, togliDaiMesi
 /** Turni inseriti nei mesi dal piano (registro), in tutto. */
 export const nInseriti = (st: StatoFestivi) => Object.values(st.inseriti).reduce((n, x) => n + x.turni.length, 0);
 export function prossimoPeriodo(st: StatoFestivi): StatoFestivi {
-  const base = st.piano ? st.piano.periodo : st.periodo;
-  return { ...st, periodo: periodoSuccessivo(base), piano: null, archivio: st.piano ? [...st.archivio, st.piano].slice(-6) : st.archivio,
+  let base = st.piano ? st.piano.periodo : periodoEffettivo(st);
+  // v0.3.72: un periodo che comprendeva il 1° gennaio si allunga di un giorno solo
+  // per Capodanno: il successivo si calcola da quello scelto (es. dicembre →
+  // gennaio) e comincia il 2, perché Capodanno è già stato sorteggiato.
+  const conCap = base.end.endsWith("-01-01") && capodannoPossibile({ start: base.start, end: addDays(base.end, -1) });
+  if (conCap) base = { start: base.start, end: addDays(base.end, -1) };
+  const succ = periodoSuccessivo(base);
+  if (conCap && succ.start.endsWith("-01-01")) succ.start = addDays(succ.start, 1);
+  return { ...st, periodo: succ, piano: null, archivio: st.piano ? [...st.archivio, st.piano].slice(-6) : st.archivio,
     saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, seme: 1 };
 }
 /** Un medico eliminato dall'app esce anche dalla sezione Festivi: un nuovo medico con lo stesso numero non eredita nulla. */

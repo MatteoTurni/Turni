@@ -8,7 +8,7 @@ import {
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
-  controlliPiano, prossimoPeriodo, cancellaPiano, nInseriti, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
+  controlliPiano, prossimoPeriodo, cancellaPiano, nInseriti, periodoEffettivo, capodannoPossibile, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
 } from "../festiviApp";
 
 // ── v0.3.60: piano festivi ────────────────────────────────────────────────────
@@ -379,6 +379,45 @@ describe("sezione Festivi: titolari e reperibili in proporzione, preferenze nell
     const c = controlliPiano(p, new Set(), id=>`M${id}`).find(x=>/senza turni da titolare/.test(x.testo))!;
     expect(c.ok).toBe(true);
     expect(c.testo).toMatch(/i turni sono 10, i medici 12/);
+  });
+});
+
+// ── v0.3.72: il periodo che finisce il 31/12 può comprendere il 1° gennaio ───
+describe("sezione Festivi: comprendere anche il 1° gennaio", () => {
+  const dieci = Array.from({ length:10 }, (_,i)=>med(i+1)), ids = dieci.map(m=>m.id);
+  const dic = { ...statoFestiviDefault(new Date(2026,10,16)), periodo:{ start:"2027-12-01", end:"2027-12-31" } };
+  it("quando si può e che periodo diventa", () => {
+    expect(capodannoPossibile({ start:"2027-12-01", end:"2027-12-31" })).toBe(true);
+    expect(capodannoPossibile({ start:"2027-01-02", end:"2027-12-31" })).toBe(true);
+    expect(capodannoPossibile({ start:"2027-01-01", end:"2027-12-31" })).toBe(false);   // anno intero: avrebbe due Capodanni
+    expect(capodannoPossibile({ start:"2027-12-01", end:"2027-12-30" })).toBe(false);
+    expect(periodoEffettivo({ ...dic, conCapodanno:true })).toEqual({ start:"2027-12-01", end:"2028-01-01" });
+    expect(periodoEffettivo(dic)).toEqual(dic.periodo);
+    const anno = { ...dic, periodo:{ start:"2027-01-01", end:"2027-12-31" }, conCapodanno:true };
+    expect(periodoEffettivo(anno)).toEqual(anno.periodo);                                // sull'anno intero non vale
+    expect(statoFestiviDefault().conCapodanno).toBe(false);
+    expect(mergeStatoFestivi({ conCapodanno:true }, new Date(2026,10,16)).conCapodanno).toBe(true);
+    expect(mergeStatoFestivi({ conCapodanno:"sì" }, new Date(2026,10,16)).conCapodanno).toBe(false);
+  });
+  it("dicembre con il 1° gennaio: Capodanno coi suoi tre turni entra nel sorteggio e nei mesi", () => {
+    const auto = (st: typeof dic) => automaticiFestivi(st, {}, dieci, lista, 2, ids);
+    const senza = datiSorteggio(dic, dieci, lista, auto(dic)), con = datiSorteggio({ ...dic, conCapodanno:true }, dieci, lista, auto({ ...dic, conCapodanno:true }));
+    expect(con.feste.map(h=>h.name)).toEqual([...senza.feste.map(h=>h.name), "Capodanno"]);   // nomi senza anno: le preferenze restano valide
+    const conPref = { ...dic, conCapodanno:true, preferenze:{ 2:{ Natale:"giorno" as const, Capodanno:"notte" as const } } };
+    expect(datiSorteggio(conPref, dieci, lista, auto(conPref)).cfg.preferences).toEqual({ "2": { Natale:"giorno", Capodanno:"notte" } });
+    const tS = buildShifts(senza.feste), tC = buildShifts(con.feste);
+    expect(tC.length - tS.length).toBe(3);
+    expect(tC.filter(t=>t.holNames.includes("Capodanno")).map(t=>t.date+" "+t.tipo)).toEqual(["2027-12-31 notturno", "2028-01-01 diurno", "2028-01-01 notturno"]);
+    expect(tS.some(t=>t.date==="2027-12-31" && t.tipo==="notturno")).toBe(false);       // senza: la notte del 31 resta al piano dopo
+    const st = { ...dic, conCapodanno:true };
+    const { piano } = sorteggia(con, st, "x");
+    expect(piano.periodo).toEqual({ start:"2027-12-01", end:"2028-01-01" });
+    expect(piano.turni.length).toBe(tC.length);
+    expect(piano.turni.every(t=>t.medico!=null)).toBe(true);
+    expect(mesiDelPiano(piano).map(m=>m.chiave)).toEqual(["2027-12", "2028-01"]);
+    // il periodo dopo comincia il 2 gennaio: Capodanno non si sorteggia due volte
+    expect(prossimoPeriodo({ ...st, piano }).periodo).toEqual({ start:"2028-01-02", end:"2028-01-31" });
+    expect(prossimoPeriodo({ ...dic, piano: sorteggia(senza, dic, "x").piano }).periodo).toEqual({ start:"2028-01-01", end:"2028-01-31" });
   });
 });
 

@@ -1,4 +1,16 @@
-# TurniMedicina 0.3.71
+# TurniMedicina 0.3.72
+
+## Novità 0.3.72 — piano festivi: comprendere anche il 1° gennaio
+
+In «Periodo e limiti», quando il periodo finisce il 31 dicembre e non comincia
+il 1° gennaio (per esempio il solo dicembre), c'è la casella **«Comprendi
+anche il 1° gennaio (Capodanno)»**. Spuntata, il sorteggio comprende
+Capodanno con i suoi tre turni: la notte del 31/12, il giorno e la notte del
+1° gennaio. Il piano vale fino al 1° gennaio e si inserisce anche in
+gennaio; il periodo successivo comincia il 2 gennaio, così Capodanno non si
+sorteggia due volte. I nomi delle festività restano senza anno, quindi le
+preferenze già scritte continuano a valere. Sull'anno intero la casella non
+compare (avrebbe due Capodanni).
 
 ## Novità 0.3.71 — cancellare il piano festivi
 
