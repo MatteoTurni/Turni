@@ -1,4 +1,30 @@
-# TurniMedicina 0.3.72
+# TurniMedicina 0.3.73
+
+## Novità 0.3.73 — piano festivi: turni assegnati prima del sorteggio
+
+Nella sezione Festivi, prima delle Preferenze, c'è il riquadro **«Turni
+assegnati»**: si sceglie un medico e un turno del periodo (per esempio
+«Natale — giorno · sab 25/12 · 3 punti») e si preme «Assegna». Valgono per
+questo periodo soltanto.
+- Il turno assegnato resta a quel medico: i suoi punti contano per lui (riceve
+  meno altri turni), intorno valgono i riposi (niente altri turni né
+  reperibilità lo stesso giorno, il giorno prima e il giorno dopo), si tiene
+  il posto nel massimo di turni e la rifinitura del sorteggio non lo sposta.
+- **«Fa solo i turni assegnati»**, per ogni medico con turni assegnati: non
+  riceve altri turni né reperibilità e non entra nell'equità degli altri;
+  nel periodo dopo il suo saldo è neutro (la media degli altri).
+- Avvisi prima del sorteggio: due turni assegnati allo stesso medico in giorni
+  vicini, più del massimo di turni, una notte a chi fa solo turni di giorno,
+  preferenze che i turni assegnati rendono impossibili, assegnati fuori dal
+  periodo o di medici tolti dal sorteggio.
+- Nel piano i turni assegnati sono segnati «📌 assegnato» (e «fa solo
+  questo»), nel riepilogo «📌 1 assegnato» o «📌 solo assegnati»; la verifica
+  dice quanti sono e che chi fa solo i suoi non ha altro. Nei mesi si
+  inseriscono come gli altri.
+
+Misurato su 100 sorteggi con turni assegnati a caso: tutti i 205 assegnati
+rimasti al loro medico, nessun turno o reperibilità accanto, nessuno oltre il
+massimo, equità fra gli altri invariata (scarto medio 0,78 punti contro 0,82).
 
 ## Novità 0.3.72 — dicembre con il 1° gennaio
 

@@ -17,7 +17,7 @@ import { getRegole } from "./regole";
 import { isMatt, isPom, isNot, SPEC } from "./turni";
 import {
   type FestivitaPiano, type FestData, type RuoloPref, type PrefFesta, type CfgPiano, type Soluzione, prefMatches,
-  festivitaPeriodo, buildShifts, generaPiano, addDays, iso, periodoSuccessivo, periodoOk,
+  festivitaPeriodo, buildShifts, generaPiano, addDays, iso, periodoSuccessivo, periodoOk, chiaveTurno, diffDays, normalizePrefs,
 } from "./pianoFestivi";
 
 export interface TurnoPiano {
@@ -25,6 +25,8 @@ export interface TurnoPiano {
   sup: boolean; punti: number; condiviso: boolean;
   medico: number | null; reperibile: number | null; puntiRep: number;
   storico: boolean; pref: boolean;
+  /** Assegnato prima del sorteggio (v0.3.73). */
+  fisso?: boolean;
 }
 export interface PianoSalvato {
   periodo: { start: string; end: string };
@@ -37,7 +39,11 @@ export interface PianoSalvato {
   richieste: number;                      // preferenze chieste…
   richiesteOk: number;                    // …e rispettate
   scartoPrima: number; scartoDopo: number;
+  /** Medici che facevano solo i turni assegnati (v0.3.73): fuori dall'equità. */
+  soloAssegnati?: number[];
 }
+/** Un turno assegnato a mano prima del sorteggio (v0.3.73). */
+export interface TurnoAssegnato { date: string; tipo: "diurno" | "notturno"; id: number }
 export interface StatoFestivi {
   periodo: { start: string; end: string };
   maxShifts: number; minSuper: number;
@@ -57,6 +63,10 @@ export interface StatoFestivi {
    *  (v0.3.68) di cui ne basta uno. */
   preferenze: Record<number, Record<string, PrefFesta>>;
   reperibilita: { enabled: boolean; weightPct: number; maxPer: number; nonIdonei: number[] };
+  /** v0.3.73: turni già assegnati prima del sorteggio (solo per questo periodo). */
+  assegnati: TurnoAssegnato[];
+  /** v0.3.73: medici che fanno solo i turni assegnati (niente altro, fuori dall'equità). */
+  soloAssegnati: number[];
   /** v0.3.70: almeno un turno da titolare a testa (se i turni bastano) e
    *  reperibilità in proporzione. */
   bilanciaRuoli: boolean;
@@ -79,7 +89,7 @@ export function statoFestiviDefault(oggi: Date = new Date()): StatoFestivi {
   const y = oggi.getFullYear() + 1;
   return { periodo: { start: iso(y, 1, 1), end: iso(y, 12, 31) }, maxShifts: 5, minSuper: 1, esclusi: [], soloGiorno: {},
     saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, reperibilita: { enabled: false, weightPct: 40, maxPer: 5, nonIdonei: [] },
-    bilanciaRuoli: true, prefEntroQuota: true, seme: 1, piano: null, archivio: [], inseriti: {} };
+    assegnati: [], soloAssegnati: [], bilanciaRuoli: true, prefEntroQuota: true, seme: 1, piano: null, archivio: [], inseriti: {} };
 }
 const isData = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v) && !isNaN(Date.parse(v + "T00:00:00Z"));
 const numIn = (v: unknown, lo: number, hi: number, def: number) => typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? v : def;
@@ -95,7 +105,7 @@ function sanaPiano(x: unknown): PianoSalvato | null {
     turni.push({ date: t.date, tipo: t.tipo, nomi: str(t.nomi), basi: str(t.basi), chiavi: str(t.chiavi), sup: !!t.sup,
       punti: numIn(t.punti, 0, 99, 0), condiviso: !!t.condiviso,
       medico: Number.isInteger(t.medico) ? t.medico : null, reperibile: Number.isInteger(t.reperibile) ? t.reperibile : null,
-      puntiRep: numIn(t.puntiRep, 0, 99, 0), storico: !!t.storico, pref: !!t.pref });
+      puntiRep: numIn(t.puntiRep, 0, 99, 0), storico: !!t.storico, pref: !!t.pref, ...(t.fisso ? { fisso: true } : {}) });
   }
   const saldo: Record<number, number> = {};
   for (const [k, v] of Object.entries(p.saldo || {})) if (typeof v === "number" && isFinite(v)) saldo[+k] = v;
@@ -103,7 +113,8 @@ function sanaPiano(x: unknown): PianoSalvato | null {
     seme: numIn(p.seme, 0, 1e9, 1), partecipanti: ids(p.partecipanti), maxShifts: numIn(p.maxShifts, 1, 30, 5), minSuper: numIn(p.minSuper, 0, 9, 1),
     repOn: !!p.repOn, repPct: numIn(p.repPct, 0, 100, 40), saldo, turni,
     richieste: numIn(p.richieste, 0, 9999, 0), richiesteOk: numIn(p.richiesteOk, 0, 9999, 0),
-    scartoPrima: numIn(p.scartoPrima, 0, 9999, 0), scartoDopo: numIn(p.scartoDopo, 0, 9999, 0) };
+    scartoPrima: numIn(p.scartoPrima, 0, 9999, 0), scartoDopo: numIn(p.scartoDopo, 0, 9999, 0),
+    ...(ids(p.soloAssegnati).length ? { soloAssegnati: ids(p.soloAssegnati) } : {}) };
 }
 function sanaInseriti(x: unknown): Record<string, InserimentoMese> {
   const out: Record<string, InserimentoMese> = {};
@@ -153,6 +164,13 @@ export function mergeStatoFestivi(x: unknown, oggi: Date = new Date()): StatoFes
       return o;
     }),
     reperibilita: { enabled: !!r.enabled, weightPct: numIn(r.weightPct, 0, 100, 40), maxPer: Math.round(numIn(r.maxPer, 1, 99, 5)), nonIdonei: ids(r.nonIdonei) },
+    assegnati: (() => {                                                      // v0.3.73: un medico per turno, l'ultimo vince
+      const per = new Map<string, TurnoAssegnato>();
+      for (const a of Array.isArray(s.assegnati) ? s.assegnati : [])
+        if (a && isData(a.date) && (a.tipo === "diurno" || a.tipo === "notturno") && Number.isInteger(a.id)) per.set(a.date + "|" + a.tipo, { date: a.date, tipo: a.tipo, id: a.id });
+      return [...per.values()].sort((x, y) => (x.date + x.tipo).localeCompare(y.date + y.tipo));
+    })(),
+    soloAssegnati: ids(s.soloAssegnati),
     bilanciaRuoli: typeof s.bilanciaRuoli === "boolean" ? s.bilanciaRuoli : d.bilanciaRuoli,
     prefEntroQuota: typeof s.prefEntroQuota === "boolean" ? s.prefEntroQuota : d.prefEntroQuota,
     seme: Math.round(numIn(s.seme, 1, 1e9, 1)),
@@ -251,9 +269,16 @@ export function automaticiFestivi(st: Pick<StatoFestivi, "periodo" | "minSuper" 
     for (const c of t.chi) punti[c.id] = r2((punti[c.id] || 0) + t.punti * c.quota);
   }
   const tot = partecipanti.map(id => (riporto[id] || 0) + (punti[id] || 0));
-  const mn = tot.length ? Math.min(...tot) : 0;
+  // v0.3.73: chi nel piano precedente faceva solo i turni assegnati non entra
+  // nell'equità: il minimo si prende fra gli altri e il suo saldo è la media
+  // dei loro (né in credito né in debito)
+  const fuori = new Set(prec && !scelto ? prec.soloAssegnati || [] : []);
+  const dentro = partecipanti.map((id, i) => fuori.has(id) ? null : tot[i]).filter((v): v is number => v !== null);
+  const mn = dentro.length ? Math.min(...dentro) : tot.length ? Math.min(...tot) : 0;
   const saldo: Record<number, number> = {};
-  partecipanti.forEach((id, i) => { saldo[id] = r2(tot[i] - mn); });
+  partecipanti.forEach((id, i) => { if (!fuori.has(id)) saldo[id] = r2(tot[i] - mn); });
+  const media = dentro.length ? r2(dentro.reduce((t, v) => t + v - mn, 0) / dentro.length) : 0;
+  for (const id of partecipanti) if (fuori.has(id)) saldo[id] = media;
 
   // storico: per ogni tipo di festività, chi l'ha fatta l'ULTIMA volta (negli anni chiesti)
   const lettiSt = leggiTurniFestivi(turniAll, medici, lista, anniPrima(start, Math.max(1, anni)), ieri, piani);
@@ -284,6 +309,12 @@ export interface DatiSorteggio {
   storico: Record<number, string[]>;
   precedenza: Set<number>;
   cfg: CfgPiano;
+  /** v0.3.73: turni assegnati validi per questo periodo (turno del periodo, medico nel sorteggio). */
+  assegnati: TurnoAssegnato[];
+  /** v0.3.73: medici che fanno solo i turni assegnati (fuori dal sorteggio). */
+  solo: Set<number>;
+  /** v0.3.73: turni assegnati che non valgono (fuori periodo o medico tolto dal sorteggio). */
+  ignorati: TurnoAssegnato[];
 }
 /** Esentato dalle notti nella scheda (vale solo per MR e decreto Calabria). */
 export const esenteNotti = (m: Medico) => !!m.noNotti && (m.stato === "MR" || m.stato === "MDC");
@@ -306,17 +337,59 @@ export function datiSorteggio(st: StatoFestivi, medici: Medico[], lista: Festivi
     const p = Object.entries(st.preferenze[m.id] || {}).filter(([n]) => nomiFeste.has(n));
     if (p.length) preferences[k(m.id)] = Object.fromEntries(p);
   }
+  // v0.3.73: turni assegnati prima del sorteggio
+  const chiavi = new Set(buildShifts(feste).map(chiaveTurno));
+  const ids0 = new Set(partecipanti.map(m => m.id));
+  const assegnati = (st.assegnati || []).filter(a => chiavi.has(chiaveTurno(a)) && ids0.has(a.id));
+  const ignorati = (st.assegnati || []).filter(a => !assegnati.includes(a));
+  const solo = new Set((st.soloAssegnati || []).filter(id => assegnati.some(a => a.id === id)));
+  const nelSorteggio = partecipanti.filter(m => !solo.has(m.id));
   const cfg: CfgPiano = {
-    doctors: partecipanti.map(m => k(m.id)), holidays: feste, maxShifts: st.maxShifts, minSuper: st.minSuper,
+    doctors: nelSorteggio.map(m => k(m.id)), holidays: feste, maxShifts: st.maxShifts, minSuper: st.minSuper,
     saldo: Object.fromEntries(partecipanti.map(m => [k(m.id), saldo[m.id]])),
     history: Object.fromEntries(partecipanti.map(m => [k(m.id), storico[m.id]])),
     superPrio: [...precedenza].map(k), preferences,
     onCall: { enabled: st.reperibilita.enabled, weightPct: st.reperibilita.weightPct, maxPer: st.reperibilita.maxPer,
-      eligible: partecipanti.filter(m => !st.reperibilita.nonIdonei.includes(m.id)).map(m => k(m.id)) },
+      eligible: nelSorteggio.filter(m => !st.reperibilita.nonIdonei.includes(m.id)).map(m => k(m.id)) },
     soloDiurni: [...soloGiorno].map(k), baseSeed: st.seme,
     bilanciaRuoli: st.bilanciaRuoli !== false, prefEntroQuota: st.prefEntroQuota !== false,
+    ...(assegnati.length ? { fissi: Object.fromEntries(assegnati.map(a => [chiaveTurno(a), k(a.id)])) } : {}),
   };
-  return { partecipanti, feste, soloGiorno, saldo, storico, precedenza, cfg };
+  return { partecipanti, feste, soloGiorno, saldo, storico, precedenza, cfg, assegnati, solo, ignorati };
+}
+/** Avvisi sui turni assegnati prima del sorteggio (v0.3.73): conflitti fra loro
+ *  e con le preferenze, assegnati che non valgono. Non bloccano il sorteggio. */
+export function avvisiAssegnati(d: DatiSorteggio, maxShifts: number, nome: (id: number) => string): string[] {
+  const out: string[] = [];
+  const turni = buildShifts(d.feste);
+  const per = new Map(turni.map(s => [chiaveTurno(s), s]));
+  const eti = (a: { date: string; tipo: string }) => { const s = per.get(chiaveTurno(a)); return `${s ? s.holNames.join(" / ") + " " : ""}${a.tipo === "diurno" ? "giorno" : "notte"} ${a.date.slice(8)}/${a.date.slice(5, 7)}`; };
+  if (d.ignorati.length) out.push(`${d.ignorati.length} turn${d.ignorati.length === 1 ? "o assegnato non vale" : "i assegnati non valgono"}: fuori dal periodo o di medici tolti dal sorteggio.`);
+  const perMedico = new Map<number, TurnoAssegnato[]>();
+  for (const a of d.assegnati) perMedico.set(a.id, [...(perMedico.get(a.id) || []), a]);
+  for (const [id, as] of perMedico) {
+    const ord = [...as].sort((x, y) => x.date.localeCompare(y.date));
+    for (let i = 1; i < ord.length; i++) if (diffDays(ord[i].date, ord[i - 1].date) < 2)
+      out.push(`${nome(id)}: due turni assegnati ${ord[i].date === ord[i - 1].date ? "lo stesso giorno" : "in giorni consecutivi"} (${eti(ord[i - 1])} e ${eti(ord[i])}).`);
+    if (ord.length > maxShifts) out.push(`${nome(id)}: ${ord.length} turni assegnati, più del massimo di ${maxShifts}.`);
+    if (d.soloGiorno.has(id)) for (const a of ord) if (a.tipo === "notturno") out.push(`${nome(id)} fa solo turni di giorno ma ha assegnata la ${eti(a)}.`);
+  }
+  // preferenze che i turni assegnati rendono impossibili
+  const items = normalizePrefs(d.cfg.preferences, d.feste);
+  const fissi = new Map(d.assegnati.map(a => [chiaveTurno(a), a.id]));
+  for (const [doc, its] of Object.entries(items)) {
+    const id = +doc, miei = perMedico.get(id) || [];
+    for (const it of its) {
+      const adatti = turni.filter(s => prefMatches(it, s));
+      if (!adatti.length || adatti.some(s => fissi.get(chiaveTurno(s)) === id)) continue;     // già soddisfatta da un suo assegnato
+      const liberi = adatti.filter(s => !fissi.has(chiaveTurno(s)));
+      const cosa = `«${it.hol}${it.roles ? " " + it.roles.map(r => r === "nottePrima" ? "notte prima" : r).join(" o ") : it.role === "any" ? "" : " " + (it.role === "nottePrima" ? "notte prima" : it.role)}»`;
+      if (!liberi.length) out.push(`La preferenza di ${nome(id)} ${cosa} non si può rispettare: il turno è assegnato a ${adatti.map(s => nome(fissi.get(chiaveTurno(s))!)).join(", ")}.`);
+      else if (liberi.every(s => miei.some(a => Math.abs(diffDays(a.date, s.date)) <= 1)))
+        out.push(`${nome(id)}: la preferenza ${cosa} non si può rispettare insieme al turno assegnato ${eti(miei.find(a => liberi.some(s => Math.abs(diffDays(a.date, s.date)) <= 1))!)} (giorni vicini).`);
+    }
+  }
+  return out;
 }
 /** Esegue il sorteggio e lo restituisce nel formato che l'app salva. */
 export function sorteggia(d: DatiSorteggio, st: StatoFestivi, quando: string): { piano: PianoSalvato; sol: Soluzione } {
@@ -331,8 +404,10 @@ export function sorteggia(d: DatiSorteggio, st: StatoFestivi, quando: string): {
     maxShifts: st.maxShifts, minSuper: st.minSuper, repOn: st.reperibilita.enabled, repPct: st.reperibilita.weightPct,
     saldo: { ...d.saldo },
     turni: sol.assignments.map(a => ({ date: a.date, tipo: a.tipo, nomi: a.holNames, basi: a.holBases, chiavi: a.keys, sup: a.isSuper, punti: a.points,
-      condiviso: a.shared, medico: num(a.doctor), reperibile: num(a.onCall), puntiRep: a.onCallPoints, storico: a.histHit, pref: a.prefHit })),
+      condiviso: a.shared, medico: num(a.doctor), reperibile: num(a.onCall), puntiRep: a.onCallPoints, storico: a.histHit, pref: a.prefHit,
+      ...(d.cfg.fissi?.[chiaveTurno(a)] !== undefined ? { fisso: true } : {}) })),
     richieste, richiesteOk, scartoPrima: sol.spreadBefore ?? 0, scartoDopo: sol.spreadAfter ?? 0,
+    ...(d.solo.size ? { soloAssegnati: [...d.solo] } : {}),
   };
   return { piano, sol };
 }
@@ -340,6 +415,8 @@ export function sorteggia(d: DatiSorteggio, st: StatoFestivi, quando: string): {
 export interface RigaRiepilogo {
   id: number; saldo: number; punti: number; nRep: number; puntiRep: number; totale: number;
   turni: number; diurni: number; notturni: number; superfestivi: number; pref: number;
+  /** v0.3.73: turni assegnati prima del sorteggio; fa solo quelli (fuori dall'equità). */
+  fissi: number; solo: boolean;
 }
 /** Riepilogo per medico di un piano salvato. */
 export function riepilogoPiano(p: PianoSalvato): RigaRiepilogo[] {
@@ -349,7 +426,8 @@ export function riepilogoPiano(p: PianoSalvato): RigaRiepilogo[] {
     const saldo = +p.saldo[id] || 0;
     return { id, saldo, punti, nRep: rep.length, puntiRep, totale: r2(saldo + punti + puntiRep), turni: miei.length,
       diurni: miei.filter(t => t.tipo === "diurno").length, notturni: miei.filter(t => t.tipo === "notturno").length,
-      superfestivi: miei.filter(t => t.sup).length, pref: miei.filter(t => t.pref).length };
+      superfestivi: miei.filter(t => t.sup).length, pref: miei.filter(t => t.pref).length,
+      fissi: miei.filter(t => t.fisso).length, solo: (p.soloAssegnati || []).includes(id) };
   });
 }
 export interface Controllo { ok: boolean; testo: string }
@@ -364,7 +442,7 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
     const miei = p.turni.filter(t => t.medico === id).sort((a, b) => a.date.localeCompare(b.date));
     if (miei.length > p.maxShifts) troppi.push(`${nome(id)} (${miei.length})`);
     if (miei.some((t, i) => i > 0 && dd(t.date, miei[i - 1].date) < 2)) vicini.push(nome(id));
-    if (miei.filter(t => t.sup).length < p.minSuper) senzaSup.push(nome(id));
+    if (miei.filter(t => t.sup).length < p.minSuper && !(p.soloAssegnati || []).includes(id)) senzaSup.push(nome(id));   // (chi fa solo i suoi: no)
     if (soloGiorno.has(id) && (miei.some(t => t.tipo === "notturno") || p.turni.some(t => t.reperibile === id && t.tipo === "notturno"))) nottiEs.push(nome(id));
     if (p.turni.some(t => t.reperibile === id && miei.some(x => Math.abs(dd(x.date, t.date)) <= 1))) doppi.push(nome(id));   // v0.3.69: anche il giorno prima o dopo
   }
@@ -379,7 +457,16 @@ export function controlliPiano(p: PianoSalvato, soloGiorno: Set<number>, nome: (
   if (p.minSuper > 0) out.push({ ok: !senzaSup.length, testo: senzaSup.length ? `Sotto il minimo di ${p.minSuper} superfestiv${p.minSuper === 1 ? "o" : "i"}: ${senzaSup.join(", ")}` : `Tutti hanno almeno ${p.minSuper} superfestiv${p.minSuper === 1 ? "o" : "i"}` });
   if (soloGiorno.size) out.push({ ok: !nottiEs.length, testo: nottiEs.length ? `Notti a chi fa solo turni di giorno: ${nottiEs.join(", ")}` : "Chi fa solo turni di giorno non ha notti" });
   if (p.richieste) out.push({ ok: p.richiesteOk === p.richieste, testo: `Preferenze rispettate: ${p.richiesteOk} su ${p.richieste}` });
-  const ripetute = p.turni.filter(t => t.storico && !t.pref).length;
+  const ripetute = p.turni.filter(t => t.storico && !t.pref && !t.fisso).length;
+  // v0.3.73: turni assegnati prima del sorteggio
+  const nFissi = p.turni.filter(t => t.fisso).length;
+  if (nFissi) out.push({ ok: true, testo: `📌 ${nFissi} turn${nFissi === 1 ? "o assegnato" : "i assegnati"} prima del sorteggio` });
+  const solo = p.soloAssegnati || [];
+  if (solo.length) {
+    const altro = solo.filter(id => p.turni.some(t => (t.medico === id && !t.fisso) || t.reperibile === id));
+    out.push({ ok: !altro.length, testo: altro.length ? `Hanno turni non assegnati pur facendo solo i loro: ${altro.map(nome).join(", ")}`
+      : `Chi fa solo i turni assegnati non ha altro (${solo.map(nome).join(", ")})` });
+  }
   out.push({ ok: !ripetute, testo: ripetute ? `${ripetute} turni a chi aveva già fatto la stessa festività l'ultima volta` : "Nessuno ripete una festività fatta l'ultima volta" });
   if (p.repOn) {
     const senza = p.turni.filter(t => t.reperibile == null).length;
@@ -407,7 +494,7 @@ export const nInseriti = (st: StatoFestivi) => Object.values(st.inseriti).reduce
 export function prossimoPeriodo(st: StatoFestivi): StatoFestivi {
   const base = st.piano ? st.piano.periodo : st.periodo;
   return { ...st, periodo: periodoSuccessivo(base), piano: null, archivio: st.piano ? [...st.archivio, st.piano].slice(-6) : st.archivio,
-    saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, seme: 1 };
+    saldoMan: {}, periodoSaldo: null, storicoMan: {}, precMan: {}, preferenze: {}, assegnati: [], soloAssegnati: [], seme: 1 };
 }
 /** Un medico eliminato dall'app esce anche dalla sezione Festivi: un nuovo medico con lo stesso numero non eredita nulla. */
 export function rimuoviMedicoFestivi(st: StatoFestivi, id: number): StatoFestivi {
@@ -416,6 +503,7 @@ export function rimuoviMedicoFestivi(st: StatoFestivi, id: number): StatoFestivi
     turni: p.turni.map(t => ({ ...t, medico: t.medico === id ? null : t.medico, reperibile: t.reperibile === id ? null : t.reperibile, puntiRep: t.reperibile === id ? 0 : t.puntiRep })) });
   return { ...st, esclusi: st.esclusi.filter(x => x !== id), soloGiorno: senza(st.soloGiorno), saldoMan: senza(st.saldoMan), storicoMan: senza(st.storicoMan),
     precMan: senza(st.precMan), preferenze: senza(st.preferenze),
+    assegnati: (st.assegnati || []).filter(a => a.id !== id), soloAssegnati: (st.soloAssegnati || []).filter(x => x !== id),
     reperibilita: { ...st.reperibilita, nonIdonei: st.reperibilita.nonIdonei.filter(x => x !== id) },
     piano: st.piano ? pulisci(st.piano) : null, archivio: st.archivio.map(pulisci),
     inseriti: Object.fromEntries(Object.entries(st.inseriti).map(([k, v]) => [k, { ...v, turni: v.turni.filter(t => t.id !== id) }])) };

@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import type { Medico, Regole, TurniAll, TurniMese } from "../engine/types";
 import { MESI } from "../engine/date";
 import {
-  allineaFestiviPiano, buildShifts, periodoOk, fmtIt, iso, ruoliFesta, semplificaPref, type RuoloPref, type RuoloFest, type PrefFesta,
+  allineaFestiviPiano, buildShifts, periodoOk, fmtIt, iso, ruoliFesta, semplificaPref, chiaveTurno, type RuoloPref, type RuoloFest, type PrefFesta, type TurnoFest,
 } from "../engine/pianoFestivi";
 import {
   type StatoFestivi, type PianoSalvato, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano, controlliPiano,
-  prossimoPeriodo, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, cancellaPiano, nInseriti, type Saltato,
+  prossimoPeriodo, esenteNotti, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, cancellaPiano, nInseriti, avvisiAssegnati, type Saltato,
 } from "../engine/festiviApp";
 import { SC } from "./costanti";
 
@@ -39,6 +39,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const [busy, setBusy] = useState(false);
   const [confNext, setConfNext] = useState(false);
   const [confCanc, setConfCanc] = useState(false);
+  const [nuovoAss, setNuovoAss] = useState<{ id: number | null; chiave: string }>({ id: null, chiave: "" });
   const [esitoIns, setEsitoIns] = useState<{ chiave: string; inseriti: number; tolti: number; saltati: Saltato[] } | null>(null);
   const [nuovaPref, setNuovaPref] = useState<{ id: number | null; festa: string; ruoli: RuoloFest[] }>({ id: null, festa: "", ruoli: [] });
 
@@ -138,8 +139,11 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const righe = piano ? riepilogoPiano(piano) : [];
   const controlli = piano ? controlliPiano(piano, dati.soloGiorno, id => nome(id)) : [];
   const pianoAltroPeriodo = !!piano && (piano.periodo.start !== stato.periodo.start || piano.periodo.end !== stato.periodo.end);
-  const scarto = righe.length ? Math.max(...righe.map(r => r.totale)) - Math.min(...righe.map(r => r.totale)) : 0;
-  const note = (t: PianoSalvato["turni"][number]) => [t.sup ? "★ superfestivo" : "", t.condiviso ? "notte condivisa" : "", t.pref ? "♥ richiesto" : "", t.storico && !t.pref ? "↻ già fatta l'ultima volta" : ""].filter(Boolean).join(" · ");
+  const righeEq = righe.filter(r => !r.solo);                                 // chi fa solo i turni assegnati non entra nell'equità (v0.3.73)
+  const scarto = righeEq.length ? Math.max(...righeEq.map(r => r.totale)) - Math.min(...righeEq.map(r => r.totale)) : 0;
+  const soloP = (p: PianoSalvato | null, id: number | null) => !!p && id != null && (p.soloAssegnati || []).includes(id);
+  const note = (t: PianoSalvato["turni"][number]) => [t.sup ? "★ superfestivo" : "", t.condiviso ? "notte condivisa" : "", t.fisso ? "📌 assegnato" + (soloP(piano, t.medico) ? " · fa solo questo" : "") : "",
+    t.pref ? "♥ richiesto" : "", t.storico && !t.pref && !t.fisso ? "↻ già fatta l'ultima volta" : ""].filter(Boolean).join(" · ");
 
   // ── tabella del piano (a schermo e in stampa)
   const tabellaPiano = (p: PianoSalvato, stampa: boolean) => (
@@ -147,14 +151,14 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
       <thead><tr>{["Data", "Turno", "Festività", "Punti", "Medico", ...(p.repOn ? ["Reperibile"] : []), "Note"].map(h => <th key={h} style={stampa ? undefined : TH}>{h}</th>)}</tr></thead>
       <tbody>
         {p.turni.map(t => (
-          <tr key={t.date + t.tipo} style={!stampa && t.sup ? { background: "#f5f3ff" } : undefined}>
+          <tr key={t.date + t.tipo} style={!stampa && t.fisso ? { background: "#fffbeb" } : !stampa && t.sup ? { background: "#f5f3ff" } : undefined}>
             <td style={stampa ? undefined : TD}>{fmtIt(t.date)}</td>
             <td style={stampa ? undefined : { ...TD, color: t.tipo === "notturno" ? "#047857" : "#2563eb" }}>{t.tipo === "notturno" ? "notte" : "giorno"}</td>
             <td style={stampa ? undefined : { ...TD, whiteSpace: "normal" }}>{t.nomi.join(" / ")}</td>
             <td style={stampa ? undefined : { ...TD, textAlign: "center" }}>{num(t.punti)}</td>
             <td style={stampa ? undefined : { ...TD, fontWeight: 700, color: t.medico == null ? "#be123c" : "#0f172a" }}>{t.medico == null ? "NESSUNO" : nome(t.medico)}</td>
             {p.repOn && <td style={stampa ? undefined : { ...TD, color: "#6d28d9" }}>{nome(t.reperibile)}</td>}
-            <td style={stampa ? undefined : { ...TD, color: "#64748b", fontSize: "10px", whiteSpace: "normal" }}>{stampa ? [t.sup ? "superfestivo" : "", t.condiviso ? "notte condivisa" : ""].filter(Boolean).join(", ") : note(t)}</td>
+            <td style={stampa ? undefined : { ...TD, color: "#64748b", fontSize: "10px", whiteSpace: "normal" }}>{stampa ? [t.sup ? "superfestivo" : "", t.condiviso ? "notte condivisa" : "", t.fisso ? "assegnato" : ""].filter(Boolean).join(", ") : note(t)}</td>
           </tr>
         ))}
       </tbody>
@@ -170,7 +174,7 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
         <tbody>
           {righe.map(r => (
             <tr key={r.id}>
-              <td style={stampa ? undefined : { ...TD, fontWeight: 700 }}>{nome(r.id)}</td>
+              <td style={stampa ? undefined : { ...TD, fontWeight: 700 }}>{nome(r.id)}{(r.solo || r.fissi > 0) && <span style={stampa ? undefined : { color: "#b45309", fontWeight: 400, fontSize: "10px" }}>{r.solo ? " 📌 solo assegnati" : ` 📌 ${r.fissi} assegnat${r.fissi === 1 ? "o" : "i"}`}</span>}</td>
               {conSaldo && <td style={stampa ? undefined : c}>{num(r.saldo)}</td>}
               <td style={stampa ? undefined : c}>{num(r.punti)}</td>
               {p.repOn && <><td style={stampa ? undefined : c}>{r.nRep}</td><td style={stampa ? undefined : c}>{num(r.puntiRep)}</td></>}
@@ -291,6 +295,11 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
   const nSuper = turniPeriodo.filter(t => t.isSuper).length;
   const puntiTot = turniPeriodo.reduce((s, t) => s + t.points, 0);
   const manSaldo = dati.partecipanti.some(m => stato.saldoMan[m.id] != null);
+  // v0.3.73: turni assegnati
+  const ruoloTurno = (s: TurnoFest) => s.tipo === "diurno" ? "giorno" : s.contribs.every(c => c.role === "nottePrima") ? "notte prima" : "notte";
+  const etiTurno = (s: TurnoFest) => `${s.holNames.join(" / ")} — ${ruoloTurno(s)} · ${dataBreve(s.date)} · ${num(s.points)} punt${s.points === 1 ? "o" : "i"}`;
+  const turnoDi = (a: { date: string; tipo: string }) => turniPeriodo.find(s => s.date === a.date && s.tipo === a.tipo);
+  const avvisiAss = avvisiAssegnati(dati, stato.maxShifts, id => nome(id));
   const festaPref = dati.feste.find(x => x.name === nuovaPref.festa);
   const valorePref = festaPref ? semplificaPref(festaPref, nuovaPref.ruoli) : null;
   const elencoPref = dati.partecipanti.flatMap(m => Object.entries(stato.preferenze[m.id] || {}).filter(([f]) => dati.feste.some(h => h.name === f)).map(([f, r]) => ({ m, f, r })));
@@ -456,6 +465,58 @@ export function FestiviPanel({ medici, turniAll, regole, stato, onStato, onTurni
               </tbody>
             </table>
           </div>
+        </details>
+
+        {/* ── TURNI ASSEGNATI (v0.3.73) ── */}
+        <details style={BOX}>
+          <summary style={TIT}>TURNI ASSEGNATI <span style={SOTTO}>· {dati.assegnati.length
+            ? `${dati.assegnati.length} turn${dati.assegnati.length === 1 ? "o assegnato" : "i assegnati"}${dati.solo.size ? `, ${dati.solo.size} medic${dati.solo.size === 1 ? "o fa" : "i fanno"} solo quelli` : ""}`
+            : "nessuno"}</span></summary>
+          <div style={{ ...LBL, margin: "8px 0" }}>
+            Turni già decisi prima del sorteggio: restano a quel medico, i loro punti contano per lui e intorno valgono i riposi (niente altri turni lo stesso giorno, il giorno prima e il giorno dopo). Valgono per questo periodo soltanto.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+            <select value={nuovoAss.id ?? ""} onChange={e => setNuovoAss({ ...nuovoAss, id: e.target.value ? +e.target.value : null })} style={INP} aria-label="Medico a cui assegnare">
+              <option value="">medico…</option>
+              {dati.partecipanti.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            </select>
+            <select value={nuovoAss.chiave} onChange={e => setNuovoAss({ ...nuovoAss, chiave: e.target.value })} style={INP} aria-label="Turno da assegnare">
+              <option value="">turno…</option>
+              {turniPeriodo.map(s => { const gia = stato.assegnati.find(a => chiaveTurno(a) === chiaveTurno(s));
+                return <option key={chiaveTurno(s)} value={chiaveTurno(s)}>{etiTurno(s)}{gia ? ` (ora: ${nome(gia.id)})` : ""}</option>; })}
+            </select>
+            <button disabled={nuovoAss.id == null || !nuovoAss.chiave} style={btn("#ecfdf5", "#047857", "#16a34a", nuovoAss.id == null || !nuovoAss.chiave)}
+              onClick={() => { const s = turniPeriodo.find(x => chiaveTurno(x) === nuovoAss.chiave); if (!s || nuovoAss.id == null) return;
+                set({ assegnati: [...stato.assegnati.filter(a => chiaveTurno(a) !== nuovoAss.chiave), { date: s.date, tipo: s.tipo, id: nuovoAss.id }].sort((x, y) => (x.date + x.tipo).localeCompare(y.date + y.tipo)) });
+                setNuovoAss({ id: nuovoAss.id, chiave: "" }); }}>➕ Assegna</button>
+          </div>
+          {stato.assegnati.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "10px" }}>
+              {stato.assegnati.map(a => { const s = turnoDi(a), vale = dati.assegnati.includes(a);
+                return (
+                  <span key={chiaveTurno(a)} title={vale ? "" : "Non vale: fuori dal periodo o medico tolto dal sorteggio"} style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "999px", padding: "4px 6px 4px 10px", fontSize: "11px", fontFamily: "monospace", color: "#0f172a", opacity: vale ? 1 : 0.5 }}>
+                    <b>{nome(a.id)}</b> · {s ? s.holNames.join(" / ") : "fuori periodo"} · <span style={{ color: "#a21caf" }}>{s ? ruoloTurno(s) : a.tipo === "diurno" ? "giorno" : "notte"} {dataBreve(a.date)}</span>{s && ` · ${num(s.points)} punt${s.points === 1 ? "o" : "i"}`}{!vale && " (non vale)"}
+                    <button title="Togli l'assegnazione" onClick={() => set({ assegnati: stato.assegnati.filter(x => x !== a) })}
+                      style={{ background: "transparent", border: "none", color: "#be123c", cursor: "pointer", fontWeight: 700, marginLeft: "6px" }}>✕</button>
+                  </span>
+                ); })}
+            </div>
+          )}
+          {dati.assegnati.length > 0 && <>
+            <div style={{ ...LBL, margin: "12px 0 6px" }}>Chi ha turni assegnati:</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              {[...new Set(dati.assegnati.map(a => a.id))].map(id => { const miei = dati.assegnati.filter(a => a.id === id), pt = miei.reduce((t, a) => t + (turnoDi(a)?.points || 0), 0);
+                return (
+                  <label key={id} style={{ background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: "8px", padding: "5px 10px", fontSize: "11px", fontFamily: "monospace", color: "#0f172a", display: "flex", gap: "8px", alignItems: "center", cursor: "pointer" }}>
+                    <b>{nome(id)}</b> {miei.length} turn{miei.length === 1 ? "o" : "i"}, {num(pt)} punt{pt === 1 ? "o" : "i"}
+                    <span style={{ display: "flex", gap: "4px", alignItems: "center" }}><input type="checkbox" checked={stato.soloAssegnati.includes(id)}
+                      onChange={e => set({ soloAssegnati: e.target.checked ? [...stato.soloAssegnati, id] : stato.soloAssegnati.filter(x => x !== id) })} /> fa solo i turni assegnati</span>
+                  </label>
+                ); })}
+            </div>
+            <div style={{ ...LBL, marginTop: "6px" }}>«Fa solo i turni assegnati»: non riceve altri turni né reperibilità e non entra nell'equità degli altri, nemmeno nel saldo del periodo dopo.</div>
+          </>}
+          {avvisiAss.map((x, i) => <div key={i} style={{ ...LBL, fontSize: "11px", color: "#b45309", marginTop: i ? 0 : "8px" }}>⚠ {x}</div>)}
         </details>
 
         {/* ── PREFERENZE ── */}
