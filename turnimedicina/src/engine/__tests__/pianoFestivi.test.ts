@@ -4,11 +4,11 @@ import type { Medico, TurniAll, TurniMese } from "../types";
 import { mergeRegole, REGOLE_DEFAULT, setRegole } from "../regole";
 import {
   festiviPianoDefault, festivitaPeriodo, festivitaAnno, buildShifts, generaPiano, verificaPiano, periodoOk, periodoSuccessivo,
-  easter, allineaFestiviPiano, sanaFestiviPiano, ruoliFesta, semplificaPref, normalizePrefs, prefMatches, prefNellaParte, type CfgPiano, type RuoloFest,
+  easter, diffDays, allineaFestiviPiano, sanaFestiviPiano, ruoliFesta, semplificaPref, normalizePrefs, prefMatches, prefNellaParte, chiaveTurno, type CfgPiano, type RuoloFest,
 } from "../pianoFestivi";
 import {
   statoFestiviDefault, mergeStatoFestivi, leggiTurniFestivi, automaticiFestivi, datiSorteggio, sorteggia, riepilogoPiano,
-  controlliPiano, prossimoPeriodo, cancellaPiano, nInseriti, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
+  controlliPiano, prossimoPeriodo, cancellaPiano, nInseriti, avvisiAssegnati, rimuoviMedicoFestivi, periodoSaldoOk, mesiDelPiano, meseGenerato, inserisciPiano, togliInseriti, type PianoSalvato, type TurnoInserito,
 } from "../festiviApp";
 
 // ── v0.3.60: piano festivi ────────────────────────────────────────────────────
@@ -56,6 +56,84 @@ describe("piano festivi: reperibile mai accanto ai suoi turni (v0.3.69)", () => 
     }
     // la verifica del piano segnala il reperibile accanto a un suo turno
     expect(verificaPiano(prima, { ...caso.cfg, holidays }).some(e=>/reperibile il giorno prima o dopo/.test(e))).toBe(true);
+  });
+});
+
+// ── v0.3.73: turni assegnati prima del sorteggio ──────────────────────────────
+describe("piano festivi: turni assegnati prima del sorteggio", () => {
+  const feste = festivitaPeriodo(lista, "2027-12-01", "2027-12-31");
+  const doctors = Array.from({ length:10 }, (_,i)=>"D"+(i+1));
+  const base = (x: Partial<CfgPiano> = {}): CfgPiano => ({ doctors, holidays:feste, maxShifts:5, minSuper:0, attempts:60, ...x });
+  const di = (r: ReturnType<typeof generaPiano>, date:string, tipo:string) => r.assignments.find(a=>a.date===date && a.tipo===tipo)!;
+  const giorniDi = (r: ReturnType<typeof generaPiano>, d:string) => r.assignments.filter(a=>a.doctor===d).map(a=>a.date).sort();
+  const vicini = (ds:string[]) => ds.some((x,i)=>i>0 && diffDays(x, ds[i-1]) < 2);
+  const fissi = { "2027-12-25|diurno":"D3", "2027-12-26|notturno":"D6" };
+  it("restano al loro medico, intorno valgono i riposi (anche per i reperibili), verifica pulita", () => {
+    for (const oc of [false, true]) for (const seme of [1, 2, 3, 4]) {
+      const cfg = base({ fissi, baseSeed:seme, onCall:{ enabled:oc, weightPct:40, maxPer:5, eligible:doctors } });
+      const r = generaPiano(cfg);
+      expect(di(r, "2027-12-25", "diurno").doctor).toBe("D3");
+      expect(di(r, "2027-12-26", "notturno").doctor).toBe("D6");
+      expect(verificaPiano(r, cfg)).toEqual([]);
+      for (const d of doctors) expect(vicini(giorniDi(r, d)), `${d} seme ${seme}`).toBe(false);
+      if (oc) for (const a of r.assignments) if (a.onCall) expect(r.assignments.some(b=>b.doctor===a.onCall && Math.abs(diffDays(a.date, b.date))<=1)).toBe(false);
+    }
+  });
+  it("si tiene il posto per un turno assegnato in fondo al periodo, e i suoi punti contano nell'equità", () => {
+    const r1 = generaPiano(base({ maxShifts:1, fissi:{ "2027-12-31|diurno":"D3" } }));
+    expect(giorniDi(r1, "D3")).toEqual(["2027-12-31"]);                      // massimo 1: solo il suo
+    // con Natale giorno (3 punti) assegnato, D3 non finisce sopra gli altri
+    for (const seme of [1, 2, 3]) {
+      const r = generaPiano(base({ fissi:{ "2027-12-25|diurno":"D3" }, baseSeed:seme }));
+      const altri = doctors.filter(d=>d!=="D3").map(d=>r.totals[d]);
+      expect(r.totals.D3).toBeLessThanOrEqual(Math.max(...altri));
+    }
+  });
+  it("con pochi medici e l'equità che spinge verso di lui: niente turni accanto a quello assegnato, e il posto per un assegnato in fondo resta", () => {
+    const saldo = { D1:10, D2:10, D4:10, D5:10 };                          // gli altri partono carichi: D3 sarebbe il primo scelto
+    for (const seme of [1, 2, 3, 4, 5, 6]) {
+      const quattro = base({ doctors: doctors.slice(0, 4), saldo, fissi:{ "2027-12-25|diurno":"D3" }, baseSeed:seme });
+      const r = generaPiano(quattro);
+      expect(di(r, "2027-12-25", "diurno").doctor).toBe("D3");
+      expect(r.assignments.every(a=>a.doctor!=null)).toBe(true);
+      expect(verificaPiano(r, quattro), `seme ${seme}`).toEqual([]);
+      // 5 medici, al massimo 2 turni a testa = esattamente i 10 turni: D3 ha il 31 assegnato
+      const cinque = base({ doctors: doctors.slice(0, 5), maxShifts:2, saldo, fissi:{ "2027-12-31|diurno":"D3" }, baseSeed:seme });
+      const r5 = generaPiano(cinque);
+      expect(giorniDi(r5, "D3").length).toBeLessThanOrEqual(2);
+      expect(giorniDi(r5, "D3")).toContain("2027-12-31");
+      expect(verificaPiano(r5, cinque), `seme ${seme}`).toEqual([]);
+    }
+  });
+  it("reperibilità: chi ha un turno assegnato più avanti non è reperibile il giorno prima", () => {
+    const saldo = { D1:10, D2:10, D4:10, D5:10, D6:10 };
+    for (const seme of [1, 2, 3, 4, 5, 6]) {
+      const sei = doctors.slice(0, 6);
+      const cfg = base({ doctors: sei, saldo, fissi:{ "2027-12-26|notturno":"D3" }, baseSeed:seme, onCall:{ enabled:true, weightPct:40, maxPer:5, eligible:sei } });
+      const r = generaPiano(cfg);
+      expect(di(r, "2027-12-26", "notturno").doctor).toBe("D3");
+      for (const a of r.assignments) if (a.onCall) expect(r.assignments.some(b=>b.doctor===a.onCall && Math.abs(diffDays(a.date, b.date))<=1), `seme ${seme}: ${a.onCall} reperibile il ${a.date}`).toBe(false);
+      expect(verificaPiano(r, cfg)).toEqual([]);
+    }
+  });
+  it("chi fa solo i turni assegnati (fuori dal sorteggio) ha il suo turno e non entra nei conti degli altri", () => {
+    const cfg = base({ doctors: doctors.slice(0, 9), fissi:{ "2027-12-26|notturno":"D10" }, onCall:{ enabled:true, weightPct:40, maxPer:5, eligible:doctors.slice(0, 9) } });
+    const r = generaPiano(cfg);
+    expect(di(r, "2027-12-26", "notturno").doctor).toBe("D10");
+    expect(r.assignments.filter(a=>a.doctor==="D10" || a.onCall==="D10").length).toBe(1);
+    expect(r.totals.D10).toBeUndefined();
+    expect(r.counts.D10).toBeUndefined();
+    expect(r.assignments.every(a=>a.doctor!=null && a.onCall!=null)).toBe(true);
+    expect(verificaPiano(r, cfg)).toEqual([]);
+    // i 9 si dividono i punti degli altri 9 turni (22 − 2 = 20)
+    expect(doctors.slice(0, 9).reduce((t,d)=>t+r.points[d], 0)).toBe(20);
+  });
+  it("assegnati in giorni consecutivi allo stesso medico: il sorteggio li rispetta (è una scelta) e la verifica lo segnala", () => {
+    const cfg = base({ fissi:{ "2027-12-25|diurno":"D3", "2027-12-26|notturno":"D3" } });
+    const r = generaPiano(cfg);
+    expect([di(r,"2027-12-25","diurno").doctor, di(r,"2027-12-26","notturno").doctor]).toEqual(["D3","D3"]);
+    expect(verificaPiano(r, cfg).some(e=>/troppo vicini/.test(e))).toBe(true);
+    expect(chiaveTurno({ date:"2027-12-25", tipo:"diurno" })).toBe("2027-12-25|diurno");
   });
 });
 
@@ -363,7 +441,7 @@ describe("sezione Festivi: titolari e reperibili in proporzione, preferenze nell
   });
   it("la parte di preferenze: almeno una se la parte è positiva, nessuna se il saldo l'ha già consumata", () => {
     const cfg: CfgPiano = { doctors:["1","2"], holidays:[], maxShifts:5, minSuper:0, saldo:{ "1":0, "2":10 } };
-    const turni = [{ holNames:["Natale"], keys:["Natale|giorno"], points:3 }, { holNames:["Immacolata"], keys:["Immacolata|notte"], points:1 }];
+    const turni = [{ date:"2027-12-25", tipo:"diurno", holNames:["Natale"], keys:["Natale|giorno"], points:3 }, { date:"2027-12-08", tipo:"notturno", holNames:["Immacolata"], keys:["Immacolata|notte"], points:1 }];
     const items = { "1":[{ hol:"Natale", role:"giorno" as const, date:"", lastDate:"", sup:true }, { hol:"Immacolata", role:"notte" as const, date:"", lastDate:"", sup:false }],
                     "2":[{ hol:"Natale", role:"giorno" as const, date:"", lastDate:"", sup:true }] };
     // parte = (4 punti + 10 di saldo) / 2 = 7: al medico 1 stanno entrambe (1 + 3); al 2, con 10 di saldo, nessuna
@@ -379,6 +457,76 @@ describe("sezione Festivi: titolari e reperibili in proporzione, preferenze nell
     const c = controlliPiano(p, new Set(), id=>`M${id}`).find(x=>/senza turni da titolare/.test(x.testo))!;
     expect(c.ok).toBe(true);
     expect(c.testo).toMatch(/i turni sono 10, i medici 12/);
+  });
+});
+
+// ── v0.3.73: turni assegnati prima del sorteggio, nella sezione Festivi ──────
+describe("sezione Festivi: turni assegnati prima del sorteggio", () => {
+  const dieci = Array.from({ length:10 }, (_,i)=>med(i+1)), ids = dieci.map(m=>m.id);
+  const dic = { ...statoFestiviDefault(new Date(2026,10,16)), periodo:{ start:"2027-12-01", end:"2027-12-31" } };
+  const nat = { date:"2027-12-25", tipo:"diurno" as const }, ssN = { date:"2027-12-26", tipo:"notturno" as const };
+  const giro = (st: typeof dic) => { const d = datiSorteggio(st, dieci, lista, automaticiFestivi(st, {}, dieci, lista, 2, ids)); return { d, p: sorteggia(d, st, "x").piano }; };
+  it("stato salvato: un medico per turno, si azzera col periodo dopo e col medico eliminato", () => {
+    expect([dic.assegnati, dic.soloAssegnati]).toEqual([[], []]);
+    const m = mergeStatoFestivi({ assegnati:[{ ...nat, id:3 }, { ...nat, id:4 }, { date:"x", tipo:"diurno", id:1 }, { ...ssN, id:"a" }], soloAssegnati:[6, "b"] }, new Date(2026,10,16));
+    expect(m.assegnati).toEqual([{ ...nat, id:4 }]);                                  // l'ultimo vince, i guasti via
+    expect(m.soloAssegnati).toEqual([6]);
+    const st = { ...dic, assegnati:[{ ...nat, id:3 }, { ...ssN, id:6 }], soloAssegnati:[6] };
+    expect([prossimoPeriodo(st).assegnati, prossimoPeriodo(st).soloAssegnati]).toEqual([[], []]);
+    const via = rimuoviMedicoFestivi(st, 6);
+    expect([via.assegnati, via.soloAssegnati]).toEqual([[{ ...nat, id:3 }], []]);
+  });
+  it("dal pannello al piano: assegnati rispettati, chi fa solo i suoi fuori dal sorteggio, segnati nel piano e nel riepilogo", () => {
+    const st = { ...dic, assegnati:[{ ...nat, id:3 }, { ...ssN, id:6 }, { date:"2027-11-01", tipo:"diurno" as const, id:2 }], soloAssegnati:[6, 9],
+      reperibilita:{ enabled:true, weightPct:40, maxPer:5, nonIdonei:[] as number[] } };
+    const { d, p } = giro(st);
+    expect(d.assegnati.length).toBe(2);
+    expect(d.ignorati).toEqual([{ date:"2027-11-01", tipo:"diurno", id:2 }]);          // fuori periodo
+    expect([...d.solo]).toEqual([6]);                                                  // il 9 non ha turni assegnati: resta nel sorteggio
+    expect(d.cfg.doctors).not.toContain("6");
+    expect(d.cfg.onCall!.eligible).not.toContain("6");
+    expect(d.cfg.fissi).toEqual({ "2027-12-25|diurno":"3", "2027-12-26|notturno":"6" });
+    const t = (x:{date:string;tipo:string}) => p.turni.find(y=>y.date===x.date && y.tipo===x.tipo)!;
+    expect([t(nat).medico, t(nat).fisso, t(ssN).medico, t(ssN).fisso]).toEqual([3, true, 6, true]);
+    expect(p.turni.filter(x=>!x.fisso).every(x=>x.fisso===undefined)).toBe(true);
+    expect(p.soloAssegnati).toEqual([6]);
+    expect(p.turni.filter(x=>x.medico===6 || x.reperibile===6).length).toBe(1);
+    const righe = riepilogoPiano(p);
+    expect(righe.find(r=>r.id===6)).toMatchObject({ turni:1, fissi:1, solo:true, nRep:0 });
+    expect(righe.find(r=>r.id===3)).toMatchObject({ fissi:1, solo:false });
+    const c = controlliPiano(p, new Set(), id=>`M${id}`);
+    expect(c.find(x=>/assegnati prima del sorteggio/.test(x.testo))).toEqual({ ok:true, testo:"📌 2 turni assegnati prima del sorteggio" });
+    expect(c.find(x=>/Chi fa solo i turni assegnati/.test(x.testo))!.ok).toBe(true);
+    expect(c.filter(x=>!x.ok && !/superfestiv/.test(x.testo))).toEqual([]);
+    expect(mergeStatoFestivi({ ...st, piano:p }, new Date(2026,10,16)).piano).toEqual(p);   // il piano salvato si rilegge uguale
+  });
+  it("avvisi: giorni vicini, massimo superato, notte a chi fa solo giorni, preferenze impossibili, assegnati che non valgono", () => {
+    const st = { ...dic, maxShifts:1, soloGiorno:{ 5:true },
+      assegnati:[{ ...nat, id:3 }, { ...ssN, id:3 }, { date:"2027-12-08", tipo:"notturno" as const, id:5 }, { date:"2027-11-01", tipo:"diurno" as const, id:2 }],
+      preferenze:{ 3:{ "Santo Stefano":"giorno" as const }, 4:{ Natale:"giorno" as const } } };
+    const { d } = giro(st);
+    const a = avvisiAssegnati(d, st.maxShifts, id=>`M${id}`);
+    expect(a).toContain("1 turno assegnato non vale: fuori dal periodo o di medici tolti dal sorteggio.");
+    expect(a.some(x=>/^M3: due turni assegnati in giorni consecutivi/.test(x))).toBe(true);
+    expect(a).toContain("M3: 2 turni assegnati, più del massimo di 1.");
+    expect(a.some(x=>/^M5 fa solo turni di giorno ma ha assegnata la Immacolata notte 08\/12/.test(x))).toBe(true);
+    expect(a.some(x=>/La preferenza di M4 «Natale giorno» non si può rispettare: il turno è assegnato a M3/.test(x))).toBe(true);
+    expect(a.some(x=>/^M3: la preferenza «Santo Stefano giorno» non si può rispettare insieme al turno assegnato/.test(x))).toBe(true);
+    expect(avvisiAssegnati(giro(dic).d, 5, id=>`M${id}`)).toEqual([]);
+  });
+  it("periodo dopo: chi faceva solo i turni assegnati non va in debito (saldo neutro, la media degli altri)", () => {
+    const st = { ...dic, assegnati:[{ ...ssN, id:6 }], soloAssegnati:[6] };
+    const { p } = giro(st);
+    const dopo = prossimoPeriodo({ ...st, piano:p });
+    const a = automaticiFestivi(dopo, {}, dieci, lista, 2, ids);
+    expect(a.origine).toBe("piano");
+    const altri = ids.filter(id=>id!==6).map(id=>a.saldo[id]);
+    expect(Math.min(...altri)).toBe(0);
+    expect(a.saldo[6]).toBeCloseTo(altri.reduce((t,v)=>t+v,0)/altri.length, 2);
+    // senza «solo i suoi» il 6 sarebbe il minimo e gli altri salirebbero
+    const st2 = { ...dic, assegnati:[{ ...ssN, id:6 }] };
+    const a2 = automaticiFestivi(prossimoPeriodo({ ...st2, piano: giro(st2).p }), {}, dieci, lista, 2, ids);
+    expect(Object.values(a2.saldo).some(v=>v===0)).toBe(true);
   });
 });
 

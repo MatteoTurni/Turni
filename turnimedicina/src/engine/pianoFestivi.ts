@@ -58,6 +58,12 @@ export interface CfgPiano {
   /** B (v0.3.70): un turno chiesto ha la precedenza forte solo finché il medico
    *  è sotto la media dei punti del periodo (saldo compreso). */
   prefEntroQuota?: boolean;
+  /** v0.3.73: turni già assegnati prima del sorteggio, "data|tipo" → medico.
+   *  Il sorteggio li lascia a quel medico (anche se violano un vincolo: è una
+   *  scelta di chi organizza), ne conta i punti e intorno rispetta i riposi; la
+   *  ricerca locale non li sposta. Se il medico non è in `doctors` (fa solo i
+   *  turni assegnati) il turno è suo ma non entra nei conti degli altri. */
+  fissi?: Record<string, string>;
 }
 export interface Assegnazione {
   date: string; tipo: "diurno" | "notturno"; holNames: string[]; holBases: string[]; keys: string[];
@@ -284,6 +290,8 @@ export function buildShifts(holidays: FestData[]): TurnoFest[] {
   return shifts;
 }
 
+/** Chiave di un turno del piano: "data|tipo" (v0.3.73). */
+export const chiaveTurno = (s: { date: string; tipo: string }) => s.date + "|" + s.tipo;
 /** Turni della festività che si possono chiedere (v0.3.68). */
 export const ruoliFesta = (h: { soloGiorno?: boolean; skipNottePrima?: boolean }): RuoloFest[] =>
   ORDINE_RUOLI.filter(r => hasSlot(h, r) && !(r === "nottePrima" && h.skipNottePrima));
@@ -341,15 +349,20 @@ export function prefMatches(it: RichiestaPref, s: { holNames: string[]; keys: st
  *  punti da titolare del periodo — (punti dei turni + saldi) / medici, meno
  *  il suo saldo — prendendo prima quelle che costano meno; almeno una, se la
  *  sua parte è positiva. */
-export function prefNellaParte(cfg: CfgPiano, turni: { holNames: string[]; keys: string[]; points: number }[], prefItems: Record<string, RichiestaPref[]>): Record<string, number> {
+export function prefNellaParte(cfg: CfgPiano, tutti: { date: string; tipo: string; holNames: string[]; keys: string[]; points: number }[], prefItems: Record<string, RichiestaPref[]>): Record<string, number> {
   const sal = (d: string) => (cfg.saldo && +cfg.saldo[d]) || 0;
   const n = cfg.doctors.length || 1;
+  // v0.3.73: i turni assegnati a chi fa solo quelli non sono da dividere; i
+  // turni assegnati a un medico del sorteggio consumano la sua parte
+  const fissi = cfg.fissi || {}, pool = new Set(cfg.doctors);
+  const turni = tutti.filter(s => { const f = fissi[chiaveTurno(s)]; return f === undefined || pool.has(f); });
+  const fissiDi = (d: string) => turni.reduce((t, s) => t + (fissi[chiaveTurno(s)] === d ? s.points : 0), 0);
   const parte = (turni.reduce((t, s) => t + s.points, 0) + cfg.doctors.reduce((t, d) => t + sal(d), 0)) / n;
   const out: Record<string, number> = {};
   for (const d of cfg.doctors) {
     const items = prefItems[d] || [];
     const costi = items.map(it => Math.min(...turni.filter(s => prefMatches(it, s)).map(s => s.points), Infinity)).filter(isFinite).sort((a, b) => a - b);
-    const budget = parte - sal(d);
+    const budget = parte - sal(d) - fissiDi(d);
     let k = 0, acc = 0;
     for (const c of costi) { if (acc + c <= budget + 1e-9) { acc += c; k++; } else break; }
     out[d] = Math.min(items.length, budget > 0 ? Math.max(1, k) : 0);
@@ -390,12 +403,27 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
 
   const bilancia = !!cfg.bilanciaRuoli, entroQuota = !!cfg.prefEntroQuota;
   const nellaParte = entroQuota ? prefNellaParte(cfg, shifts, prefItems) : null;
-  let rimasti = shifts.length;                  // turni da titolare ancora da assegnare (A)
-  const senzaTit = () => cfg.doctors.filter(d => counts[d] === 0).length;
+  // ── turni assegnati prima del sorteggio (v0.3.73)
+  const fissi = cfg.fissi || {};
+  const pool = new Set(cfg.doctors);
+  const fisDate: Record<string, Set<string>> = {};          // date dei turni assegnati a ogni medico del sorteggio
+  const restaFis: Conti = {}, restaFisPt: Conti = {}, restaFisSup: Conti = {};   // assegnati non ancora raggiunti
+  for (const d of cfg.doctors) { fisDate[d] = new Set(); restaFis[d] = 0; restaFisPt[d] = 0; restaFisSup[d] = 0; }
+  let rimasti = 0;                              // turni da titolare ancora da sorteggiare per il sorteggio (A)
+  for (const s of shifts) {
+    const f = fissi[chiaveTurno(s)];
+    if (f === undefined) { rimasti++; continue; }
+    if (!pool.has(f)) continue;
+    fisDate[f].add(s.date); restaFis[f]++; restaFisPt[f] += s.points; if (s.isSuper) restaFisSup[f]++;
+  }
+  /** Il medico ha un turno assegnato lo stesso giorno, il giorno prima o il giorno dopo. */
+  const vicinoFis = (d: string, date: string) => fisDate[d].size > 0 && (fisDate[d].has(date) || fisDate[d].has(addDays(date, -1)) || fisDate[d].has(addDays(date, 1)));
+  const senzaTit = () => cfg.doctors.filter(d => counts[d] + restaFis[d] === 0).length;
   const sottoQuota = (d: string) => !nellaParte || prefSat[d].size < nellaParte[d];   // B: preferenze ancora nella sua parte
 
   const isValid = (d: string, s: TurnoFest) => {
-    if (counts[d] >= cfg.maxShifts) return false;
+    if (counts[d] + restaFis[d] >= cfg.maxShifts) return false;      // (v0.3.73: si tiene il posto per i turni assegnati)
+    if (vicinoFis(d, s.date)) return false;                            // riposo intorno a un turno assegnato (v0.3.73)
     if (s.tipo === "notturno" && soloDiurni.has(d)) return false;     // esentato dalle notti
     if (vicino(onCallDates[d], s.date)) return false;                 // reperibile quel giorno (o, v0.3.69, il giorno prima/dopo)
     if (lastDate[d]) {
@@ -417,24 +445,26 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
     const pend = sotto ? pItems(d).filter((it, i) => !prefSat[d].has(i) && it.lastDate >= s.date) : [];   // richieste ancora raggiungibili
     if (histHit) p -= 50000;                    // evita la stessa festività già fatta
     if (newHit) p += 60000;                     // turno richiesto: batte lo storico
-    if (s.isSuper && supCounts[d] < cfg.minSuper) {
+    // (v0.3.73: i turni assegnati ancora da raggiungere contano come già fatti)
+    const supD = supCounts[d] + restaFisSup[d], cntD = counts[d] + restaFis[d];
+    if (s.isSuper && supD < cfg.minSuper) {
       p += pend.some(it => it.sup) && !newHit ? 20000 : 100000;
       if (supPrio.has(d)) p += 30000;           // rimasto senza nel periodo precedente: precedenza
     }
-    if (!s.isSuper && supCounts[d] < cfg.minSuper) {
-      const rem = cfg.maxShifts - counts[d];
+    if (!s.isSuper && supD < cfg.minSuper) {
+      const rem = cfg.maxShifts - cntD;
       if (rem === 1) p -= 10000;                // ultimo posto: riservalo a un superfestivo
       else if (rem === 2) p -= 5000;
     }
     if (!newHit && pend.length) {
-      if ((cfg.maxShifts - counts[d]) <= pend.length) p -= 15000;     // riserva posti per i turni richiesti
+      if ((cfg.maxShifts - cntD) <= pend.length) p -= 15000;          // riserva posti per i turni richiesti
       if (pend.some(it => it.role !== "any" && (it.date === s.date || diffDays(it.date, s.date) === 1))) p -= 40000;
     }
-    p -= (totalPoints(d) + sal(d)) * 1200;      // equità: saldo di partenza + attivo + reperibile
-    p -= supCounts[d] * 400;                    // bilanciamento dei superfestivi
+    p -= (totalPoints(d) + sal(d) + restaFisPt[d]) * 1200;   // equità: saldo di partenza + attivo + reperibile (+ assegnati)
+    p -= supD * 400;                            // bilanciamento dei superfestivi
     if (bilancia) {                             // A: nessuno con sole reperibilità, proporzioni simili
-      if (counts[d] === 0 && rimasti >= senzaTit()) p += 80000;
-      p += (onCallCounts[d] - counts[d]) * 1500;
+      if (cntD === 0 && rimasti >= senzaTit()) p += 80000;
+      p += (onCallCounts[d] - cntD) * 1500;
     }
     if (lastDate[d]) {
       const rest = diffDays(s.date, lastDate[d]!);
@@ -452,6 +482,7 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
     if (s.tipo === "notturno" && soloDiurni.has(d)) return false;     // esentato dalle notti
     if (onCallCounts[d] >= ocMax) return false;
     if (vicino(activeDates[d], s.date)) return false;                 // titolare quel giorno (o, v0.3.69, il giorno prima/dopo)
+    if (fisDate[d].size && vicino(fisDate[d], s.date)) return false;  // ...anche per i turni assegnati ancora da raggiungere (v0.3.73)
     if (onCallDates[d].has(s.date)) return false;
     return true;
   };
@@ -460,8 +491,9 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
     p -= (totalPoints(d) + sal(d)) * 1200;
     p -= onCallCounts[d] * 300;
     if (bilancia) {                             // A: la reperibilità prima a chi è già titolare
-      p += (counts[d] - onCallCounts[d]) * 1500;
-      if (counts[d] === 0 && rimasti >= senzaTit()) p -= 40000;
+      const cntD = counts[d] + restaFis[d];
+      p += (cntD - onCallCounts[d]) * 1500;
+      if (cntD === 0 && rimasti >= senzaTit()) p -= 40000;
     }
     p += rnd() * 0.99;
     return p;
@@ -470,15 +502,21 @@ export function assignOnce(cfg: CfgPiano, shifts: TurnoFest[], rnd: () => number
   const assignments: Assegnazione[] = [];
   for (const s of shifts) {
     let best: string | null = null, bestP = -Infinity;
-    for (const d of cfg.doctors) {
-      if (!isValid(d, s)) continue;
-      const p = priority(d, s);
-      if (p > bestP) { bestP = p; best = d; }
+    const fisso = fissi[chiaveTurno(s)];
+    if (fisso !== undefined) {                  // turno assegnato prima del sorteggio (v0.3.73)
+      best = fisso;
+      if (pool.has(fisso)) { restaFis[fisso]--; restaFisPt[fisso] -= s.points; if (s.isSuper) restaFisSup[fisso]--; }
+    } else {
+      for (const d of cfg.doctors) {
+        if (!isValid(d, s)) continue;
+        const p = priority(d, s);
+        if (p > bestP) { bestP = p; best = d; }
+      }
+      rimasti--;
     }
-    rimasti--;
     const rec: Assegnazione = { date: s.date, tipo: s.tipo, holNames: s.holNames, holBases: s.holBases, keys: s.keys, isSuper: s.isSuper,
       points: s.points, shared: s.shared, doctor: best, histHit: false, prefHit: false, onCall: null, onCallPoints: 0 };
-    if (best) {
+    if (best && pool.has(best)) {               // (chi fa solo i turni assegnati non entra nei conti)
       const hits = hitsOf(best, s);
       rec.histHit = inSet(hist, best, s.holBases);
       rec.prefHit = hits.length > 0;
@@ -563,7 +601,9 @@ export function scoreSolution(sol: Soluzione, cfg: CfgPiano): number {
   const nv = cfg.doctors.map(d => sol.nightCounts[d]);
   score += (Math.max(...nv) - Math.min(...nv)) * 300;
   if (cfg.bilanciaRuoli) {                      // A
-    const evitabili = cfg.doctors.filter(d => sol.counts[d] === 0).length - Math.max(0, cfg.doctors.length - sol.assignments.length);
+    const fis = cfg.fissi || {};
+    const daDividere = sol.assignments.filter(a => { const f = fis[chiaveTurno(a)]; return f === undefined || cfg.doctors.includes(f); }).length;
+    const evitabili = cfg.doctors.filter(d => sol.counts[d] === 0).length - Math.max(0, cfg.doctors.length - daDividere);
     score += Math.max(0, evitabili) * 2e5;
     if (ocOn) score += spreadVar(cfg.doctors.map(d => sol.counts[d] - sol.onCallCounts[d]), 400, 200);
   }
@@ -588,9 +628,10 @@ export function rebuildSolution(A: Assegnazione[], cfg: CfgPiano): Soluzione {
   const w = (typeof cfg.onCall?.weightPct === "number" ? cfg.onCall.weightPct : 40) / 100;
   for (const a of A) {
     const d = a.doctor;
-    a.histHit = !!d && (hist[d] || []).some(n => (a.holBases || a.holNames).includes(n));
-    a.prefHit = !!d && (PI[d] || []).some(it => prefMatches(it, a));
-    if (d) {
+    const nelPool = !!d && d in sol.counts;     // (v0.3.73: chi fa solo i turni assegnati non entra nei conti)
+    a.histHit = nelPool && (hist[d!] || []).some(n => (a.holBases || a.holNames).includes(n));
+    a.prefHit = nelPool && (PI[d!] || []).some(it => prefMatches(it, a));
+    if (d && nelPool) {
       sol.counts[d]++; sol.points[d] = Math.round((sol.points[d] + a.points) * 100) / 100;
       if (a.isSuper) sol.supCounts[d]++;
       if (a.tipo === "diurno") sol.dayCounts[d]++; else sol.nightCounts[d]++;
@@ -649,15 +690,19 @@ export function improveLocal(sol: Soluzione, cfg: CfgPiano, maxPasses?: number):
     }
     undo(); return false;
   };
+  // v0.3.73: i turni assegnati prima del sorteggio non si spostano (il reperibile sì)
+  const fis = cfg.fissi || {};
+  const fisso = A.map(a => fis[chiaveTurno(a)] !== undefined);
   let passes = 0, moves = 0, improved = true;
   while (improved && passes < (maxPasses || 30)) {
     improved = false; passes++;
     for (let i = 0; i < A.length; i++) {
-      for (const d of cfg.doctors) {
+      if (!fisso[i]) for (const d of cfg.doctors) {
         const old = A[i].doctor; if (d === old) continue;
         if (tryMove(() => { A[i].doctor = d; }, () => { A[i].doctor = old; }, [d, old])) { improved = true; moves++; }
       }
-      for (let j = i + 1; j < A.length; j++) {
+      if (!fisso[i]) for (let j = i + 1; j < A.length; j++) {
+        if (fisso[j]) continue;
         const x = A[i].doctor, y = A[j].doctor; if (x === y) continue;
         if (tryMove(() => { A[i].doctor = y; A[j].doctor = x; }, () => { A[i].doctor = x; A[j].doctor = y; }, [x, y])) { improved = true; moves++; }
       }
@@ -727,6 +772,11 @@ export function verificaPiano(sol: Soluzione, cfg: CfgPiano): string[] {
     for (const a of rep) if (miei.some(x => x.date === a.date)) err.push(`${d}: titolare e reperibile lo stesso giorno (${fmtIt(a.date)})`);
     if (cfg.onCall?.staccoTitolare !== false)
       for (const a of rep) if (miei.some(x => Math.abs(diffDays(x.date, a.date)) === 1)) err.push(`${d}: reperibile il giorno prima o dopo un suo turno (${fmtIt(a.date)})`);
+  }
+  // v0.3.73: ogni turno assegnato è rimasto al suo medico
+  for (const a of sol.assignments) {
+    const f = (cfg.fissi || {})[chiaveTurno(a)];
+    if (f !== undefined && a.doctor !== f) err.push(`${fmtIt(a.date)} ${a.tipo}: era assegnato a ${f}, è finito a ${a.doctor ?? "nessuno"}`);
   }
   return err;
 }
