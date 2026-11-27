@@ -111,6 +111,20 @@ export function dimOf(y:number,m:number)  { return new Date(y,m+1,0).getDate(); 
 export function isSabN(n:number)   { return n===5; }
 export function isDomN(n:number)   { return n===6; }
 export function isFestivo(y:number,m:number,d:number){ return isHol(y,m,d)||isDomN(dowOf(y,m,d)); }
+/** Il giorno DOPO (y, m, d) è domenica o festivo? Guarda il calendario vero
+ *  anche a cavallo del mese e dell'anno (v0.3.74): la notte del 31/12 è
+ *  prefestiva perché il 1° gennaio è Capodanno, quella del 30/4 perché il 1°
+ *  maggio è festa. Dentro il mese è uguale a isFestivo(y, m, d + 1).
+ *  Il peso weekend la chiede a ogni turno messo o tolto: niente oggetti Date
+ *  per i giorni normali, si passa dalla memoria di isFestivo. */
+const GIORNI_MESE = [31,28,31,30,31,30,31,31,30,31,30,31];
+export function isFestivoDopo(y:number,m:number,d:number){
+  const fine = m===1 && y%4===0 && (y%100!==0 || y%400===0) ? 29 : GIORNI_MESE[m];
+  if(d >= 0 && d < fine) return isFestivo(y, m, d + 1);                     // il giorno dopo è nello stesso mese
+  if(d === fine) return m === 11 ? isFestivo(y + 1, 0, 1) : isFestivo(y, m + 1, 1);   // ultimo del mese → il 1° del mese dopo
+  const dt = new Date(y, m, d + 1);                                         // fuori dal mese: si normalizza la data
+  return isFestivo(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}
 
 // Chiave del mese: "AAAA-MM" (mese 0-based → +1). I turni sono organizzati per
 // mese proprio con questa chiave, così ogni mese ha il suo insieme di turni.

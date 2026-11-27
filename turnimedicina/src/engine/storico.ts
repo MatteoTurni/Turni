@@ -1,5 +1,5 @@
 import type { Medico, TurniAll, TurniMese } from "./types";
-import { mkKey, dimOf, dowOf, isFestivo, isSabN } from "./date";
+import { mkKey, dimOf, dowOf, isFestivo, isFestivoDopo, isSabN } from "./date";
 import { isMatt, isPom, isNot, SPEC } from "./turni";
 import { ENG } from "./state";
 
@@ -34,7 +34,7 @@ export function festiviDelMese(T: TurniMese, anno:number, mese:number, ids:numbe
       nNotti += sh.filter(s=>isNot(s.tipo)).length;
       if(sh.some(s=>!SPEC.includes(s.tipo))) presenti.add(id);
       const fest = isFestivo(anno, mese, g), sab = isSabN(dowOf(anno, mese, g)) && !fest;
-      const pre = g<nd && isFestivo(anno, mese, g+1);
+      const pre = isFestivoDopo(anno, mese, g);                // anche l'ultimo del mese (v0.3.74)
       for(const s of sh){ const t = tipoFestivo(fest, sab, pre, s.tipo); if(t>=0) k[t]++; }
     }
     conti[id] = k;

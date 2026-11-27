@@ -1,6 +1,6 @@
 import type { Medico, Turno, TurniMese, Regole } from "./types";
 import { vt, LICENZE, isMatt, isPom, isNot, slotAmbGiorno } from "./turni";
-import { dowOf, isFestivo, isSabN, isDomN } from "./date";
+import { dowOf, isFestivo, isFestivoDopo, isSabN, isDomN } from "./date";
 
 // ─── BILANCIO DEL MESE ────────────────────────────────────────────────────────
 // Quattro numeri, tutti nella STESSA unità di cntM/vt (la colonna "Ob."):
@@ -89,12 +89,13 @@ export interface RiepilogoMedico { m: number; p: number; n: number; wk: number; 
  *   · DOMENICA e FESTIVI infrasettimanali → mattina (M/1)=1, pomeriggio=1, notte=2.
  *   · NOTTE PREFESTIVA → la notte del giorno che precede un festivo vale 2 anche
  *     se quel giorno è feriale (es. lunedì notte prima di un martedì festivo).
- *  Conta ANCHE i sottolineati e i codici PS 1/2/3. La notte prefestiva a cavallo
- *  del mese (ultimo giorno) non è valutata: il conteggio è per-mese. */
+ *  Conta ANCHE i sottolineati e i codici PS 1/2/3. La notte prefestiva vale anche
+ *  l'ultimo giorno del mese, se il 1° del mese dopo è festivo (v0.3.74: es. la
+ *  notte del 31/12 prima di Capodanno). */
 export function pesoWeekend(anno: number, mese: number, nd: number, g: number, cella: Turno[]): number {
   const fest = isFestivo(anno, mese, g);                  // domenica + festivo infrasettimanale
   const sab  = isSabN(dowOf(anno, mese, g)) && !fest;     // sabato feriale
-  const preFest = g < nd && isFestivo(anno, mese, g + 1); // giorno prefestivo → notte festiva
+  const preFest = g <= nd && isFestivoDopo(anno, mese, g); // giorno prefestivo → notte festiva (anche a cavallo del mese)
   if (!sab && !fest && !preFest) return 0;
   let v = 0;
   for (const s of cella) {

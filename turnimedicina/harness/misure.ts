@@ -73,7 +73,7 @@ export function misure(sc: CasoM, T: TurniMese): Record<string,number> {
     const isMt = ["M","A","1"].includes(t), isPm = ["P","Ap","2"].includes(t), isNt = ["N","3"].includes(t);
     if(c.isSp(g)) return isMt ? 0 : isPm ? 1 : isNt ? 2 : -1;
     if(c.isS(g)) return isPm ? 3 : isNt ? 4 : -1;
-    return g<nd && c.isSp(g+1) && isNt ? 4 : -1;
+    return c.isPreFest(g) && isNt ? 4 : -1;
   };
   const perTipo = c.mrMdc.map(m=>{ const k=[0,0,0,0,0]; for(let g=1;g<=nd;g++) for(const sh of c.gt(m.id,g)){ const t=tipoF(g,sh.tipo); if(t>=0) k[t]++; } return k; });
   o["festivi: turni dello stesso tipo ripetuti"] = perTipo.reduce((q,k)=>q+k.reduce((a,x)=>a+Math.max(0,x-1),0),0);

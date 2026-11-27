@@ -545,7 +545,7 @@ export function continuitaScoperti(c: ReturnType<typeof makeCtx>) {
 // ENG.STORICO_FEST) ogni turno del mese costa in più h: chi negli ultimi mesi
 // ha fatto più turni di quel tipo lo riceve per ultimo.
 export function varietaFestivi(c: ReturnType<typeof makeCtx>): number {
-  const tipo = (g:number, t:string) => tipoFestivo(c.isSp(g), c.isS(g) && !c.isSp(g), g<c.ndim && c.isSp(g+1), t);
+  const tipo = (g:number, t:string) => tipoFestivo(c.isSp(g), c.isS(g) && !c.isSp(g), c.isPreFest(g), t);
   const H = ENG.STORICO_FEST;
   let costo = 0;
   for(const m of c.mrMdc){
@@ -1079,7 +1079,7 @@ export function mdcViolCount(ndim:number, medici:Medico[], c:ReturnType<typeof m
 }
 export function riequilibraCaricoWeekend(anno:number, mese:number, ndim:number, medici:Medico[], c:ReturnType<typeof makeCtx>): boolean {
   const F=["N","P","M"] as const;
-  const wkGiorni:number[]=[]; for(let g=1;g<=ndim;g++) if(c.isWk(g)||(g<ndim&&c.isSp(g+1))) wkGiorni.push(g);
+  const wkGiorni:number[]=[]; for(let g=1;g<=ndim;g++) if(c.isWk(g)||c.isPreFest(g)) wkGiorni.push(g);
   const misura=()=>misuraTabellone(anno,mese,ndim,medici,c.T);
   let cur=misura(); let migliorato=false;
   const mdc0=mdcViolCount(ndim,medici,c);   // violazioni MDC di partenza (di norma 0)

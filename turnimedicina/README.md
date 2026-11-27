@@ -1,4 +1,23 @@
-# TurniMedicina 0.3.73
+# TurniMedicina 0.3.74
+
+## Novità 0.3.74 — la notte dell'ultimo del mese prima di un festivo
+
+La notte dell'ultimo giorno del mese è **prefestiva** quando il 1° del mese
+dopo è festivo: il 31 dicembre prima di Capodanno, il 30 aprile prima del 1°
+maggio, il 31 ottobre prima di Ognissanti (e le feste locali del 1° del mese).
+Prima il motore guardava il giorno dopo solo dentro il mese e la contava come
+una notte feriale.
+- Vale come ogni altra notte prefestiva: peso 2 nei «Festivi lav.» e nel
+  carico weekend, notte festiva nell'equità dei weekend, notte prefestiva
+  nella rotazione dei festivi fra mesi (a gennaio si vede la notte del 31
+  dicembre).
+- Cambia solo quella notte, e solo quando l'ultimo del mese è feriale (di
+  sabato o di domenica era già festiva): dal 2026 al 2030 sono 11 notti in
+  tutto. Mattina e pomeriggio restano come prima. Nei mesi già salvati il
+  contatore «Festivi lav.» si aggiorna da solo: +2 a chi ha quella notte.
+- Provato su dicembre 2026 con 12 medici, 6 generazioni prima e dopo: nessuna
+  violazione, stessi tempi; la differenza di «Festivi lav.» fra gli MR scende
+  da 3 (in 4 prove su 6) a 1 in tutte.
 
 ## Novità 0.3.73 — piano festivi: turni assegnati prima del sorteggio
 
