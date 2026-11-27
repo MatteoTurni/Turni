@@ -1,5 +1,5 @@
 import type { Medico, Turno, TurniMese } from "./types";
-import { dowOf, isSabN, isDomN, isFestivo } from "./date";
+import { dowOf, isSabN, isDomN, isFestivo, isFestivoDopo } from "./date";
 import { isMatt, isPom, isNot, vt, SPEC, LICENZE, isLicenza, cloneT, isEscl, escludeFascia, fasciaDi, slotAmbGiorno, compagnoMDC, affiancaMDC, ambIdDi, abilitatoAmb, abilitatoQualche, type SlotAmb } from "./turni";
 import { getRegole, tettoNotti } from "./regole";
 import { pesoWeekend } from "./bilancio";
@@ -251,9 +251,14 @@ export function makeCtx(
   const isH  = (g:number) => isFestivo(anno,mese,g);
   const isSp = (g:number) => isD(g)||isH(g);
   const isWk = (g:number) => dw(g)>=5||isH(g);
+  // Il giorno dopo g è domenica o festivo: la notte di g è PREFESTIVA. Per
+  // l'ultimo giorno del mese si guarda il 1° del mese dopo (v0.3.74: prima la
+  // notte del 31/12, prima di Capodanno, valeva come una notte feriale).
+  const preFestDopo = isFestivoDopo(anno, mese, ndim);
+  const isPreFest = (g:number) => g < ndim ? isSp(g+1) : g === ndim && preFestDopo;
   // Notte "festiva" ai fini dell'equità weekend: sabato/domenica/festivo, oppure
   // la notte PREFESTIVA (il giorno dopo è domenica o festivo infrasettimanale).
-  const isNotteFest = (g:number) => isWk(g) || (g+1<=ndim && isSp(g+1));
+  const isNotteFest = (g:number) => isWk(g) || isPreFest(g);
   const isFer= (g:number) => !isWk(g);
   // AMBULATORI (v0.3.36): più ambulatori, ciascuno coi suoi giorni, fasce e
   // abilitati. Uno SLOT = (ambulatorio, codice A|Ap) da coprire in un giorno.
@@ -565,7 +570,7 @@ export function makeCtx(
   const pesoSlot = (g:number, f:"M"|"P"|"N") => {
     const fest = isSp(g);                                  // domenica o festivo
     const sab  = isS(g) && !fest;
-    const pre  = g<ndim && isSp(g+1);                       // notte prefestiva
+    const pre  = isPreFest(g);                              // notte prefestiva (anche l'ultimo del mese, v0.3.74)
     if(f==="N") return (sab||fest||pre) ? 2 : 0;
     if(f==="P") return (sab||fest) ? 1 : 0;
     return fest ? 1 : 0;                                    // mattina: solo festivo
@@ -833,7 +838,7 @@ export function makeCtx(
 
   return {
     ndim, medici, T, gt, st, add, haX, escluso, esclusoAss, haM, haP, haN, haQ, cnt, cntN, cntWk,
-    dw, isS, isD, isH, isSp, isWk, isNotteFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
+    dw, isS, isD, isH, isSp, isWk, isNotteFest, isPreFest, isFer, isAmb, ambSlots, ambMancanti, haSlot, slotLbl, abilitatoAmb, nmn, npn, SPEC, cf,
     canLav, canMatt, canPom, psEstOccupa, canAss, canN, haAss, canAssDist, canR, mdcOk, byL, byN, byWk, needEff,
     canConsec, runConsec, lavoraGiorno, MAX_CONSEC, MAX_NOTTI, maxNottiDi, maxAssSett, trailingPrev, BLOCCO_M,
     settDi, inizioSett, assInSett, canAssSett, pienaReale, gtB, assInMese, canAssMese, maxAssMeseDi,
